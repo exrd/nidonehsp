@@ -1,0 +1,372 @@
+{
+	"name": "nidonehsp-env",
+	"displayName": "nidonehsp-env",
+	"description": "nidonehsp environment for VSCode",
+	"icon": "nidonehsp_icon.png",
+	"version": "0.1.1",
+	"engines": {
+		"vscode": "^1.52.0"
+	},
+	"license": "NYSL",
+	"publisher": "exrd",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/exrd/nidonehsp"
+	},
+	"categories": [
+		"Programming Languages"
+	],
+	"activationEvents": [
+		"onDebug",
+		"onLanguage:nidonehsp",
+		"onDebugDynamicConfigurations:nidonehsp-env",
+		"onCommand:nidonehsp-env.helpview",
+		"onCommand:nidonehsp-env.previewActiveScript",
+		"onCommand:nidonehsp-env.compileCheckActiveScript",
+		"onCommand:nidonehsp-env.buildActiveScript",
+		"onCommand:nidonehsp-env.exportActiveScript"
+	],
+	"main": "./out/extension.js",
+	"contributes": {
+		"languages": [
+			{
+				"id": "nidonehsp",
+				"aliases": [
+					"",
+					"nidonehsp"
+				],
+				"extensions": [
+					".nhsp"
+				],
+				"configuration": "./language-configuration.json"
+			}
+		],
+		"grammars": [
+			{
+				"language": "nidonehsp",
+				"scopeName": "source.nhsp",
+				"path": "./syntaxes/nidonehsp.tmLanguage.json"
+			}
+		],
+		"breakpoints": [
+			{
+				"language": "nidonehsp"
+			}
+		],
+		"debuggers": [
+			{
+				"type": "nidonehsp-env",
+				"label": "nidonehsp-env",
+				"languages": [
+					"nidonehsp"
+				],
+				"program": "binary",
+				"windows": {
+					"program": "./bin/n2studio.exe"
+				},
+				"runtime": "native",
+				"configurationAttributes": {
+					"launch": {
+						"required": [
+							"program",
+							"port"
+						],
+						"properties": {
+							"program": {
+								"type": "string",
+								"description": "%nidonehsp-env.debugger.properties.program.description%",
+								"default": ""
+							},
+							"encoding": {
+								"type": "string",
+								"description": "%nidonehsp-env.debugger.properties.encoding.description%",
+								"default": "auto",
+								"enum": [
+									"auto",
+									"utf8",
+									"utf16",
+									"cp932"
+								]
+							},
+							"preDebugCompileCheck": {
+								"type": "boolean",
+								"description": "%nidonehsp-env.debugger.properties.preDebugCompileCheck.description%",
+								"default": true
+							},
+							"port": {
+								"type": "number",
+								"description": "%nidonehsp-env.debugger.properties.port.description%",
+								"default": 9022
+							},
+							"args": {
+								"type": "string",
+								"description": "%nidonehsp-env.debugger.properties.args.description%",
+								"default": ""
+							},
+							"cwd": {
+								"type": "string",
+								"description": "%nidonehsp-env.debugger.properties.cwd.description%",
+								"default": ""
+							},
+							"stopOnEntry": {
+								"type": "boolean",
+								"description": "%nidonehsp-env.debugger.properties.stopOnEntry.description%",
+								"default": false
+							},
+							"debuggerRuntime": {
+								"type": "string",
+								"description": "%nidonehsp-env.debugger.properties.debuggerRuntime.description%",
+								"default": ""
+							},
+							"logDebuggerRuntime": {
+								"type": "boolean",
+								"description": "%nidonehsp-env.debugger.properties.logDebuggerRuntime.description%",
+								"default": false
+							}
+						}
+					}
+				},
+				"initialConfigurations": [
+					{
+						"type": "nidonehsp-env",
+						"request": "launch",
+						"name": "nidonehsp-env: Launch",
+						"program": "",
+						"port": 9022
+					}
+				],
+				"configurationSnippets": [
+					{
+						"label": "nidonehsp-env: Launch",
+						"description": "%nidonehsp-env.debugger.configurationSnippets.launch.description%",
+						"body": {
+							"type": "nidonehsp-env",
+							"request": "launch",
+							"name": "nidonehsp-env: Launch",
+							"program": "",
+							"port": 9022
+						}
+					}
+				],
+				"variables": {
+					"SelectDebuggerStartupScript": "extension.nidonehsp-env.selectDebuggerStartupScript"
+				}
+			}
+		],
+		"problemMatchers": [
+			{
+				"name": "nidonehsp-env.studio",
+				"owner": "nidonehsp-env",
+				"fileLocation": [
+					"autoDetect",
+					"${workspaceFolder}"
+				],
+				"pattern": [
+					{
+						"regexp": "^\\s*type\\((error|warning)\\)\\s+file\\((.*?)\\)\\s+line\\((\\d+)\\)\\s+column\\((\\d+)\\)\\s+message\\{\\{(.*?)\\}\\}\\s*$",
+						"severity": 1,
+						"file": 2,
+						"line": 3,
+						"column": 4,
+						"message": 5
+					}
+				]
+			}
+		],
+		"taskDefinitions": [
+			{
+				"type": "nidonehsp-env.compileCheck",
+				"required": [
+					"program"
+				],
+				"properties": {
+					"program": {
+						"type": "string",
+						"description": "%nidonehsp-env.task.compileCheck.properties.program.description%"
+					}
+				}
+			},
+			{
+				"type": "nidonehsp-env.build",
+				"required": [
+					"program"
+				],
+				"properties": {
+					"program": {
+						"type": "string",
+						"description": "%nidonehsp-env.task.build.properties.program.description%"
+					},
+					"outputRootPath": {
+						"type": "string",
+						"description": "%nidonehsp-env.task.build.properties.outputRootPath.description%"
+					},
+					"showDialog": {
+						"type": "boolean",
+						"description": "%nidonehsp-env.task.build.properties.showDialog.description%",
+						"default": true
+					}
+				}
+			},
+			{
+				"type": "nidonehsp-env.export",
+				"required": [
+					"program"
+				],
+				"properties": {
+					"program": {
+						"type": "string",
+						"description": "%nidonehsp-env.task.export.properties.program.description%"
+					},
+					"targetPlatform": {
+						"type": "string",
+						"description": "%nidonehsp-env.task.export.properties.targetPlatform.description%",
+						"default": "auto",
+						"enum": [
+							"auto",
+							"native",
+							"html"
+						]
+					},
+					"outputRootPath": {
+						"type": "string",
+						"description": "%nidonehsp-env.task.export.properties.outputRootPath.description%"
+					},
+					"showDialog": {
+						"type": "boolean",
+						"description": "%nidonehsp-env.task.export.properties.showDialog.description%",
+						"default": true
+					}
+				}
+			},
+			{
+				"type": "nidonehsp-env.preview",
+				"required": [
+					"program"
+				],
+				"properties": {
+					"program": {
+						"type": "string",
+						"description": "%nidonehsp-env.task.preview.properties.program.description%"
+					}
+				}
+			}
+		],
+		"configuration": {
+			"title": "nidonehsp-env",
+			"properties": {
+				"nidonehsp-env.runtime.runtimeRootPath": {
+					"type": "string",
+					"description": "%nidonehsp-env.configuration.runtime.runtimeRootPath.description%",
+					"markdownDescription": "%nidonehsp-env.configuration.runtime.runtimeRootPath.mddescription%",
+					"default": "",
+					"scope": "machine"
+				},
+				"nidonehsp-env.runtime.studioPath": {
+					"type": "string",
+					"description": "%nidonehsp-env.configuration.runtime.studioPath.description%",
+					"markdownDescription": "%nidonehsp-env.configuration.runtime.studioPath.mddescription%",
+					"default": "",
+					"scope": "machine"
+				},
+				"nidonehsp-env.runtime.includePath": {
+					"type": "array",
+					"description": "%nidonehsp-env.configuration.runtime.includePath.description%",
+					"markdownDescription": "%nidonehsp-env.configuration.runtime.includePath.mddescription%",
+					"default": [],
+					"scope": "window"
+				},
+				"nidonehsp-env.runtime.defineMacro": {
+					"type": "array",
+					"description": "%nidonehsp-env.configuration.runtime.defineMacro.description%",
+					"markdownDescription": "%nidonehsp-env.configuration.runtime.defineMacro.mddescription%",
+					"default": [],
+					"scope": "window",
+					"examples": [
+						"MACRO_A",
+						"MACRO_B=1"
+					]
+				}
+			}
+		},
+		"commands": [
+			{
+				"command": "nidonehsp-env.helpview",
+				"title": "%nidonehsp-env.command.helpview.title%",
+				"category": "nidonehsp-env"
+			},
+			{
+				"command": "nidonehsp-env.previewActiveScript",
+				"title": "%nidonehsp-env.command.previewActiveScript.title%",
+				"category": "nidonehsp-env"
+			},
+			{
+				"command": "nidonehsp-env.compileCheckActiveScript",
+				"title": "%nidonehsp-env.command.compileCheckActiveScript.title%",
+				"category": "nidonehsp-env"
+			},
+			{
+				"command": "nidonehsp-env.buildActiveScript",
+				"title": "%nidonehsp-env.command.buildActiveScript.title%",
+				"category": "nidonehsp-env"
+			},
+			{
+				"command": "nidonehsp-env.exportActiveScript",
+				"title": "%nidonehsp-env.command.exportActiveScript.title%",
+				"category": "nidonehsp-env"
+			}
+		],
+		"keybindings": [
+			{
+				"command": "nidonehsp-env.helpview",
+				"key": "f1"
+			},
+			{
+				"command": "nidonehsp-env.previewActiveScript",
+				"key": "ctrl+f6"
+			},
+			{
+				"command": "nidonehsp-env.compileCheckActiveScript",
+				"key": "f7"
+			},
+			{
+				"command": "nidonehsp-env.buildActiveScript",
+				"key": "f9"
+			},
+			{
+				"command": "nidonehsp-env.exportActiveScript",
+				"key": "ctrl+f9"
+			}
+		]
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run compile",
+		"compile": "tsc -p ./",
+		"watch": "tsc -watch -p ./",
+		"pretest": "npm run compile && npm run lint",
+		"lint": "eslint src --ext ts",
+		"test": "node ./out/test/runTest.js"
+	},
+	"devDependencies": {
+		"@types/glob": "^7.1.3",
+		"@types/highlightjs": "^10.1.0",
+		"@types/marked": "^1.2.2",
+		"@types/mocha": "^8.0.4",
+		"@types/node": "^12.11.7",
+		"@types/sanitize-html": "^1.27.1",
+		"@types/vscode": "^1.52.0",
+		"@typescript-eslint/eslint-plugin": "^4.15.2",
+		"@typescript-eslint/parser": "^4.15.2",
+		"eslint": "^7.20.0",
+		"glob": "^7.1.6",
+		"mocha": "^8.1.3",
+		"ts-node": "^9.1.1",
+		"typescript": "^4.1.2",
+		"vscode-test": "^1.4.1"
+	},
+	"dependencies": {
+		"highlightjs": "^9.16.2",
+		"marked": "^2.0.1",
+		"sanitize-html": "^2.3.2",
+		"uikit": "^3.6.16"
+	}
+}

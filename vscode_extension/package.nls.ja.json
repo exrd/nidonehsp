@@ -1,0 +1,46 @@
+{
+    "nidonehsp-env.debugger.properties.program.description": "スタートアップスクリプトへの絶対パス。",
+    "nidonehsp-env.debugger.properties.encoding.description": "スクリプトのエンコーディング。※まだ未サポートです",
+    "nidonehsp-env.debugger.properties.preDebugCompileCheck.description": "デバッグを開始する前にコンパイルしてエラーチェックをします。",
+    "nidonehsp-env.debugger.properties.port.description": "デバッグ時に使うTCPポート。",
+    "nidonehsp-env.debugger.properties.args.description": "ランタイムへ渡す追加引数。",
+    "nidonehsp-env.debugger.properties.cwd.description": "スクリプトデバッグ時のワーキングディレクトリ。",
+    "nidonehsp-env.debugger.properties.stopOnEntry.description": "起動直後にポーズをかける（ブレークされた状態で起動）。",
+    "nidonehsp-env.debugger.properties.debuggerRuntime.description": "デバッガーランタイムへの絶対パス（基本的にはn2studio）。",
+    "nidonehsp-env.debugger.properties.logDebuggerRuntime.description": "対象のデバッガーランタイムのログ出力。",
+    "nidonehsp-env.debugger.configurationSnippets.launch.description": "nidonehsp 起動スクリプト用の新たなコンフィグ。",
+    "nidonehsp-env.debugger.resolve.unsupportedPlatform": "nidonehsp 現在のOS上でのデバッグ・ビルドは未サポートです。",
+    "nidonehsp-env.debugger.resolve.preDebugCompileCheck.failed": "デバッグ前コンパイルチェックに失敗。問題を修正してください。",
+
+    "nidonehsp-env.command.helpview.title": "nidonehsp-env: ヘルプビューを開く。",
+    "nidonehsp-env.command.previewActiveScript.title": "nidonehsp-env: アクティブなスクリプトファイルをプレビュー。",
+    "nidonehsp-env.command.compileCheckActiveScript.title": "nidonehsp-env: アクティブなスクリプトファイルをコンパイル＆エラーチェック。",
+    "nidonehsp-env.command.buildActiveScript.title": "nidonehsp-env: アクティブなスクリプトファイルをビルド。",
+    "nidonehsp-env.command.exportActiveScript.title": "nidonehsp-env: アクティブなスクリプトファイルを実行ファイルとしてエクスポート。",
+
+    "nidonehsp-env.task.compileCheck.properties.program.description": "コンパイルチェックする対象のスクリプトの絶対パス。",
+    "nidonehsp-env.task.build.properties.program.description": "ビルドする対象のスクリプトの絶対パス。",
+    "nidonehsp-env.task.build.properties.outputRootPath.description": "ビルド成果物の出力先ディレクトリの絶対パス。",
+    "nidonehsp-env.task.build.properties.showDialog.description": "ビルド後のエラー・成功ダイアログを表示。",
+    "nidonehsp-env.task.export.properties.program.description": "エクスポートする対象のスクリプトの絶対パス。",
+    "nidonehsp-env.task.export.properties.targetPlatform.description": "エクスポートのターゲットプラットフォーム。",
+    "nidonehsp-env.task.export.properties.outputRootPath.description": "エクスポートバイナリの出力先ディレクトリの絶対パス。",
+    "nidonehsp-env.task.export.properties.showDialog.description": "エクスポート後のエラー・成功ダイアログを表示。",
+    "nidonehsp-env.task.preview.properties.program.description": "プレビュー対象のスクリプトの絶対パス。",
+
+    "nidonehsp-env.configuration.runtime.runtimeRootPath.description": "n2 のラインタイム格納ディレクトリへの絶対パス。空の場合はエクステンションに含まれるバイナリを使います。.",
+    "nidonehsp-env.configuration.runtime.runtimeRootPath.mddescription": "n2 のラインタイム格納ディレクトリへの絶対パス。空の場合はエクステンションに含まれるバイナリを使います。.",
+    "nidonehsp-env.configuration.runtime.studioPath.description": "n2studio への絶対パス。空の場合はエクステンションに含まれるバイナリを使います。",
+    "nidonehsp-env.configuration.runtime.studioPath.mddescription": "n2studio への絶対パス。空の場合はエクステンションに含まれるバイナリを使います。",
+    "nidonehsp-env.configuration.runtime.includePath.description": "追加のインクルードパスの配列。各インクルードパスは絶対パス。",
+    "nidonehsp-env.configuration.runtime.includePath.mddescription": "追加のインクルードパスの配列。各インクルードパスは絶対パス。",
+    "nidonehsp-env.configuration.runtime.defineMacro.description": "追加のマクロの配列。フォーマットは'macroName'や'macroName=macroContent'です。",
+    "nidonehsp-env.configuration.runtime.defineMacro.mddescription": "追加のマクロの配列。フォーマットは'macroName'や'macroName=macroContent'です。",
+
+    "nidonehsp-env.shared.cannotResolveRuntimeRootPath": "nidonehsp 用のランタイムルートディレクトリが見つかりません（設定パス＝${resolvedPath}）",
+    "nidonehsp-env.shared.cannotResolveStudioPath": "n2studio が見つかりません（設定パス＝${resolvedPath}）",
+
+    "nidonehsp-env.helpview.loading.title": "ヘルプビューのデータを読み込んでいます…。",
+    "nidonehsp-env.helpview.information.failed-loading-helpview-data": "ヘルプビューのデータ読み込み失敗（${fspath}）。",
+    "nidonehsp-env.helpview.statusbar.copied-samplecode-to-clipboard": "${wordName}のサンプルコードをクリップボードにコピーしました。"
+}

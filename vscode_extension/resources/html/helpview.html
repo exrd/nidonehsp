@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <!-- unsafe-inline はあまり使いたくないが、nonce とかも使えそうにないのでまあ… -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src $(WebviewCspSource) https:; script-src 'unsafe-inline' $(WebviewCspSource); style-src 'unsafe-inline' $(WebviewCspSource)">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>nidonehsp HelpView</title>
+
+    <!-- UIkit CSS -->
+    <link rel="stylesheet" href="$(LibraryRoot)/uikit/dist/css/uikit.min.css" />
+    <!-- UIkit JS -->
+    <script src="$(LibraryRoot)/uikit/dist/js/uikit.min.js"></script>
+    <script src="$(LibraryRoot)/uikit/dist/js/uikit-icons.min.js"></script>
+    <!-- highlight.js -->
+    <link rel="stylesheet" href="$(LibraryRoot)/highlightjs/styles/a11y-dark.css" />
+    <script src="$(LibraryRoot)/highlightjs/highlight.pack.min.js"></script>
+    <!-- inline style -->
+    <style>
+        html, body {
+            width: 99%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+        }
+        pre {
+            border: 1px solid #5c5c5c;
+            background: #3c3c3c;
+        }
+        .table-xsmall th,
+        .table-xsmall td {
+            padding: 5px 6px;
+        }
+        .table-collapse th,
+        .table-collapse td {
+            padding: 0 0;
+        }
+        .table-wexpand {
+            display: table;
+        }
+        .table-wexpand tr {
+            display: table-row;
+            width: 100%;
+        }
+        .table-wexpand td {
+            display: table-cell;
+        }
+        .card-xsmall.uk-card-body,
+        .card-xsmall .uk-card-body {
+            padding: 10px 5px;
+        }
+        .n2-code-copy-button {
+            padding: 0 8px;
+            width: 70px;
+            line-height: 18px;
+            font-size: 0.7rem;
+            top: 10px;
+            right: 5px;
+        }
+        .n2-funccolor {
+            color: #DCDCAA;
+        }
+        .n2-paramcolor {
+            color: #9CDCFE;
+        }
+        .n2-table-paramcell {
+            max-width: 200px;
+            min-width: 80px;
+        }
+        .n2-content-secheader {
+            font-size: 0.9rem;
+            color: #8e8ebe;
+        }
+        .n2-siderefdesc-table {
+            font-size: 0.7rem;
+            background-color: #333333;
+        }
+        .n2-side-code-header {
+            background-color: #5c5c5c;
+        }
+        .n2-side-code {
+            margin: 0 0 3px 0;
+            padding: 3px 5px;
+            font-size: 0.85rem;
+            background-color: #333333;
+        }
+    </style>
+</head>
+<body class="uk-background-secondary uk-background-cover uk-light uk-flex uk-flex-column">
+    <!-- ヘッダー -->
+    <div id="n2header" style="flex: 0 1 auto;">
+    </div>
+    <!-- メイン -->
+    <div id="n2main" style="flex: 1 1 auto;">
+        <!-- ロード待ち -->
+        <div id="n2preloading" uk-spinner="ratio: 4" class="uk-position-center">
+        </div>
+        <!-- ドキュメントキャンバス -->
+        <div id="n2maindoc" style="display: none; height: 100%;" class="uk-comtainer uk-flex uk-flex-column">
+            <!-- 上のバー -->
+            <div uk-grid class="uk-grid-match" style="flex: 0 1 auto; margin-left: -20px;">
+                <div class="uk-width-expand">
+                    <ul class="uk-subnav uk-subnav-divider uk-margin-small">
+                        <li><a href="" n2trig="selectDoc" n2select="quickReference" >クイックリファレンス</a></li>
+                        <li><a href="" n2trig="selectDoc" n2select="developEnvironment" >開発環境</a></li>
+                        <!-- @todo
+                        <li><a href="">トップ</a></li>
+                        <li>
+                            <a href="">カテゴリ別 <span uk-icon="icon: triangle-down"></span></a>
+                            <div uk-dropdown="mode: click;" class="uk-background-secondary uk-light">
+                                <ul id="n2categories" class="uk-nav uk-dropdown-nav">
+                                    <li class="uk-active"><a href="#">Active</a></li>
+                                    <li><a href="#">Item</a></li>
+                                    <li class="uk-nav-divider"></li>
+                                    <li><a href="#">Item</a></li>
+                                </ul>
+                            </div>
+                        </li>
+                        -->
+                        <!-- @todo
+                        <li id="n2docprev" n2trig="prev" uk-tooltip><a><span uk-icon="icon: arrow-left;"></span>前へ</a></li>
+                        <li id="n2docnext" n2trig="next" uk-tooltip><a><span uk-icon="icon: arrow-right;"></span>次へ</a></li>
+                        -->
+                    </ul>
+                </div>
+                <div class="uk-width-auto uk-grid" style="padding-right: 10px;">
+                    <form id="n2searchform" n2trig="search" class="uk-width-1-1">
+                        <div class="uk-inline">
+                            <span n2trig="parent" class="uk-form-icon" uk-icon="icon: search;"></span>
+                            <!--<a n2trig="searchClear" class="uk-form-icon uk-form-icon-flip uk-icon-link" uk-icon="icon: trash;"></a>-->
+                            <input id="n2searchtarget" class="uk-input" type="text" placeholder="ワード検索">
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <!-- 下のコンテンツ -->
+            <div uk-grid class="uk-margin-collapse uk-margin-small" style="margin-left: 5px; flex: 1 1 auto;">
+                <!-- 下の左（サイドバー） -->
+                <div id="n2sidebar" class="uk-width-small uk-margin-remove-left uk-padding-remove-left uk-flex uk-flex-column" style="height: 100%;">
+                    <div style="flex: 0 0 auto">
+                        <span uk-icon="icon: database;"></span>
+                        <span>検索結果：</span>
+                        <span id="n2sidebarsearchnum" style="margin-left: 2px;">-</span>
+                        <span style="margin-left: 2px;">件</span>
+                    </div>
+                    <ul id="n2sidebarlist" class="uk-list uk-list-collapse uk-list-striped uk-list-small uk-margin-small" style="flex: 1 0 0; overflow-y: scroll;">
+                    </ul>
+                </div>
+                <!-- 下の右（説明コンテンツ） -->
+                <div id="n2sidecontent" class="uk-width-expand uk-flex uk-flex-column" style="padding-left: 5px; height: 100%;">
+                    <!-- 表示用テンプレ -->
+                    <div id="n2sidecontentholder" style="flex: 1 0 0; overflow-y: scroll; display: none;">
+                        <!-- ドキュメントテンプレ -->
+                        <div id="n2sidecontentdocholder" style="margin: 0; padding: 0; display: none;">
+                        </div>
+                        <!-- ワードテンプレ -->
+                        <div id="n2sidecontentrefholder" style="margin: 0; padding: 0; display: none;">
+                            <div id="n2sidecontentrefheader" class="uk-background-blend-screen uk-background-primary" style="font-size: 1rem; padding: 0 10px;">
+                                命令
+                            </div>
+                            <div id="n2sidecontentreflabel" class="uk-text-bold" style="font-size: 1.1rem; padding: 7px 10px;">
+                                ラベル
+                            </div>
+                            <div id="n2sidecontentsignature" class="" style="padding: 5px 0 5px 10px; font-size: 1.1rem;">
+                                <span id="n2sidecontentrefsigname" class="n2-funccolor" style="padding: 5px 0 5px 0;">
+                                    funcname
+                                </span>
+                                <span id="n2sidecontentrefsigparams" class="n2-paramcolor" style="padding: 5px 0 5px 10px;">
+                                    funcparms, params2, ...
+                                </span>
+                            </div>
+                            <table uk-grid class="uk-table uk-table-striped table-xsmall table-wexpand" style="margin-left: 10px; padding: 5px 0 5px 10px; font-size: 0.9rem;">
+                                <tbody id="n2sidecontentrefparams" class="uk-padding-remove">
+                                    <tr class="uk-padding-remove">
+                                        <td class="n2-table-paramcell n2-paramcolor">
+                                            パラメータ１
+                                        </td>
+                                        <td>
+                                            の説明
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="n2-table-paramcell n2-paramcolor">
+                                            パラメータ１
+                                        </td>
+                                        <td>
+                                            の説明
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <!-- スペーサー -->
+                            <div style="margin: 10px 0 0 0;"></div>
+                            <!-- その他の情報群 -->
+                            <div style="padding: 10px 10px;">
+                                <div class="n2-content-secheader">
+                                    <span uk-icon="icon: nut; ratio: 0.8;"></span>
+                                    <span style="margin-left: 5px;">説明</span>
+                                </div>
+                                <hr style="margin: 3px 0 10px 0;" />
+                                <div id="n2sidecontentrefdesc">説明説明説明説明説明説明説明説明説明説明説明説明説明説明説明説明説明説明説明説明</div>
+                            </div>
+                            <!--
+                            <div style="padding: 10px 10px;">
+                                <div class="n2-content-secheader">
+                                    <span uk-icon="icon: code; ratio: 0.8;"></span>
+                                    <span style="margin-left: 5px;">サンプル</span>
+                                </div>
+                                <hr style="margin: 3px 0 10px 0;" />
+                                <div>サンプルサンプルサンプルサンプルサンプルサンプルサンプル</div>
+                            </div>
+                            -->
+                            <!--<hr class="uk-divider-icon" style="margin: 10px 10px;" />-->
+                            <div id="n2sidecontentrefexssection" style="padding: 10px 10px;">
+                                <div class="n2-content-secheader">
+                                    <span uk-icon="icon: code; ratio: 0.8;"></span>
+                                    <span style="margin-left: 5px;">サンプル</span>
+                                </div>
+                                <hr style="margin: 3px 0 10px 0;" />
+                                <ul id="n2sidecontentrefexs" class="uk-list uk-list-collapse" style="margin-top: 0;">
+                                    <li>
+                                        <div class="uk-card card-xsmall">
+                                            <button n2trig="copySample" n2copysample="wordName" n2copysamplekey="key" class="uk-card-badge n2-code-copy-button">COPY</button>
+                                            <button class="uk-card-badge n2-code-copy-button uk-card-primary" style="display: none;">COPIED</button>
+                                            <div class="uk-card-body">
+                                                <div class="n2-side-code-header"><span uk-icon="icon: triangle-down;"></span>タイトル</div>
+                                                <p class="n2-side-code">
+                                                    コードがここにくる～
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </li>
+                                </ul>
+                            </div>
+                            <div id="n2sidecontentrefrelssection" style="padding: 10px 10px;">
+                                <div class="n2-content-secheader">
+                                    <span uk-icon="icon: more; ratio: 0.8;"></span>
+                                    <span style="margin-left: 5px;">関連項目</span>
+                                </div>
+                                <hr style="margin: 3px 0 10px 0;" />
+                                <table class="uk-table table-collapse" style="margin-top: 0;">
+                                    <tbody id="n2sidecontentrefrels">
+                                        <tr>
+                                            <td style="width: 20px;"><span uk-icon="icon: chevron-double-right;"></span></td>
+                                            <td>関連項目</td>
+                                            <td>関連項目</td>
+                                        </tr>
+                                        <tr>
+                                            <td><span uk-icon="icon: chevron-double-right;"></span></td>
+                                            <td>関連項目</td>
+                                            <td>関連項目</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <!--
+                            <div style="padding: 10px 10px;">
+                                <div class="n2-content-secheader">
+                                    <span uk-icon="icon: info; ratio: 0.8;"></span>
+                                    <span style="margin-left: 5px;">情報</span>
+                                </div>
+                                <hr style="margin: 3px 0 10px 0;" />
+                                <div>情報情報情報情報情報情報情報情報情報情報情報情報情報情報情報情報情報情報情報情報</div>
+                            </div>
+                            -->
+                        </div>
+                    </div>
+                    <!-- 何もない場合 -->
+                    <div id="n2sidecontentplaceholder" style="flex: 1 0 0; overflow-y: scroll; display: block;">
+                        <div class="uk-position-center uk-position-relative">
+                            <span uk-icon="icon: bell; ratio: 1.5;"></span>
+                            <span style="margin-left: 10px;">説明を見たいワードを選んでください。</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- フッター -->
+    <div id="n2footer" style="flex: 0 1 auto;">
+    </div>
+    <!-- 処理スクリプト -->
+    <script>
+        const vscode = acquireVsCodeApi();
+
+        const preLoading = document.getElementById('n2preloading');
+        const mainDoc = document.getElementById('n2maindoc');
+        const docPrev = document.getElementById('n2docprev');
+        const docNext = document.getElementById('n2docnext');
+        const searchForm = document.getElementById('n2searchform');
+        const searchTarget = document.getElementById('n2searchtarget');
+        const searchListNum = document.getElementById('n2sidebarsearchnum');
+        const sidebarList = document.getElementById('n2sidebarlist');
+        const sideContentHolder = document.getElementById('n2sidecontentholder');
+        const sideContentPlaceHolder = document.getElementById('n2sidecontentplaceholder');
+
+        const sideContentDocHolder = document.getElementById('n2sidecontentdocholder');
+
+        const sideContentRefHolder = document.getElementById('n2sidecontentrefholder');
+        const sideContentRefHeader = document.getElementById('n2sidecontentrefheader');
+        const sideContentRefLabel = document.getElementById('n2sidecontentreflabel');
+        const sideContentRefSigName = document.getElementById('n2sidecontentrefsigname');
+        const sideContentRefSigParams = document.getElementById('n2sidecontentrefsigparams');
+        const sideContentRefParams = document.getElementById('n2sidecontentrefparams');
+        const sideContentRefDesc = document.getElementById('n2sidecontentrefdesc');
+        const sideContentRefExsSection = document.getElementById('n2sidecontentrefexssection');
+        const sideContentRefExs = document.getElementById('n2sidecontentrefexs');
+        const sideContentRefRelsSection = document.getElementById('n2sidecontentrefrelssection');
+        const sideContentRefRels = document.getElementById('n2sidecontentrefrels');
+
+        const messgeHandlerTable = {
+            'preloadState': (m, d) => {
+                if (d.state)
+                {
+                    preLoading.style.display = 'none';
+                    mainDoc.style.display = 'flex';
+                }
+                else
+                {
+                    preLoading.style.display = 'block';
+                    mainDoc.style.display = 'none';
+                }
+            },
+            'prevState': (m, d) => {
+                if (!docPrev) { return; }
+                const aclass = 'uk-disabled';
+                if (d.has) { docPrev.classList.remove(aclass); } else { docPrev.classList.add(aclass); } 
+                docPrev.title = d.label || '（なし）';
+            },
+            'nextState': (m, d) => {
+                if (!docNext) { return; }
+                const aclass = 'uk-disabled';
+                if (d.has) { docNext.classList.remove(aclass); } else { docNext.classList.add(aclass); } 
+                docNext.title = d.label || '（なし）';
+            },
+            'searchTarget': (m, d) => {
+                searchTarget.value = d.input;
+            },
+            'searchList': (m, d) => {
+                //console.log(`searchList: ${JSON.stringify(d)}`);
+                let content = [];
+                for (var k in d.wordRefs)
+                {
+                    const wordRef = d.wordRefs[k];
+                    content.push(`<li><a n2trig="selectRef" n2select="${wordRef.name}" style="font-size: 0.9rem;">${wordRef.name}</a><br />${wordRef.summary}</li>`);
+                }
+                sidebarList.innerHTML = content.join('');
+                sidebarList.scrollTop = 0;
+                searchListNum.innerHTML = `${d.wordRefs.length}`;
+            },
+            'documentDescription': (m, d) => {
+                const doc = d.doc;
+                // visible content holder
+                sideContentHolder.style.display = 'block';
+                sideContentDocHolder.style.display = 'block';
+                sideContentRefHolder.style.display = 'none';
+                sideContentPlaceHolder.style.display = 'none';
+                // scroll
+                sideContentHolder.scrollTop = 0;
+                // fill contents...
+                sideContentDocHolder.innerHTML = doc.cached.description;
+            },
+            'referenceDescription': (m, d) => {
+                const wordRef = d.wordRef;
+                // visible content holder
+                sideContentHolder.style.display = 'block';
+                sideContentDocHolder.style.display = 'none';
+                sideContentRefHolder.style.display = 'block';
+                sideContentPlaceHolder.style.display = 'none';
+                // scroll
+                sideContentHolder.scrollTop = 0;
+                // fill contents...
+                const preParams = (wordRef.preParameters || []);
+                const params = (wordRef.parameters || []);
+                const postParams = (wordRef.postParameters || []);
+                sideContentRefHeader.innerHTML = wordRef.name;
+                sideContentRefLabel.innerHTML = wordRef.summary;
+                sideContentRefSigName.innerHTML = wordRef.name;
+                sideContentRefSigParams.innerHTML = (
+                    preParams.map(i => i.name).join(' ') + (preParams.length > 0 ? ' ' : '')
+                    + params.map(i => i.name).join(', ') + (params.length > 0 ? ' ' : '')
+                    + postParams.map(i => i.name).join(' ')
+                );
+                let refparams = [];
+                const allParams = [preParams, params, postParams];
+                for(var k in allParams)
+                {
+                    var curParams = allParams[k];
+                    for (var ik in curParams)
+                    {
+                        var i = curParams[ik];
+                        refparams.push(
+                            `<tr>
+                                <td class="n2-table-paramcell n2-paramcolor">
+                                    ${i.name}
+                                    <span class="uk-text-italic uk-text-muted" style="padding-left: 5px; font-size: 0.7rem;">
+                                        ${(i.omitted ? `<br />省略時＝ ${i.omitted}` : '')}
+                                        ${(i.limit ? `<br />制限＝ ${i.limit}` : '')}
+                                    </span>
+                                </td>
+                                <td>${i.description}</td>
+                            </tr>`
+                        );
+                    }
+                }
+                sideContentRefParams.innerHTML = refparams.join('');
+                sideContentRefDesc.innerHTML = wordRef.cached.description;
+                // examples
+                const examples = wordRef.cached.examples;
+                let exs = [];
+                for (var k in examples || [])
+                {
+                    const ex = examples[k];
+                    exs.push(
+                        `<li>
+                            <div class="uk-card card-xsmall">
+                                <div class="uk-card-body">
+                                    <button n2trig="copySample" n2copysample="${wordRef.name}" n2copysamplekey="${k}" class="uk-card-badge n2-code-copy-button">COPY</button>
+                                    <button class="uk-card-badge n2-code-copy-button uk-card-primary" style="display: none;">COPIED</button>
+                                    <div class="n2-side-code-header"><span uk-icon="icon: triangle-down;"></span>${ex.summary || ''}</div>
+                                    <p class="n2-side-code">
+                                        ${ex.code}
+                                    </p>
+                                </div>
+                            </div>
+                        </li>`
+                    );
+                }
+                if (exs.length > 0)
+                {
+                    sideContentRefExsSection.style.display = 'block';
+                    sideContentRefExs.innerHTML = exs.join('');
+                    sideContentRefExs.querySelectorAll('p.n2-side-code').forEach((block) => {
+                        hljs.highlightBlock(block);
+                    });
+                }
+                else
+                {
+                    sideContentRefExsSection.style.display = 'none';
+                }
+                // related items
+                const relatedWords = d.relatedWords;
+                let relwords = [];
+                for (var k in relatedWords || {})
+                {
+                    const relWord = relatedWords[k];
+                    relwords.push(
+                        `<tr>
+                            <td style="width: 20px;"><span uk-icon="icon: chevron-double-right;"></span></td>
+                            <td><a n2trig="selectRef" n2select="${relWord.name}">${relWord.name}</td>
+                            <td>${relWord.summary}</td>
+                        </tr>`
+                    );
+                }
+                if (relwords.length > 0)
+                {
+                    sideContentRefRelsSection.style.display = 'block';
+                    sideContentRefRels.innerHTML = relwords.join('');
+                }
+                else
+                {
+                    sideContentRefRelsSection.style.display = 'none';
+                }
+            },
+        };
+        window.addEventListener('message', (event) => {
+            const message = event.data;
+            const handler = messgeHandlerTable[message.command];
+            //console.log(`rawMessage : ${message.command}`);
+            if (!handler) { return; }
+            //console.log(`messageHandler : ${message.command}`);
+            handler(message, message.data);
+        });
+
+        const trigHandlerTable = {
+            'prev': (n) => {
+                vscode.postMessage({command: 'goprev'});
+            },
+            'next': (n) => {
+                vscode.postMessage({command: 'gonext'});
+            },
+            'selectDoc': (n) => {
+                const select = n.getAttribute('n2select');
+                if (!select) { return; }
+                vscode.postMessage({command: 'selectDoc', data: {select: select}});
+            },
+            'selectRef': (n) => {
+                const select = n.getAttribute('n2select');
+                if (!select) { return; }
+                vscode.postMessage({command: 'selectRef', data: {select: select}});
+            },
+            'search': (n) => {
+                vscode.postMessage({command: 'search', data: {input: searchTarget.value}});
+            },
+            'searchClear': (n) => {
+                vscode.postMessage({command: 'searchClear'});
+            },
+            'copySample': (n) => {
+                const wordName = n.getAttribute('n2copysample');
+                const sampleKey = n.getAttribute('n2copysamplekey');
+                if (!wordName || !sampleKey) { return; }
+                vscode.postMessage({command: 'copySample', data: {wordName: wordName, sampleKey: sampleKey}});
+                const sib = n.nextElementSibling;
+                if (sib)
+                {
+                    sib.style.display = 'block';
+                    setTimeout(() => { sib.style.display = 'none'; }, 1000)
+                }
+            }
+        };
+        const handleTrigger = (e) => {
+            let node = event && event.target;
+            while (node)
+            {
+                const trig = node.getAttribute('n2trig');
+                //console.log(`rawTrigResolve : ${trig} node${JSON.stringify(node)}`);
+                if (trig === 'parent') { node = node.parentNode; continue; }
+                break;
+            }
+            if (!node) { return; }
+            const trig = node.getAttribute('n2trig');
+            console.log(`rawTrig : ${trig}`);
+            const handler = trigHandlerTable[trig];
+            if (!handler) { return; }
+            console.log(`trigHandler : ${trig}`);
+            handler(node);
+        };
+        document.addEventListener('click', (event) => {
+            handleTrigger(event);
+        });
+        searchForm.addEventListener('submit', (event) => {
+            event.preventDefault();
+            handleTrigger(event);
+        })
+
+        vscode.postMessage({command: 'fullsync'});
+    </script>
+</body>
+</html>

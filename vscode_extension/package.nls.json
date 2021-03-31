@@ -1,0 +1,46 @@
+{
+    "nidonehsp-env.debugger.properties.program.description": "Absolute path to the startup script file.",
+    "nidonehsp-env.debugger.properties.encoding.description": "Encoding of the startup script file. Currently it is not supported yet.",
+    "nidonehsp-env.debugger.properties.preDebugCompileCheck.description": "Compile and check errors before debugging.",
+    "nidonehsp-env.debugger.properties.port.description": "TCP port for Debug Adapter Protocol.",
+    "nidonehsp-env.debugger.properties.args.description": "Additional arguments to the runtime.",
+    "nidonehsp-env.debugger.properties.cwd.description": "Aobsolute path to the working directory for script debug execution.",
+    "nidonehsp-env.debugger.properties.stopOnEntry.description": "Automatically stop after launch.",
+    "nidonehsp-env.debugger.properties.debuggerRuntime.description": "Absolute path to the Debugger Runtime exe (typically n2studio).",
+    "nidonehsp-env.debugger.properties.logDebuggerRuntime.description": "Enable logging target Debugger Runtime execution.",
+    "nidonehsp-env.debugger.configurationSnippets.launch.description": "A new configuration for debugging nidonehsp script.",
+    "nidonehsp-env.debugger.resolve.unsupportedPlatform": "nidonehsp-env does not support the current OS/platform for debugging and building.",
+    "nidonehsp-env.debugger.resolve.preDebugCompileCheck.failed": "Pre-Debug compile check failed, please see problems view.",
+
+    "nidonehsp-env.command.helpview.title": "nidonehsp-env: Open HelpView (Reference).",
+    "nidonehsp-env.command.previewActiveScript.title": "nidonehsp-env: Preview current active script file.",
+    "nidonehsp-env.command.compileCheckActiveScript.title": "nidonehsp-env: Compile and check error current active script file.",
+    "nidonehsp-env.command.buildActiveScript.title": "nidonehsp-env: Build current active script file.",
+    "nidonehsp-env.command.exportActiveScript.title": "nidonehsp-env: Export current active script file as Executable binary.",
+
+    "nidonehsp-env.task.compileCheck.properties.program.description": "Absolute path to the script file for compile check.",
+    "nidonehsp-env.task.build.properties.program.description": "Absolute path to the script file for build.",
+    "nidonehsp-env.task.build.properties.outputRootPath.description": "Output direcotry for built binary.",
+    "nidonehsp-env.task.build.properties.showDialog.description": "Show error/success dialog.",
+    "nidonehsp-env.task.export.properties.program.description": "Absolute path to the script file for export.",
+    "nidonehsp-env.task.export.properties.targetPlatform.description": "Target platform for export.",
+    "nidonehsp-env.task.export.properties.outputRootPath.description": "Output direcotry for built export.",
+    "nidonehsp-env.task.export.properties.showDialog.description": "Show error/success dialog.",
+    "nidonehsp-env.task.preview.properties.program.description": "Absolute path to the script file for preview",
+
+    "nidonehsp-env.configuration.runtime.runtimeRootPath.description": "Absolute path to the directory holds n2 runtime binaries.",
+    "nidonehsp-env.configuration.runtime.runtimeRootPath.mddescription": "Absolute path to the directory holds n2 runtime binaries.",
+    "nidonehsp-env.configuration.runtime.studioPath.description": "Absolute path to the n2studio executable.",
+    "nidonehsp-env.configuration.runtime.studioPath.mddescription": "Absolute path to the n2studio executable.",
+    "nidonehsp-env.configuration.runtime.includePath.description": "Additional include paths. Each paths must be absolute path.",
+    "nidonehsp-env.configuration.runtime.includePath.mddescription": "Additional include paths. Each paths must be absolute path.",
+    "nidonehsp-env.configuration.runtime.defineMacro.description": "Additional macros. The format of macro definition is like 'macroName' or 'macroName=macroContent'.",
+    "nidonehsp-env.configuration.runtime.defineMacro.mddescription": "Additional macros. The format of macro definition is like 'macroName' or 'macroName=macroContent'.",
+
+    "nidonehsp-env.shared.cannotResolveRuntimeRootPath": "nidonehsp runtime root directory not found. Resolved path is ${resolvedPath}.",
+    "nidonehsp-env.shared.cannotResolveStudioPath": "n2studio not found. Resolved path is ${resolvedPath}.",
+
+    "nidonehsp-env.helpview.loading.title": "loading helpview data ...",
+    "nidonehsp-env.helpview.information.failed-loading-helpview-data": "failed loading helpview data(${fspath})",
+    "nidonehsp-env.helpview.statusbar.copied-samplecode-to-clipboard": "copied ${wordName} sample code to the clipboard"
+}

@@ -1,0 +1,15 @@
+﻿
+# vscode
+#!.vscode/**
+#.vscode/settings.json
+workspace.code-workspace
+
+# runtime binaries
+bin/**
+!bin/**/.gitkeep
+
+# extension intermediates
+out/
+node_modules/
+*.vsix
+

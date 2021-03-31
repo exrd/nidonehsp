@@ -1,0 +1,298 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "nidonehsp",
+	"patterns": [
+		{ "include": "#comments" },
+		{ "include": "#preprocessors" },
+		{ "include": "#keywords" },
+		{ "include": "#numbers" },
+		{ "include": "#strings" },
+		{ "include": "#operators"},
+		{ "include": "#delimiters"},
+		{ "include": "#parens"},
+		{ "include": "#builtins" },
+		{ "include": "#identifiers"}
+	],
+	"repository": {
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.line.nidonehsp",
+					"match": "(;|//).*"
+				},
+				{
+					"name": "comment.block.nidonehsp",
+					"begin": "/\\*",
+					"end": "\\*/"
+				}
+			]
+		},
+		"preprocessors": {
+			"patterns": [
+				{
+					"name": "keyword.control.directive.nidonehsp",
+					"match": "(#error|#define|#undef|#if|#ifdef|#ifndef|#elif|#else|#endif|#enum|#const|#addition|#include)\\b"
+				},
+				{
+					"name": "keyword.control.declaration.nidonehsp",
+					"match": "(?i)(#deffunc|#defcfunc|#modinit|#modterm|#modfunc|#modcfunc)\\b"
+				},
+				{
+					"name": "keyword.control.declaration.nidonehsp",
+					"match": "(?i)(#module|#global)\\b"
+				},
+				{
+					"name": "keyword.control.declaration.nidonehsp",
+					"match": "(?i)(#uselib|#func|#cfunc)\\b"
+				},
+				{
+					"name": "keyword.control.compileoption.nidonehsp",
+					"match": "(?i)(#bootopt|#cmpopt|#packopt|#pack|#epack)\\b"
+				}
+			]
+		},
+		"keywords": {
+			"patterns": [{
+				"name": "keyword.control.nidonehsp",
+				"match": "(?i)\\b(return|yield|if|else|then|repeat|foreach|loop|continue|break|switch|case|default|swbreak|swend|gosub|goto)\\b"
+			}]
+		},
+		"numbers": {
+			"patterns": [
+				{
+					"name": "constant.numeric.floating.nidonehsp",
+					"match": "\\b[0-9]+\\.[0-9]+\\b"
+				},
+				{
+					"name": "constant.numeric.decimal.nidonehsp",
+					"match": "\\b[0-9]+\\b"
+				},
+				{
+					"name": "constant.numeric.hexadecimal.nidonehsp",
+					"match": "(\\b0[xX]|\\$)[0-9a-fA-F]+\\b"
+				},
+				{
+					"name": "constant.numeric.binary.nidonehsp",
+					"match": "\\b0[bB][01]+\\b"
+				}
+			]
+		},
+		"strings": {
+			"patterns": [
+				{
+					"name": "string.quoted.double.nidonehsp",
+					"begin": "\"",
+					"end": "\"",
+					"patterns": [
+						{
+							"include": "#stringescapes"
+						}
+					]
+				},
+				{
+					"name": "string.quoted.single.nidonehsp",
+					"begin": "'",
+					"end": "'",
+					"patterns": [
+						{
+							"include": "#stringescapes"
+						}
+					]
+				},
+				{
+					"name": "string.quoted.other.nidonehsp",
+					"begin": "\\{\"",
+					"end": "\"\\}",
+					"patterns": [
+						{
+							"include": "#stringescapes"
+						}
+					]
+				},
+				{
+					"name": "string.interpolated.nidonehsp",
+					"begin": "`",
+					"end": "`",
+					"patterns": [
+						{
+							"include": "#stringtemplates"
+						},
+						{
+							"include": "#stringescapes"
+						}
+					]
+				}
+			]
+		},
+		"operators": {
+			"patterns": [
+				{
+					"name": "keyword.operator.logical.nidonehsp",
+					"match": "(&&|\\|\\|)"
+				},
+				{
+					"name": "keyword.operator.bitwise.nidonehsp",
+					"match": "(\\||&|\\^)"
+				},
+				{
+					"name": "keyword.operator.equality.nidonehsp",
+					"match": "(==|\\!=)"
+				},
+				{
+					"name": "keyword.operator.not.nidonehsp",
+					"match": "(\\!)"
+				},
+				{
+					"name": "keyword.operator.comparison.nidonehsp",
+					"match": "(<|<=|>|>=)"
+				},
+				{
+					"name": "keyword.operator.bitwise.shift.nidonehsp",
+					"match": "(<<|>>)"
+				},
+				{
+					"name": "keyword.operator.arithmetic.nidonehsp",
+					"match": "(\\+|-|\\*|/|\\\\)"
+				},
+				{
+					"name": "keyword.operator.assignment.nidonehsp",
+					"match": "="
+				},
+				{
+					"name": "keyword.operator.increment.nidonehsp",
+					"match": "\\+\\+"
+				},
+				{
+					"name": "keyword.operator.decrement.nidonehsp",
+					"match": "--"
+				}
+			]
+		},
+		"delimiters": {
+			"patterns": [
+				{
+					"name": "punctuation.separator.delimiter.colon.nidonehsp",
+					"match": ":"
+				},
+				{
+					"name": "punctuation.separator.delimiter.comma.nidonehsp",
+					"match": ","
+				}
+			]
+		},
+		"parens": {
+			"patterns": [
+				{
+					"name": "punctuation.section.parens.begin.nidonehsp",
+					"match": "\\("
+				},
+				{
+					"name": "punctuation.section.parens.end.nidonehsp",
+					"match": "\\)"
+				},
+				{
+					"name": "punctuation.section.bracket.begin.nidonehsp",
+					"match": "\\["
+				},
+				{
+					"name": "punctuation.section.bracket.end.nidonehsp",
+					"match": "\\]"
+				},
+				{
+					"name": "punctuation.section.brace.begin.nidonehsp",
+					"match": "\\{"
+				},
+				{
+					"name": "punctuation.section.brace.end.nidonehsp",
+					"match": "\\}"
+				}
+			]
+		},
+		"builtins": {
+			"patterns": [
+				{
+					"name": "entity.name.function.nidonehsp",
+					"match": "(?i)\\b(${builtinFunctions})\\b"
+				},
+				{
+					"name": "constant.language.nidonehsp",
+					"match": "(?i)\\b(${builtinConstants})\\b"
+				},
+				{
+					"name": "variable.language.nidonehsp",
+					"match": "(?i)\\b(${builtinVariables})\\b"
+				}
+			]
+		},
+		"identifiers": {
+			"patterns": [
+				{
+					"name": "variable.name.nidonehsp",
+					"match": "(\\w).*?(@\\w+)?\\b",
+					"captures": {
+						"2": {
+							"name": "entity.name.type.nidonehsp"
+						}
+					}
+				}
+			]
+		},
+		"expressions": {
+			"patterns": [
+				{ "include": "#comments" },
+				{ "include": "#keywords" },
+				{ "include": "#numbers" },
+				{ "include": "#strings" },
+				{ "include": "#operators"},
+				{ "include": "#delimiters"},
+				{ "include": "#parens"},
+				{ "include": "#builtins" },
+				{ "include": "#identifiers"}
+			]
+		},
+		"stringtemplates": {
+			"begin": "\\$\\{",
+			"beginCaptures": {
+				"0": {
+					"name": "punctuation.section.stringtemplate.begin.nidonehsp"
+				}
+			},
+			"end": "\\}",
+			"endCaptures": {
+				"0": {
+					"name": "punctuation.section.stringtemplate.end.nidonehsp"
+				}
+			},
+			"patterns": [
+				{
+					"include": "#expressions"
+				}
+			]
+		},
+		"stringescapes": {
+			"patterns": [
+				{
+					"name": "constant.character.escape.nidonehsp",
+					"match": "\\\\x[0-9a-fA-F]{2}"
+				},
+				{
+					"name": "constant.character.escape.nidonehsp",
+					"match": "\\\\u[0-9a-fA-F]{4}"
+				},
+				{
+					"name": "constant.character.escape.nidonehsp",
+					"match": "\\\\U[0-9a-fA-F]{8}"
+				},
+				{
+					"name": "constant.character.escape.nidonehsp",
+					"match": "\\\\(0|t|n|\"|'|\\\\)"
+				},
+				{
+					"name": "invalid.illegal.unknown-escape.nidonehsp",
+					"match": "\\\\."
+				}
+			]
+		}
+	},
+	"scopeName": "source.nhsp"
+}
