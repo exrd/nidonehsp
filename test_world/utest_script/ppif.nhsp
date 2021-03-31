@@ -1,0 +1,175 @@
+
+//=============================================================================
+// ppif
+
+a = 0
+#if 1
+	a = 2
+#endif
+	mes "if1"
+	if (a != 2) { raise }
+
+a = 0
+#if 1
+	a = 1
+#else
+	a = 3
+#endif
+	mes "if1else"
+	if (a != 1) { raise }
+
+a = 0
+#if 0
+	a = 2
+#endif
+	mes "if0"
+	if (a != 0) { raise }
+
+a = 0
+#if 0
+	a = 2
+#else
+	a = 3
+#endif
+	mes "if0else"
+	if (a != 3) { raise }
+
+a = 0
+#if 0
+	a = 2
+#elif 1
+	a = 5
+#else
+	a = 3
+#endif
+	mes "if0elif1"
+	if (a != 5) { raise }
+
+a = 0
+#if 0
+	a = 2
+#elif 0
+	a = 3
+#else
+	a = 9
+#endif
+	mes "if0elif0"
+	if (a != 9) { raise }
+
+a = 0
+#if 0.2
+	a = 2
+#endif
+	mes "if0.2"
+	if (a != 2) { raise }
+
+a = 0
+#ifdef z
+	a = 2
+#endif
+	mes "ifdef"
+	if (a != 0) { raise }
+
+a = 0
+#ifndef z
+	a = 2
+#endif
+	mes "ifndef"
+	if (a != 2) { raise }
+
+a = 0
+#ifdef z
+	a = 2
+#else
+	a = 3
+#endif
+	mes "ifdefelse"
+	if (a != 3) { raise }
+
+#define z
+
+a = 0
+#ifdef z
+	a = 2
+#endif
+	mes "defifdef"
+	if (a != 2) { raise }
+
+a = 0
+#ifndef z
+	a = 2
+#endif
+	mes "defifndef"
+	if (a != 0) { raise }
+
+a = 0
+#ifdef z
+	a = 2
+#else
+	a = 3
+#endif
+	mes "defifdefelse"
+	if (a != 2) { raise }
+
+a = 0
+#if defined(z)
+	a = 2
+#endif
+	if (a != 2) { raise }
+
+a = 0
+#if defined z
+	a = 2
+#endif
+	mes "if defined"
+	if (a != 2) { raise }
+
+a = 0
+#if defined z == 0
+	a = 2
+#endif
+	mes "if defined =="
+	if (a != 0) { raise }
+
+a = 0
+#if 1
+	a = 2
+#if 1
+	a = 5
+#else
+	a = 6
+#endif
+#else
+	a = 3
+#endif
+	mes "if1else nest1"
+	if (a != 5) { raise }
+
+a = 0
+#if 1
+	a = 2
+#if 0
+	a = 5
+#else
+	a = 6
+#endif
+#else
+	a = 3
+#endif
+	mes "if1else nest0"
+	if (a != 6) { raise }
+
+a = 0
+#if 0
+	a = 2
+#if 1
+	a = 5
+#else
+	a = 6
+#endif
+#else
+	a = 3
+#endif
+	mes "if0else nest"
+	if (a != 3) { raise }
+

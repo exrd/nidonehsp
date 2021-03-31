@@ -1,0 +1,21 @@
+﻿
+//=============================================================================
+// note
+
+buffer 1, 640, 480
+
+gsel 0
+
+repeat
+	gsel 1
+	color 100, 100, 100 : boxf
+	color 0, 0, 0 : pos 10, 50 : mes `BUFFER 1 cnt=${cnt}`
+	//color 0, 0, 0 : pos 10, 30 : picmes@n2 "HOGE", 20, picmesopt_alphablend@n2
+
+	gsel 0
+	color 255, 0, 0 : boxf
+	gmode 0 : pos 0, 0 : gcopy 1, 0, 0, 640, 480
+	//color 10, 10, 100 : boxf
+	color 0, 0, 0 : pos 10, 80 : mes `BUFFER 0 cnt=${cnt}`
+	await 50
+loop

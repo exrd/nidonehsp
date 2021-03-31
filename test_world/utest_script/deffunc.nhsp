@@ -1,0 +1,40 @@
+﻿
+//=============================================================================
+// deffunc
+
+goto *start_deffunc
+
+#deffunc func1 int i
+	return i * 2
+
+#deffunc func2 int i, int j
+	return i + j * 3
+
+#defcfunc func3(int i, double j = 5.2)
+	return i + j * 4
+
+#defcfunc func4(int i, double j = 5.2, local l)
+	l = i + j * 5
+	return l
+
+#deffunc func5(int i, double j = 2.2, local l = 12)
+	l = i + j * 6 + l
+	return l
+
+*start_deffunc
+
+mes "deffunc"
+	if (func1(10) != 20) { raise }
+	if (func2(10, 20) != 70) { raise }
+	if (func3(10, 20) != 90) { raise }
+	if (func3(10) != 30) { raise }
+	if (func4(10) != 36) { raise }
+	if (func4(10, 1, 100) != 15) { raise }
+	if (func5(10) != 35) { raise }
+	if (func5(10, 5) != 52) { raise }
+	if (func5(10, 1, 100) != 116) { raise }
+
+//=============================================================================
+// deffunc
+
+

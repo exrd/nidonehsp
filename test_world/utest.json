@@ -1,0 +1,62 @@
+﻿{
+	"base_directory": "utest_script",
+	"tests": [
+		{
+			"name": "Empty",
+			"path": "empty.nhsp"
+		},
+		{
+			"name": "PPIf",
+			"path": "ppif.nhsp"
+		},
+		{
+			"name": "PPInc",
+			"path": "ppinc.nhsp"
+		},
+		{
+			"name": "BaseOperation",
+			"path": "base_operation.nhsp"
+		},
+		{
+			"name": "Deffunc/Defcfunc",
+			"path": "deffunc.nhsp"
+		},
+		{
+			"name": "SysVar",
+			"path": "sysvar.nhsp"
+		},
+		{
+			"name": "Variable",
+			"path": "variable.nhsp"
+		},
+		{
+			"name": "Module",
+			"path": "module.nhsp"
+		},
+		{
+			"name": "String",
+			"path": "str.nhsp"
+		},
+		{
+			"name": "Note",
+			"path": "note.nhsp"
+		},
+		{
+			"name": "Random",
+			"path": "random.nhsp"
+		},
+		{
+			"name": "Sort",
+			"path": "sort.nhsp"
+		},
+		{
+			"name": "DynLib",
+			"path": "dynlib.nhsp"
+		},
+		{
+			"name": "Staging",
+			"path": "staging.nhsp"
+			//"standard": true,
+		}
+	]
+}

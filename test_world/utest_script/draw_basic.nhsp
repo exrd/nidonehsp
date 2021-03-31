@@ -1,0 +1,15 @@
+﻿
+//=============================================================================
+// drawBasic
+
+fileroot = "utest_script"
+
+if (1) {
+	screen 0, 640, 480
+	color 221, 164, 37 : grect 50, 80, deg2rad(10), 20, 30
+	w = 630 : h = 470
+	celbitmap@n2 0, picData, celbitmap_capture, 10, 10, 10 + w, 10 + h
+	imgpack@n2 imageData, picData, w, h, imgfile_png@n2
+	bsave `${fileroot}/out/drawBasic.png`, imageData
+}
+

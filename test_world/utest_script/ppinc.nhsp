@@ -1,0 +1,23 @@
+﻿
+#ifdef PPINCEE
+	mes "PPINCEE" : raise
+#endif
+
+#include "_ppincee.nhsp"
+#include "_ppincee.nhsp"
+#include "_ppincee.nhsp"
+
+
+#ifndef PPINCEE
+	mes "PPINCEE" : raise
+#endif
+
+#ifndef PPINCEED
+	mes "PPINCEED" : raise
+#endif
+
+#ifndef PPINCEED2
+	mes "PPINCEED2" : raise
+#endif
+
+

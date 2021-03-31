@@ -1,0 +1,65 @@
+﻿//=============================================================================
+// test main
+
+#packopt name "studioSample"
+#pack "icon.png"
+
+screen 0, 640, 480
+title "マイアプリケーション"
+pos 10, 30 : mes "this is main.nshp"
+
+color 255, 0, 0 : boxf 200, 100, 500, 200
+color 0, 0, 0 : pos 200, 100 : mes "日本語のテスト"
+font "n2default", 36 : pos 100, 200 : mes "test" : mes "test2"
+wait 100
+font "n2default", 18
+
+screen 0, 720, 480
+title "マイアプリケーション"
+pos 100, 50
+button "gogogo", *gogogo
+button gosub "gogogo2", *gogogo
+chkbox "gogogo3", a
+input b, 100
+
+buffer 1
+picload "icon.png", -1
+
+gsel 0
+
+z = ""
+
+fontload@n2 "Stick", "Stick-Regular.ttf", 36
+
+newmod modvar, moda
+
+repeat
+	gmode 0
+	color 128, 128, 128 : boxf
+	pos mousex, mousey : gmode 3, 64, 64, 255 : grotate 1, , , deg2rad(cnt), 128, 128
+	font "Stick", 36
+	gmode 3, , , 128 : pos 10, 60 : color : mes `counter=${cnt}\uf381`, mesopt_gmode
+	color 200, 100, 100 : boxf 20, 100, 200, 150
+	color 255, 255, 255 : pos 20, 100 : picmes@n2 `魅惑の文字に魅せられて`, 48, 1
+	font "" : gmode 0
+	mes z : mes b : mes a
+	color 255, 255, 128 : grect 100, 100, deg2rad(cnt), 100, 50
+	//if ((cnt / 10) \ 2) { redraw 0 } else { redraw 1 }
+	//if (cnt == 50) { a /= 0 }
+	//getkey a, 'A'
+	//mes "getkey(A)=", a
+	hsvcolor 100, 200, 255 : mes strf("%d,%d,%d", ginfo_r, ginfo_g, ginfo_b)
+	foo cnt
+	mes `WORKSPACE_MACRO=${WORKSPACE_MACRO}`
+	await 20
+loop
+
+*gogogo
+	z = "*gogogo called"
+	return
+
+#deffunc foo int i
+	return i
+
+#module moda
+#global

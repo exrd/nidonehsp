@@ -1,0 +1,32 @@
+
+//=============================================================================
+// sysvar
+gcnt = 0
+repeat 10 : if (cnt != gcnt) { raise } : ++gcnt : loop
+
+gosub *i12 : if (stat != 12) { raise }
+gosub *d13_5 : if (absf(refdval - 13.5) > 0.01) { raise }
+gosub *sstr : if (refstr != "string ret") { raise }
+gosub *nest : if (refstr != "string ret append") { raise }
+
+repeat 1
+	if (looplev != 1) { raise }
+	repeat 1
+		if (looplev != 2) { raise }
+	loop
+loop
+
+end
+
+*i12
+	return 12
+*d13_5
+	return 13.5
+*sstr
+	return "string ret"
+*nest
+	if (sublev != 1) { raise }
+	gosub *sstr
+	if (refstr != "string ret") { raise }
+	return refstr + " append"
+

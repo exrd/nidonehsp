@@ -1,0 +1,40 @@
+﻿
+
+# vs users
+*.suo
+*.user
+*.db
+*.opendb
+*.vspx
+*.psess
+
+# intermediate files
+#[Dd]ebug/
+#[Rr]elease/
+#[Pp]erf/
+#x64/
+#x86/
+#[Bb]in/
+#[Oo]bj/
+#[Ll]og/
+#[Ii]gnore/
+isolated/
+
+# hsp intermediate
+start.ax
+hsptmp
+obj
+
+# test intermediates
+test_world/.vscode/
+test_world/*.code-workspace
+test_world/utest_script/out/
+test_world/**/n2bin
+test_world/**/*.zip
+test_world/**/*.exe
+
+#
+internal/
+vsbuild/
+
+

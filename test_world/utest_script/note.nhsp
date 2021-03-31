@@ -1,0 +1,46 @@
+﻿
+//=============================================================================
+// note
+
+a = "abc\ndef\nghi"
+notesel a
+if (notemax != 3) { raise }
+
+noteadd "metal"
+if (a != "abc\ndef\nghi\nmetal\n") { raise }
+
+noteadd "de", 0, 1
+if (a != "de\ndef\nghi\nmetal\n") { raise }
+
+noteadd "jkl", 1
+if (a != "de\njkl\ndef\nghi\nmetal\n") { raise }
+
+noteadd "jkll", 0
+if (a != "jkll\nde\njkl\ndef\nghi\nmetal\n") { raise }
+
+noteadd "zrs", 7
+if (a != "jkll\nde\njkl\ndef\nghi\nmetal\n") { raise }
+
+noteadd "zrs", 6
+if (a != "jkll\nde\njkl\ndef\nghi\nmetal\nzrs\n") { raise }
+
+notedel 2
+if (a != "jkll\nde\ndef\nghi\nmetal\nzrs\n") { raise }
+
+notedel 5
+if (a != "jkll\nde\ndef\nghi\nmetal\n") { raise }
+
+notedel 3
+if (a != "jkll\nde\ndef\nmetal\n") { raise }
+if (notemax != 4) { raise }
+
+notedel 0
+if (a != "de\ndef\nmetal\n") { raise }
+if (notemax != 3) { raise }
+
+noteget b, 1
+if (b != "def") { raise }
+
+//mes `+${a}+`
+//mes `+${b}+`
+

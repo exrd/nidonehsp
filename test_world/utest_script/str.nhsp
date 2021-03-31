@@ -1,0 +1,101 @@
+﻿//=============================================================================
+// str
+
+mes "multiline string"
+if ({"ABCDE"} != "ABCDE") { raise }
+if (__line__ != 5) { raise }
+if ({"ABC
+DE"} != "ABC\nDE") { raise }
+if (__line__ != 8) { raise }
+if ({"ABC
+
+DE"} != "ABC\n\nDE") { raise }
+if (__line__ != 12) { raise }
+if ({"ABC
+EFG\n
+DE"} != "ABC\nEFG\n\nDE") { raise }
+
+mes "string template"
+if (__line__ != 18) { raise }
+if (`ABCDE` != "ABCDE") { raise }
+if (`ABC${1 + 2}DE` != "ABC3DE") { raise }
+if (`ABC${1 + 2 * 4 + 3.21}DE` != "ABC12DE") { raise }
+if (__line__ != 22) { raise }
+if (`${1 + 2}ABCDE` != "3ABCDE") { raise }
+if (`ABCDE${1 + 2}` != "ABCDE3") { raise }
+if (`ABC${"0" + `abc${1 + 4}d${2 + 7}e` + 2}DE` != "ABC0abc5d9e2DE") { raise }
+if (`ABC
+DE` != "ABC\nDE") { raise }
+if (__line__ != 28) { raise }
+if (`ABC
+${{"ML
+LN"}}DE` != "ABC\nML\nLNDE") { raise }
+if (`ABC${/*{"M`${cc + {"zc"} + c}`LLN"}*/`abc${{"II"}}de`/**/}DE` != "ABCabcIIdeDE") { raise }
+if (__line__ != 33) { raise }
+
+mes "strf"
+if (strf("%d", 10) != "10") { raise }
+if (strf("<% 5d>", 10) != "<   10>") { raise }
+if (strf("<%05d>", 10) != "<00010>") { raise }
+if (strf("<%-05d>", 10) != "<10   >") { raise }
+if (strf("%+05d", 10) != "+0010") { raise }
+if (strf("%x", 10) != "a") { raise }
+if (strf("%X", 10) != "A") { raise }
+if (strf("%c", 68) != "D") { raise }
+if (strf("%U", 'ソ') != "ソ") { raise }
+if (strf("%f", 20.22) != "20.220000") { raise }
+if (strf("%.1f", 20.22) != "20.2") { raise }
+if (strf("<%10.5f>", 20.22) != "<  20.22000>") { raise }
+if (strf("%e", 20.22) != "2.022000e+01") { raise }
+if (strf("%E", 20.22) != "2.022000E+01") { raise }
+if (strf("%g", 20.22) != "20.22") { raise }
+if (strf("%G", 20.22) != "20.22") { raise }
+if ( strf("%s", "mystr") != "mystr") { raise }
+
+mes "getpath"
+path = "D:\\path\\to\\file.txt"
+if (0) {
+	mes "0=" + getpath(path, 0)
+	mes "1=" + getpath(path, 1)
+	mes "2=" + getpath(path, 2)
+	mes "8=" + getpath(path, 8)
+	mes "16=" + getpath(path, 16)
+	mes "32=" + getpath(path, 32)
+	mes "3=" + getpath(path, 3)
+	mes "9=" + getpath(path, 9)
+	mes "17=" + getpath(path, 17)
+	mes "33=" + getpath(path, 33)
+	mes "10=" + getpath(path, 10)
+	mes "18=" + getpath(path, 18)
+	mes "34=" + getpath(path, 34)
+	mes "24=" + getpath(path, 24)
+	mes "40=" + getpath(path, 40)
+	mes "48=" + getpath(path, 48)
+	mes "11=" + getpath(path, 11)
+	mes "19=" + getpath(path, 19)
+	mes "35=" + getpath(path, 35)
+	mes "26=" + getpath(path, 26)
+	mes "42=" + getpath(path, 42)
+}
+if (getpath(path, 0) != "D:\\path\\to\\file.txt") { raise }
+if (getpath(path, 1) != "D:\\path\\to\\file") { raise }
+if (getpath(path, 2) != ".txt") { raise }
+if (getpath(path, 8) != "file.txt") { raise }
+if (getpath(path, 16) != "d:\\path\\to\\file.txt") { raise }
+if (getpath(path, 32) != "D:\\path\\to\\") { raise }
+if (getpath(path, 3) != "D:\\path\\to\\file.txt") { raise }
+if (getpath(path, 9) != "file") { raise }
+if (getpath(path, 17) != "d:\\path\\to\\file") { raise }
+if (getpath(path, 33) != "D:\\path") { raise }
+if (getpath(path, 10) != ".txt") { raise }
+if (getpath(path, 18) != ".txt") { raise }
+if (getpath(path, 34) != ".txt") { raise }
+if (getpath(path, 24) != "file.txt") { raise }
+if (getpath(path, 40) != "file.txt") { raise }
+if (getpath(path, 48) != "D:\\path\\to\\") { raise }
+if (getpath(path, 11) != "file.txt") { raise }
+if (getpath(path, 19) != "d:\\path\\to\\file.txt") { raise }
+if (getpath(path, 35) != "D:\\path\\to\\") { raise }
+if (getpath(path, 26) != ".txt") { raise }
+if (getpath(path, 42) != ".txt") { raise }
+

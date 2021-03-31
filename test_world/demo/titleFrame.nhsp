@@ -1,0 +1,176 @@
+﻿//=============================================================================
+// titleFrame.nhsp
+
+#module "titleFrame"
+
+#deffunc implBgdotPattern int x, int y
+	return (((x * 189 + y * 273) \ bgdotPattern) + bgdotPattern) \ bgdotPattern
+
+#deffunc global titleFrameInit
+	// グローバル初期化
+	if (!gIsInitialized) {
+		gIsInitialized = 1
+	}
+	// ローカル初期化
+	masterFrame = 0
+	prevMouseX = -1 : prevMouseY = -1
+	// 背景ドット
+	bgdotNumX = 12 : bgdotNumY = 7
+	bgdotIvX = 60 : bgdotIvY = 70
+	bgdotPattern = 121
+	bgdotRadius = 30.0
+	ddim bgdotAlpha, bgdotPattern
+	ddim bgdotScale, bgdotPattern
+	ddim bgdotHue, bgdotPattern
+	foreach bgdotAlpha
+		bgdotAlpha(cnt) = double(rnd(255)) / 255.0
+		bgdotScale(cnt) = double(rnd(40) + 80) / 100.0
+		bgdotHue(cnt) = rndf@n2()
+	loop
+	bgdotMoveSpeed = 0.8
+	bgdotInDistX = 120.0
+	// 間
+	masterIn = 60
+	toResume = 0
+	logoInDelay = 120 : logoIn = 30
+	selectInDelay = 180 : selectIn = 30
+	// カーソル
+	selectCursor = 0 : selectMax = 2
+	selectX = SCREEN_SIZEX / 2 + 100
+	selectTopY = 240 : selectIvY = 40
+	selectTexts = "猫じゃんぷ", "GUIテスト", "猫しゅー"
+	ddim selectFocus, selectMax
+	selectFocusR = 0.2
+	selectBlink = 60
+	return
+
+#deffunc global titleFramePush
+	titleFrameInit; ともあれ初期化
+	framePush "titleFrame", *titleFrameCompute, *titleFrameDraw
+	return
+
+*titleFrameCompute
+	// トップ時のみ計算
+	if (!frameIsTop()) {
+		if (!toResume) {
+			titleFrameInit; 再開時は初期化しなおす
+		}
+		toResume = 1; 再開フラグ予約
+		return
+	}
+	toResume = 0; 再開フラグ削除
+	// 入力
+	tSelected = 0
+	tStick = frameGetStick()
+	if (prevMouseX >= 0 && (prevMouseX != mousex || prevMouseY != mousey || tStick & 256)) {
+		if (masterFrame > selectInDelay && mousex >= selectX) {
+			repeat selectMax
+				tTopY = selectTopY + selectIvY * cnt
+				tBottomY = tTopY + selectIvY
+				if (mousey >= tTopY && mousey < tBottomY) {
+					selectCursor = cnt
+					if (tStick & 256) { tSelected = 1 }
+					break
+				}
+			loop
+		}
+	}
+	prevMouseX = mousex : prevMouseY = mousey
+	if (tStick & 2) { selectCursor++ }
+	if (tStick & 8) { selectCursor-- }
+	if (tStick & 16 || tStick & 32) { tSelected = 1 }
+	getkey tKey, 'Z' : if (tKey) { tSelected = 1 }
+	selectCursor = (selectCursor + selectMax) \ selectMax
+	repeat selectMax
+		tTo = cnt == selectCursor then 1.0 else 0.0
+		selectFocus(cnt) += (tTo - selectFocus(cnt)) * selectFocusR
+	loop
+	if (tSelected) {
+		dgmes `selected=${selectCursor}`
+		switch (selectCursor)
+		case 0
+			miniJumpFramePush
+			swbreak
+		case 1
+			guiTestFramePush
+			swbreak
+		default
+			assert 0 && "invalid selection"
+			swbreak
+		swend
+	}
+	// フレーム終了
+	++masterFrame
+	return
+
+*titleFrameDraw
+	// トップ時のみ描画
+	if (!frameIsTop()) { return }
+	// 描画内容
+	// ドット
+	tCurrFrame = masterFrame
+	tCurrR = double(limit(tCurrFrame, 0, masterIn)) / double(masterIn)
+	gsel SID_TMP : color 255, 255, 255 : boxf
+	tDotMove = ease@n2(ease_quad_out, tCurrR, 0, bgdotInDistX) + bgdotMoveSpeed * tCurrFrame
+	repeat bgdotNumY : ty = cnt
+		tdy = ty * bgdotIvY + bgdotIvY / 2
+		txdiff = ty \ 2 then -1 else 1
+		txoffset = int(tDotMove) / bgdotIvX + (ty \ 2 then bgdotNumX else 0)
+		txdoffset = tDotMove \ bgdotIvX
+		repeat bgdotNumX : tx = cnt
+			tpidx = implBgdotPattern(tx * txdiff + txoffset, ty)
+			tdx = tx * bgdotIvX - txdoffset * txdiff
+			tds = bgdotScale(tpidx) : tdsh = tds * 0.5 * bgdotRadius
+			hsvcolor 130.0 + 5.0 * bgdotHue(tpidx), lerpf@n2(10, 40, bgdotAlpha(tpidx)), 255
+			circle tdx - tdsh, tdy - tdsh, tdx + tdsh, tdy + tdsh
+		loop
+	loop
+	gsel SID_BACK
+	gmode 0, SCREEN_SIZEX, SCREEN_SIZEY
+	pos SCREEN_SIZEX / 2, SCREEN_SIZEY / 2
+	ts = ease@n2(ease_quad_out, tCurrR, 2.2, 1.7)
+	grotate SID_TMP, 0, 0, deg2rad(-41), ts * SCREEN_SIZEX, ts * SCREEN_SIZEY
+	// ロゴ
+	tCurrFrame = masterFrame
+	if (tCurrFrame > logoInDelay) {
+		tCurrFrame -= logoInDelay
+		tCurrR = double(limit(tCurrFrame, 0, logoIn)) / double(logoIn)
+		tScale = lerpf@n2(1.3, 1.0, tCurrR)
+		tAlpha = ease@n2(ease_quad_out, tCurrR, 0, 1)
+		pos SCREEN_SIZEX / 2 + 140, SCREEN_SIZEY / 2 - 100
+		gmode 3, 64, 64, tAlpha * 255
+		grotate SID_ICON, , , 0, tScale * 96, tScale * 96
+		font "Stick", 64
+		themeColor TC_MAIN : objcolor 0, 0, 0
+		pos SCREEN_SIZEX / 2 - 260, SCREEN_SIZEY / 2 - 160 + tCurrR * 30
+		mes "nidonehsp のデモ", mesopt_shadow | mesopt_gmode
+	}
+	// セレクト
+	tCurrFrame = masterFrame
+	if (tCurrFrame > selectInDelay) {
+		tCurrFrame -= selectInDelay
+		tCurrR = double(limit(tCurrFrame, 0, selectIn)) / double(selectIn)
+		tR = ease@n2(ease_cubic_out, tCurrR)
+		font "Stick", selectIvY - 4
+		repeat selectMax
+			tFocus = selectFocus(cnt)
+			if (tFocus > 0) {
+				tAlpha = cos(deg2rad(double(masterFrame \ selectBlink) / selectBlink * 360.0)) * 0.1 + 0.9
+				color 255, 255, 20 : gmode 3, , , 255.0 * tAlpha * tR * lerpf@n2(0.5, 1, tFocus)
+				tScale = SCREEN_SIZEX - selectX
+				grect selectX + lerpf@n2(1, 0.5, tFocus) * tScale, selectTopY + selectIvY * cnt + selectIvY / 2, 0, tScale + 100, selectIvY
+			}
+			gmode 3, , , 255.0 * lerpf@n2(0.3, 1.0, tFocus)
+			pos lerpf@n2(SCREEN_SIZEX, selectX, tR) + lerpf@n2(40, 0, tFocus), selectTopY + selectIvY * cnt + 2
+			themeColor cnt == selectCursor then TC_SUB else TC_SUB_S
+			mes selectTexts(cnt), mesopt_gmode
+		loop
+	}
+	// デバッグ
+#if ISDEBUG
+	color 0, 0, 0 : objcolor 255, 255, 255 : pos 10, 30 : picmes@n2 `masterFrame=${masterFrame}`, 32, picmesopt_alphablend@n2
+#endif
+	return
+
+#global
+

@@ -1,0 +1,151 @@
+﻿//=============================================================================
+// dynlib
+
+#uselib "n2testdynlib.dll"
+#func TestDynInt1 "TestDynInt1" int
+#func TestDynInt2 "TestDynInt2" int, int
+#func TestDynInt3 "TestDynInt3" int, int, int
+#func TestDynInt4 "TestDynInt4" int, int, int, int
+#func TestDynInt8 "TestDynInt8" int, int, int, int, int, int, int, int
+
+#func TestDynUInt1 "TestDynUInt1" int
+#func TestDynUInt2 "TestDynUInt2" int, int
+#func TestDynUInt3 "TestDynUInt3" int, int, int
+#func TestDynUInt4 "TestDynUInt4" int, int, int, int
+#func TestDynUInt8 "TestDynUInt8" int, int, int, int, int, int, int, int
+
+#func TestDynFloat1 "TestDynFloat1" float
+#func TestDynFloat2 "TestDynFloat2" float, float
+#func TestDynFloat3 "TestDynFloat3" float, float, float
+#func TestDynFloat4 "TestDynFloat4" float, float, float, float
+
+#func TestDynFloat1Ref "TestDynFloat1Ref" sptr, float
+#func TestDynFloat2Ref "TestDynFloat2Ref" sptr, float, float
+#func TestDynFloat3Ref "TestDynFloat3Ref" sptr, float, float, float
+#func TestDynFloat4Ref "TestDynFloat4Ref" sptr, float, float, float, float
+#func TestDynFloat8Ref "TestDynFloat8Ref" sptr, float, float, float, float, float, float, float, float
+
+#func TestDynDouble1 "TestDynDouble1" double
+#func TestDynDouble2 "TestDynDouble2" double, double
+#func TestDynDouble3 "TestDynDouble3" double, double, double
+#func TestDynDouble4 "TestDynDouble4" double, double, double, double
+
+#func TestDynDouble1Ref "TestDynDouble1Ref" sptr, double
+#func TestDynDouble2Ref "TestDynDouble2Ref" sptr, double, double
+#func TestDynDouble3Ref "TestDynDouble3Ref" sptr, double, double, double
+#func TestDynDouble4Ref "TestDynDouble4Ref" sptr, double, double, double, double
+#func TestDynDouble8Ref "TestDynDouble8Ref" sptr, double, double, double, double, double, double, double, double
+
+#func TestDynInt1Res32 "TestDynInt1Res32" int
+#func TestDynInt2Res32 "TestDynInt2Res32" int, int
+#func TestDynInt3Res32 "TestDynInt3Res32" int, int, int
+#func TestDynInt4Res32 "TestDynInt4Res32" int, int, int, int
+#func TestDynInt8Res32 "TestDynInt8Res32" int, int, int, int, int, int, int, int
+
+#func TestDynInt1Res64 "TestDynInt1Res64" int64
+#func TestDynInt2Res64 "TestDynInt2Res64" int64, int64
+#func TestDynInt3Res64 "TestDynInt3Res64" int64, int64, int64
+#func TestDynInt4Res64 "TestDynInt4Res64" int64, int64, int64, int64
+#func TestDynInt8Res64 "TestDynInt8Res64" int64, int64, int64, int64, int64, int64, int64, int64
+
+#func TestDynVariant1 "TestDynVariant1" int, float, double// => double
+#func TestDynVariant2 "TestDynVariant2" double, float, int// => int
+#func TestDynVariant3 "TestDynVariant3" sptr, double, float, int// => int
+
+#if 0
+struct TestStruct
+{
+	int32_t i32_;
+	double d_;
+};
+EXPORT int EXPORT_CC TestDynStruct1(TestStruct* dst, const TestStruct* src) { *dst = *src; return (int)(src->i32_ * 2 + src->d_ * 3); }
+EXPORT TestStruct EXPORT_CC TestDynStruct2(const TestStruct* src) { return *src; }
+#endif
+#func TestDynStruct1 "TestDynStruct1" sptr, sptr// => int
+#func TestDynStruct2 "TestDynStruct2" sptr, sptr// => TestStruct
+
+
+mes "dynlib"
+
+#if 0
+//repeat 5 : a0 = cnt : mes `TestDynInt1(${a0})=${TestDynInt1(a0)}` : loop
+//repeat 3 : a0 = cnt : repeat 3 : a1 = cnt : mes `TestDynInt2(${a0}, ${a1})=${TestDynInt2(a0, a1)}` : loop : loop
+//repeat 5 : a0 = cnt : res = 0.0 : mes `TestDynDouble1(${a0})=${TestDynDouble1(a0)}` : loop
+//repeat 5 : a0 = cnt : res = 0.0 : mes `TestDynDouble1Ref(${a0})=${TestDynDouble1Ref(varptr(res), a0)}=>${res}` : loop
+//repeat 5 : a0 = double(cnt) * 3.125 : res = 0 : TestDynFloat1Ref varptr(res), a0 : mes `TestDynFloat1Ref(${a0})=>${res} as ${reintfb2d@n2(res)}` : loop
+#endif
+
+#if 1
+repeat 15 : a0 = cnt : if (TestDynInt1(a0) != (a0 * 2)) { raise } : loop
+repeat 15 : a0 = cnt : repeat 15 : a1 = cnt : if (TestDynInt2(a0, a1) != (a0 * 2 + a1 * 3)) { raise } : loop : loop
+repeat 5 : a0 = cnt : repeat 5 : a1 = cnt : repeat 5 : a2 = cnt : if (TestDynInt3(a0, a1, a2) != (a0 * 2 + a1 * 3 + a2 * 4)) { raise } : loop : loop : loop
+repeat 5 : a0 = cnt : repeat 5 : a1 = cnt : repeat 5 : a2 = cnt : repeat 5 : a3 = cnt : if (TestDynInt4(a0, a1, a2, a3) != (a0 * 2 + a1 * 3 + a2 * 4 + a3 * 5)) { raise } : loop : loop : loop : loop
+repeat 2 : a0 = cnt : repeat 2 : a1 = cnt : repeat 2 : a2 = cnt : repeat 2 : a3 = cnt : repeat 2 : a4 = cnt : repeat 2 : a5 = cnt : repeat 2 : a6 = cnt : repeat 2 : a7 = cnt : if (TestDynInt8(a0, a1, a2, a3, a4, a5, a6, a7) != (a0 * 2 + a1 * 3 + a2 * 4 + a3 * 5 + a4 * 6 + a5 * 7 + a6 * 8 + a7 * 9)) { raise } : loop : loop : loop : loop : loop : loop : loop : loop
+//repeat 2 : a0 = cnt : repeat 2 : a1 = cnt : repeat 2 : a2 = cnt : repeat 2 : a3 = cnt : repeat 2 : a4 = cnt : repeat 2 : a5 = cnt : repeat 2 : a6 = cnt : repeat 2 : a7 = cnt : mes `TestDynInt8(${a0}, ${a1}, ${a2}, ${a3}, ${a4}, ${a5}, ${a6}, ${a7})=${TestDynInt8(a0, a1, a2, a3, a4, a5, a6, a7)}` : loop : loop : loop : loop : loop : loop : loop : loop
+
+repeat 15 : a0 = cnt : if (TestDynUInt1(a0) != (a0 * 2)) { raise } : loop
+repeat 15 : a0 = cnt : repeat 15 : a1 = cnt : if (TestDynUInt2(a0, a1) != (a0 * 2 + a1 * 3)) { raise } : loop : loop
+repeat 5 : a0 = cnt : repeat 5 : a1 = cnt : repeat 5 : a2 = cnt : if (TestDynUInt3(a0, a1, a2) != (a0 * 2 + a1 * 3 + a2 * 4)) { raise } : loop : loop : loop
+repeat 5 : a0 = cnt : repeat 5 : a1 = cnt : repeat 5 : a2 = cnt : repeat 5 : a3 = cnt : if (TestDynUInt4(a0, a1, a2, a3) != (a0 * 2 + a1 * 3 + a2 * 4 + a3 * 5)) { raise } : loop : loop : loop : loop
+repeat 2 : a0 = cnt : repeat 2 : a1 = cnt : repeat 2 : a2 = cnt : repeat 2 : a3 = cnt : repeat 2 : a4 = cnt : repeat 2 : a5 = cnt : repeat 2 : a6 = cnt : repeat 2 : a7 = cnt : if (TestDynUInt8(a0, a1, a2, a3, a4, a5, a6, a7) != (a0 * 2 + a1 * 3 + a2 * 4 + a3 * 5 + a4 * 6 + a5 * 7 + a6 * 8 + a7 * 9)) { raise } : loop : loop : loop : loop : loop : loop : loop : loop
+
+repeat 15 : a0 = cnt : res = 0.0 : TestDynDouble1Ref varptr(res), a0 : if (absf(res - (a0 * 2)) > 0.1) { raise } : loop
+repeat 15 : a0 = cnt : repeat 15 : a1 = cnt : res = 0.0 : TestDynDouble2Ref varptr(res), a0, a1 : if (absf(res - (a0 * 2 + a1 * 3)) > 0.1) { raise } : loop : loop
+repeat 5 : a0 = cnt : repeat 5 : a1 = cnt : repeat 5 : a2 = cnt : res = 0.0 : TestDynDouble3Ref varptr(res), a0, a1, a2 : if (absf(res - (a0 * 2 + a1 * 3 + a2 * 4)) > 0.1) { raise } : loop : loop : loop
+repeat 5 : a0 = cnt : repeat 5 : a1 = cnt : repeat 5 : a2 = cnt : repeat 5 : a3 = cnt : res = 0.0 : TestDynDouble4Ref varptr(res), a0, a1, a2, a3 : if (absf(res - (a0 * 2 + a1 * 3 + a2 * 4 + a3 * 5)) > 0.1) { raise } : loop : loop : loop : loop
+repeat 2 : a0 = cnt : repeat 2 : a1 = cnt : repeat 2 : a2 = cnt : repeat 2 : a3 = cnt : repeat 2 : a4 = cnt : repeat 2 : a5 = cnt : repeat 2 : a6 = cnt : repeat 2 : a7 = cnt : res = 0.0 : TestDynDouble8Ref varptr(res), a0, a1, a2, a3, a4, a5, a6, a7 : if (absf(res - (a0 * 2 + a1 * 3 + a2 * 4 + a3 * 5 + a4 * 6 + a5 * 7 + a6 * 8 + a7 * 9)) > 0.1) { raise } : loop : loop : loop : loop : loop : loop : loop : loop
+
+repeat 15 : a0 = cnt : res = 0 : TestDynFloat1Ref varptr(res), a0 : if (absf(reintfb2d@n2(res) - (a0 * 2)) > 0.1) { raise } : loop
+repeat 15 : a0 = cnt : repeat 15 : a1 = cnt : res = 0 : TestDynFloat2Ref varptr(res), a0, a1 : if (absf(reintfb2d@n2(res) - (a0 * 2 + a1 * 3)) > 0.1) { raise } : loop : loop
+repeat 5 : a0 = cnt : repeat 5 : a1 = cnt : repeat 5 : a2 = cnt : res = 0 : TestDynFloat3Ref varptr(res), a0, a1, a2 : if (absf(reintfb2d@n2(res) - (a0 * 2 + a1 * 3 + a2 * 4)) > 0.1) { raise } : loop : loop : loop
+repeat 5 : a0 = cnt : repeat 5 : a1 = cnt : repeat 5 : a2 = cnt : repeat 5 : a3 = cnt : res = 0 : TestDynFloat4Ref varptr(res), a0, a1, a2, a3 : if (absf(reintfb2d@n2(res) - (a0 * 2 + a1 * 3 + a2 * 4 + a3 * 5)) > 0.1) { raise } : loop : loop : loop : loop
+repeat 2 : a0 = cnt : repeat 2 : a1 = cnt : repeat 2 : a2 = cnt : repeat 2 : a3 = cnt : repeat 2 : a4 = cnt : repeat 2 : a5 = cnt : repeat 2 : a6 = cnt : repeat 2 : a7 = cnt : res = 0 : TestDynFloat8Ref varptr(res), a0, a1, a2, a3, a4, a5, a6, a7 : if (absf(reintfb2d@n2(res) - (a0 * 2 + a1 * 3 + a2 * 4 + a3 * 5 + a4 * 6 + a5 * 7 + a6 * 8 + a7 * 9)) > 0.1) { raise } : loop : loop : loop : loop : loop : loop : loop : loop
+
+repeat 15 : a0 = cnt : if (TestDynInt1Res32(a0) != (a0 * 2)) { raise } : loop
+repeat 15 : a0 = cnt : repeat 15 : a1 = cnt : if (TestDynInt2Res32(a0, a1) != (a0 * 2 + a1 * 3)) { raise } : loop : loop
+repeat 5 : a0 = cnt : repeat 5 : a1 = cnt : repeat 5 : a2 = cnt : if (TestDynInt3Res32(a0, a1, a2) != (a0 * 2 + a1 * 3 + a2 * 4)) { raise } : loop : loop : loop
+repeat 5 : a0 = cnt : repeat 5 : a1 = cnt : repeat 5 : a2 = cnt : repeat 5 : a3 = cnt : if (TestDynInt4Res32(a0, a1, a2, a3) != (a0 * 2 + a1 * 3 + a2 * 4 + a3 * 5)) { raise } : loop : loop : loop : loop
+repeat 2 : a0 = cnt : repeat 2 : a1 = cnt : repeat 2 : a2 = cnt : repeat 2 : a3 = cnt : repeat 2 : a4 = cnt : repeat 2 : a5 = cnt : repeat 2 : a6 = cnt : repeat 2 : a7 = cnt : if (TestDynInt8Res32(a0, a1, a2, a3, a4, a5, a6, a7) != (a0 * 2 + a1 * 3 + a2 * 4 + a3 * 5 + a4 * 6 + a5 * 7 + a6 * 8 + a7 * 9)) { raise } : loop : loop : loop : loop : loop : loop : loop : loop
+
+repeat 15 : a0 = cnt : if (TestDynInt1Res64(a0) != (a0 * 2)) { raise } : loop
+repeat 15 : a0 = cnt : repeat 15 : a1 = cnt : if (TestDynInt2Res64(a0, a1) != (a0 * 2 + a1 * 3)) { raise } : loop : loop
+repeat 5 : a0 = cnt : repeat 5 : a1 = cnt : repeat 5 : a2 = cnt : if (TestDynInt3Res64(a0, a1, a2) != (a0 * 2 + a1 * 3 + a2 * 4)) { raise } : loop : loop : loop
+repeat 5 : a0 = cnt : repeat 5 : a1 = cnt : repeat 5 : a2 = cnt : repeat 5 : a3 = cnt : if (TestDynInt4Res64(a0, a1, a2, a3) != (a0 * 2 + a1 * 3 + a2 * 4 + a3 * 5)) { raise } : loop : loop : loop : loop
+repeat 2 : a0 = cnt : repeat 2 : a1 = cnt : repeat 2 : a2 = cnt : repeat 2 : a3 = cnt : repeat 2 : a4 = cnt : repeat 2 : a5 = cnt : repeat 2 : a6 = cnt : repeat 2 : a7 = cnt : if (TestDynInt8Res64(a0, a1, a2, a3, a4, a5, a6, a7) != (a0 * 2 + a1 * 3 + a2 * 4 + a3 * 5 + a4 * 6 + a5 * 7 + a6 * 8 + a7 * 9)) { raise } : loop : loop : loop : loop : loop : loop : loop : loop
+
+//repeat 5 : a0 = cnt : repeat 5 : a1 = cnt : repeat 5 : a2 = cnt : if (TestDynVariant1(a0, a1, a2) != (a0 * 2 + a1 * 3 + a2 * 4)) { raise } : loop : loop : loop
+repeat 5 : a0 = cnt : repeat 5 : a1 = cnt : repeat 5 : a2 = cnt : if (TestDynVariant2(a0, a1, a2) != (a0 * 2 + a1 * 3 + a2 * 4)) { raise } : loop : loop : loop
+repeat 5 : a0 = cnt : repeat 5 : a1 = cnt : repeat 5 : a2 = cnt : res = 0 : if (TestDynVariant3(varptr(res), a0, a1, a2) != (a0 * 2 + a1 * 3 + a2 * 4)) { raise } : if (res != (a0 * 2 + a1 * 3 + a2 * 4)) { raise } : loop : loop : loop
+#endif
+
+repeat 5 : a0 = cnt : repeat 5 : a1 = double(cnt) : 
+	// doubleなので8byteアラインされていることに注意。
+	dim st, 4 : lpoke st, 0, a0 : llpoke st, 8, llpeek(a1, 0)
+	dim resst, 4
+	if (TestDynStruct1(varptr(resst), varptr(st)) != (a0 * 2 + a1 * 3)) { raise }
+	if (lpeek(st, 0) != lpeek(resst, 0)) { raise }
+	if (llpeek(st, 8) != llpeek(resst, 8)) { raise }
+loop : loop
+
+repeat 5 : a0 = cnt : repeat 5 : a1 = double(cnt) : 
+	// doubleなので8byteアラインされていることに注意。
+	dim st, 4 : lpoke st, 0, a0 : llpoke st, 8, llpeek(a1, 0)
+	dim resst, 4
+	TestDynStruct2 varptr(resst), varptr(st)
+	res = stat
+	rd = 0.0 : llpoke rd, 0, llpeek(resst, 8)
+	if ((lpeek(resst, 0) * 2 + rd * 3) != (a0 * 2 + a1 * 3)) { raise }
+	if (varptr(resst) != res) { raise }// これはCCに依る
+	if (lpeek(st, 0) != lpeek(resst, 0)) { raise }
+	if (llpeek(st, 8) != llpeek(resst, 8)) { raise }
+loop : loop
+
+// win32
+#if 0
+#uselib "user32.dll"
+#func MessageBox "MessageBoxW" sptr, wptr, wptr, int
+MessageBox 0, "MessageBoxContent", "Title", 0
+#endif
+
+
+

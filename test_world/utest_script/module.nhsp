@@ -1,0 +1,55 @@
+
+//=============================================================================
+// module
+
+mes "module"
+
+#module mod1
+#deffunc func1
+	counter++
+	return counter
+#deffunc func2 int c
+	counter = c
+	return
+#global
+
+if (func1() != 1) { raise }
+if (func1() != 2) { raise }
+if (func1@mod1() != 3) { raise }
+if (counter != 0) { raise }
+if (counter@mod1 != 3) { raise }
+if (counter@ != 0) { raise }
+func2 10
+if (func1() != 11) { raise }
+
+//=============================================================================
+// module variable
+
+mes "modvar"
+
+#module ab v
+#modinit int l = 10
+	v = l
+	return
+#modfunc z
+	v++
+	return v
+#modfunc getv
+	return v
+#global
+
+newmod a, ab, 100
+newmod a, ab
+if (getv(a) != 100) { raise }
+z@ab a : z@ab a : if (getv(a) != 102) { raise }
+if (getv(a(1)) != 10) { raise }
+z@ab a(1) : if (getv(a(1)) != 11) { raise }
+if (stat != 11) { raise }
+if (varuse(a) != 1) { raise }
+if (varuse(a(1)) != 1) { raise }
+foreach a : if (varuse(a(cnt)) == 0) { raise } : loop
+delmod a
+if (varuse(a) != 0) { raise }
+if (varuse(a(1)) != 1) { raise }
+foreach a : if (varuse(a(cnt)) == 0) { raise } : loop
+

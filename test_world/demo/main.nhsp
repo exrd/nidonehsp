@@ -1,0 +1,280 @@
+﻿//=============================================================================
+// DEMO MAIN
+
+// オプション系
+#packopt name "n2demo"
+#packopt hide 1
+#pack "icon.png"
+#pack "mat.png"
+#pack "blockmat.png"
+#pack "Stick-Regular.ttf"
+
+// 定数とマクロ
+#if defined(__debug__) || 0
+#define ISDEBUG (1)
+#else
+#define ISDEBUG (0)
+#endif
+
+#if ISDEBUG
+#define dgmes(%1) logmes %1
+#else
+#define dgmes(%1) 
+#endif
+
+#define DEMO_VERSION (0x000100)
+#define DEMO_VERSION_MAJOR (DEMO_VERSION / 0x10000)
+#define DEMO_VERSION_MINOR ((DEMO_VERSION \ 0x10000) / 0x100)
+#define DEMO_VERSION_PATCH (DEMO_VERSION \ 0x100)
+
+#define SCREEN_SIZEX (720)
+#define SCREEN_SIZEY (480)
+
+#enum SID_BACK = (1)
+#enum SID_TMP
+
+#enum SID_ICON = (10)
+#enum SID_MAT
+#enum SID_BLOCKMAT
+
+goto *startup
+
+// フレームシステム
+#define FRAME_MAX (8)
+#deffunc global frameInit
+	sdim frame_name, 256, FRAME_MAX
+	ldim frame_compute, FRAME_MAX
+	ldim frame_draw, FRAME_MAX
+	frame_stick = 0 : frame_prevStick = 0
+	frame_num = 0
+	frame_curr = 0
+	frame_push_requested = 0 : frame_pop_requested = 0
+	frame_fade_inOut = 25 : frame_fade_stay = 20 : frame_fade_frame = 0
+	frame_fade_alpha = 0.0
+	return
+
+#deffunc global framePush str name, label compute_label, label draw_label, int request = 1
+	if (frame_num >= FRAME_MAX) {
+		assert 0 && "frame limit exceeds"
+		return 0
+	}
+	frame_name(frame_num) = name
+	frame_compute(frame_num) = compute_label
+	frame_draw(frame_num) = draw_label
+	++frame_num
+	frame_push_requested = request : frame_pop_requested = 0
+	return 1
+#deffunc global frameRequestPop
+	frame_pop_requested = 1
+	return
+
+#deffunc framePop
+	if (frame_num <= 0) {
+		assert 0 && "no frame to pop"
+		return 0
+	}
+	--frame_num
+	return 1
+
+#deffunc global frameGetNum
+	return frame_num
+#deffunc global frameGetCurr
+	return frame_curr
+#deffunc global frameIsTop
+	return frame_curr == (frameGetNum - 1)
+
+#deffunc global frameGetStick int notrigMask = 0x0
+	//logmes `frame_stick=${strf("%x", frame_stick)}, prev=${strf("%x", frame_prevStick)}, trig=${strf("%x", (frame_prevStick ^ frame_stick & frame_stick))}`
+	return (frame_prevStick ^ frame_stick & frame_stick) | (frame_stick & notrigMask)
+
+// カラー
+#enum TC_MAIN = 0
+#enum TC_MAIN_S
+#enum TC_SUB
+#enum TC_SUB_S
+#enum TC_MAX
+#define themeColor(%1 = TC_MAIN) \
+	rgbcolor g_theme_colors@(%1)
+#define transColor() \
+	color 255, 0, 255
+
+// インクルード
+#include "titleFrame.nhsp"
+#include "miniJumpFrame.nhsp"
+#include "guiTestFrame.nhsp"
+
+// ここから開始
+*startup
+
+// カラー
+dim g_theme_colors, TC_MAX
+g_theme_colors(TC_MAIN) = 0x7DA4EB
+g_theme_colors(TC_MAIN_S) = 0x526C9C
+g_theme_colors(TC_SUB) = 0x5C87DB
+g_theme_colors(TC_SUB_S) = 0x27385C
+
+// スプラッシュ
+
+// 読み込みと初期化
+fontload@n2 "Stick", "Stick-Regular.ttf", 64
+
+buffer SID_ICON
+picload "icon.png", -1
+
+buffer SID_MAT
+picload "mat.png"
+celdiv SID_MAT, 32, 32, 16, 16
+texfilter@n2 SID_MAT, texfilter_nearest@n2; ドット絵なのでニアレスト補間
+
+buffer SID_BLOCKMAT
+picload "blockmat.png"
+celdiv SID_BLOCKMAT, 32, 32, 16, 16
+texfilter@n2 SID_BLOCKMAT, texfilter_nearest@n2; ドット絵なのでニアレスト補間
+
+buffer SID_BACK, SCREEN_SIZEX, SCREEN_SIZEY
+buffer SID_TMP, SCREEN_SIZEX, SCREEN_SIZEY
+
+// メインウィンドウ
+screen 0, SCREEN_SIZEX, SCREEN_SIZEY
+title `nidonehsp デモ ver ${DEMO_VERSION_MAJOR}.${DEMO_VERSION_MINOR}.${DEMO_VERSION_PATCH}`
+
+// フレーム初期化して通常へ
+frameInit
+titleFramePush; タイトルへ
+#if ISDEBUG && 1
+//miniJumpFramePush; ミニジャンプシーンへ
+;guiTestFramePush; GUIテストシーンへ
+#endif
+frame_push_requested = 0; 強制フェードOFF
+
+// FPS
+#define FPS_BUF_MAX (256)
+ddim fpsbuf, FPS_BUF_MAX; 名前からは分かりにくいが、各フレームのインターバル[ms]
+fpsdisplay = -1
+fpsbufcurr = 0 : fpsbufnum = 0
+fpsupdatedisplayinterval = 500.0
+fpsupdateinterval = 1000.0
+fpslastdisplay = systimer@n2
+fpslasttimer = systimer@n2
+
+// メインループ
+repeat
+	// 入力
+	frame_prevStick = frame_stick
+	stick frame_stick, 0xffffffff
+	// 計算
+	tFrameDrawCalc = 1
+	if (frame_fade_frame > 0) {
+		// フェード計算
+		tFrameDrawCalc = 0
+		tCurrFrame = frame_fade_frame
+		++frame_fade_frame
+		if (tCurrFrame < frame_fade_inOut) {
+			frame_fade_alpha = double(tCurrFrame) / frame_fade_inOut
+		} else : tCurrFrame -= frame_fade_inOut : if (tCurrFrame < frame_fade_stay) {
+			frame_fade_alpha = 1.0
+		} else : tCurrFrame -= frame_fade_stay : if (tCurrFrame < frame_fade_inOut) {
+			frame_fade_alpha = 1.0 + double(tCurrFrame) / frame_fade_inOut
+			tFrameDrawCalc = 1
+		} else {
+			frame_fade_frame = 0
+			tFrameDrawCalc = 1
+		}
+	}
+	if (tFrameDrawCalc) {
+		repeat frame_num
+			frame_curr = frame_num - cnt - 1
+			if (frame_curr < 0) : break
+			if (frame_compute(frame_curr)) {
+				gosub frame_compute(frame_curr)
+			}
+		loop
+	}
+	// push/pop はここ
+	if (frame_push_requested && frame_fade_frame == 0) {
+		frame_push_requested = 0
+		frame_fade_frame = 1
+		tFrameDrawCalc = 0
+	}
+	if (frame_pop_requested && frame_fade_frame == 0) {
+		framePop
+		frame_pop_requested = 0
+		frame_fade_frame = 1
+		tFrameDrawCalc = 0
+	}
+	// 描画
+	// フレーム描画
+	if (tFrameDrawCalc) {
+		// クリア
+		gsel SID_BACK
+		color 255, 255, 255 : boxf
+		repeat frame_num
+			frame_curr = frame_num - cnt - 1
+			if (frame_draw(frame_curr)) {
+				gosub frame_draw(frame_curr)
+			}
+		loop
+	}
+	// 転送
+	gsel 0
+	redraw 0
+		gmode 0 : pos 0, 0 : gcopy SID_BACK, 0, 0, SCREEN_SIZEX, SCREEN_SIZEY
+		// フェードかぶせ
+		if (frame_fade_frame > 0) {
+			dotR = 60.0 : dotE = sqrt(2)
+			tSX = SCREEN_SIZEX / dotR + 2 : tSY = SCREEN_SIZEY / dotR + 2
+			tDM = tSX + tSY
+			tEM = 0.3 : tEMP = (1.0 - tEM) / tDM// 膨張区間と膨張ディレイ
+			rgbcolor $070325
+			repeat tSY : tY = cnt : repeat tSX : tX = cnt
+				tD = double(tX + tY) : tDR = tD / tDM
+				if (frame_fade_alpha <= 1.0) : tR = limitf((frame_fade_alpha - tD * tEMP) / tEM, 0, 1)
+				else : tR = 1.0 - limitf((frame_fade_alpha - 1 - tD * tEMP) / tEM, 0, 1)
+				if (tR <= 0) : continue
+				tPX = tX * dotR - dotR / 2 : tPY = tY * dotR - dotR / 2
+				tSR = dotR * dotE * tR * 0.5
+				gmode 3, , , 255.0 * tR
+				gcircle@n2 tPX - tSR, tPY - tSR, tPX + tSR, tPY + tSR
+			loop : loop
+		}
+	redraw 1
+		// FPS計算＆描画
+		ttimer = systimer@n2
+		if (ttimer - fpslastdisplay > fpsupdatedisplayinterval) {
+			tinterval = 0.0 : tcount = 0 : tfpsbuf = fpsbufcurr
+			repeat fpsbufnum
+				tfpsbuf = (tfpsbuf - 1 + FPS_BUF_MAX) \ FPS_BUF_MAX
+				tinterval += fpsbuf(tfpsbuf)
+				++tcount
+				if (tinterval > fpsupdateinterval) : break
+			loop
+			if (tcount > 0) {
+				fpsdisplay = double(tcount) / tinterval * 1000.0
+			} else : fpsdisplay = -1
+			fpslastdisplay = ttimer
+		}
+		font "Stick", 28
+		tfps = fpsdisplay < 0 then "----FPS" else strf("%02.01fFPS", fpsdisplay)
+		pos SCREEN_SIZEX - 100, SCREEN_SIZEY - 35 : color 180, 190, 255 : mes tfps, mesopt_shadow
+		// フレームインターバル追加
+		telapsed = ttimer - fpslasttimer
+		fpsbuf(fpsbufcurr) = telapsed
+		fpsbufcurr = (fpsbufcurr + 1) \ FPS_BUF_MAX
+		if (fpsbufnum < FPS_BUF_MAX) { ++fpsbufnum }
+		fpslasttimer = ttimer
+		// 画面キャプチャ
+#if ISDEBUG && 0
+		if (cnt == 20) {
+			celbitmap SID_BACK, pixVar, celbitmap_capture
+			imgpack@n2 picVar, pixVar, SCREEN_SIZEX, SCREEN_SIZEY
+			bsave "sidback.png", picVar, strsize
+			celbitmap SID_MAT, pixVar, celbitmap_capture
+			imgpack@n2 picVar, pixVar, 128, 128
+			//bsave "sidmat.png", picVar, strsize
+		}
+#endif
+	// 待ち
+	await 20
+loop
+
+

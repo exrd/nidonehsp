@@ -1,0 +1,561 @@
+﻿//=============================================================================
+// miniJumpFrame.nhsp
+
+#module "miniJumpFrame"
+
+#define ctype implToScrX(%1) SCREEN_SIZEX / 2 + ((%1) - cameraX)
+#define ctype implToScrY(%1) SCREEN_SIZEY / 2 - ((%1) - cameraY)
+
+#deffunc global miniJumpFrameInit
+	// グローバル初期化
+	if (!gIsInitialized) {
+		stageMax = 2
+		dim gStageRecord, stageMax
+		foreach gStageRecord : gStageRecord(cnt) = -1 : loop
+		gIsInitialized = 1
+	}
+	// ローカル初期化
+	pixS = 2.0
+	stageCursor = 0
+	stageState = 0 : stageStateFrame = 0
+	stageReadyOut = 25 : stageReadyFin = 50
+	stageGoOut = 50
+	stageTimeFrame = 0
+	pauseCursor = 0 : pauseMax = 3
+	pauseTexts = "続ける", "タイトルへ", "デモ最初へ"
+	successCursor = 0 : successMax = 2
+	successTexts = "タイトルへ", "もう一度！"
+	successDelay = 50 : successIn = 10
+	failCursor = 0 : failMax = 2
+	failTexts = "もう一度！", "タイトルへ"
+	failIn = 50
+	cameraX = 0.0 : cameraY = 0.0
+	cameraFX = SCREEN_SIZEX / 2 : cameraFY = SCREEN_SIZEY / 2
+	cameraMarginX = 130.0 * pixS : cameraMarginY = 64.0 * pixS
+	plGoalFail = 0
+	plX = 0.0 : plY = 0.0
+	plVX = 0.0 : plVY = 0.0
+	plAirAX = 0.6 : plAirLX = 0.05
+	plGY = -0.45 : plVYMax = 15.0
+	plFlipX = 0
+	plSpdX = 3.0 * pixS : plJumpVY = 6.5 * pixS
+	plState = 0 : plStateFrame = 0
+	plAirFrame = 0
+	plSX = 22.0 * pixS : plSY = 20.0 * pixS
+	plaWait = 25 : plaWalk = 7
+	chipSX = 32 * pixS : chipSY = 32 * pixS
+	chipMaxX = 128 : chipMaxY = 128
+	chipFX = chipMaxX : chipFY = chipMaxY
+	dim chips, chipMaxY, chipMaxX; Y -> X 配列なのに注意
+	objNum = 0 : objMax = 128
+	dim objType, objMax
+	dim objX, objMax : dim objY, objMax
+	dim objSX, objMax : dim objSY, objMax
+	sdim objMes, 32, objMax
+	implStageInit; ステージも初期化
+	return
+
+#deffunc global miniJumpFramePush
+	miniJumpFrameInit; ともあれ初期化
+	framePush "miniJumpFrame", *miniJumpFrameCompute, *miniJumpFrameDraw
+	return
+
+#deffunc implStageInit
+	stageTimeFrame = 0
+	plGoalFail = 0
+	plX = 0.0 : plY = 0.0
+	plVX = 0.0 : plVY = 0.0
+	plFlipX = 0
+	plState = 0 : plStateFrame = 0
+	plAirFrame = 0
+	dim chips, chipMaxY, chipMaxX
+	objNum = 0
+	foreach objValid : objValid(cnt) = 0 : loop
+	switch stageCursor
+	case 1
+		; 動作確認できる、チュートリアルとは別のデータであればよいステージ
+		plX = 7.0 * chipSX : plY = 2.0 * chipSY
+		chipFX = 16 : chipFY = 16
+		chips(14, 0) = 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+		chips(13, 0) = 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+		chips(12, 0) = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+		chips(11, 0) = 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0
+		chips(10, 0) = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1
+		chips( 9, 0) = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0
+		chips( 8, 0) = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+		chips( 7, 0) = 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0
+		chips( 6, 0) = 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0
+		chips( 5, 0) = 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1
+		chips( 4, 0) = 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1
+		chips( 3, 0) = 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1
+		chips( 2, 0) = 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1
+		chips( 1, 0) = 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0
+		chips( 0, 0) = 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1
+		objType(objNum) = 1
+			objX(objNum) = 3.0 * chipSX : objY(objNum) = 17.0 * chipSY
+			objNum++
+		swbreak
+	case 0
+	default
+		; チュートリアル
+		plX = 7.0 * chipSX : plY = 2.0 * chipSY
+		chipFX = 16 : chipFY = 16
+		chips(14, 0) = 0, 0, 0, 0, 0, 0, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0
+		chips(13, 0) = 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0
+		chips(12, 0) = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+		chips(11, 0) = 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0
+		chips(10, 0) = 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1
+		chips( 9, 0) = 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0
+		chips( 8, 0) = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+		chips( 7, 0) = 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0
+		chips( 6, 0) = 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0
+		chips( 5, 0) = 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0
+		chips( 4, 0) = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+		chips( 3, 0) = 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1
+		chips( 2, 0) = 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1
+		chips( 1, 0) = 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+		chips( 0, 0) = 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+		// オブジェ
+		objType(objNum) = 2
+			objX(objNum) = 10.0 * chipSX : objY(objNum) = 2.0 * chipSY
+			objMes(objNum) = `キーボードの左右で移動\n上またはスペースでジャンプ`
+			objNum++
+		objType(objNum) = 2
+			objX(objNum) = 16.0 * chipSX : objY(objNum) = 5.0 * chipSY
+			objMes(objNum) = `画面外へ落ちてしまうとミス！`
+			objNum++
+		objType(objNum) = 2
+			objX(objNum) = 7.0 * chipSX : objY(objNum) = 9.0 * chipSY
+			objMes(objNum) = `どんどん上を目指そう`
+			objNum++
+		objType(objNum) = 2
+			objX(objNum) = 7.0 * chipSX : objY(objNum) = 15.0 * chipSY
+			objMes(objNum) = `↑鈴をとったらクリアだ！↑`
+			objNum++
+		objType(objNum) = 1
+			objX(objNum) = 7.0 * chipSX : objY(objNum) = 17.0 * chipSY
+			objNum++
+		swbreak
+	swend
+	// カメラはプレイヤーのちょっと上
+	cameraX = plX : cameraY = plY + 160.0
+	return
+
+#deffunc implStageComputePlaying int stageValid, int playerValid
+	tNextPlState = plState
+	// プレイヤー動き
+	tToJump = 0
+	tNextPlState = 0
+	tAX = 0.0
+	if (playerValid) {
+		tStick = frameGetStick(0x05)
+		tX = 0
+		if (tStick & 1) { tX = -1 : tNextPlState = 1 : plFlipX = 1 }
+		if (tStick & 4) { tX =  1 : tNextPlState = 1 : plFlipX = 0 }
+		if (tStick & 2 || tStick & 16) { tToJump = 1 }
+		if (plAirFrame < 0) {
+			plVX = plSpdX * double(tX)
+		} else {
+			// 慣性計算
+			tAX = plAirAX * double(tX) * ease@n2(ease_cubic_out, absf(plVX) / plSpdX, 1, 0.2) + (tx then 0.0 else plAirLX * -plVX)
+		}
+	}
+	// 加速度
+	plVX = limitf(plVX + tAX, -plSpdX, plSpdX)
+	plVY = limitf(plVY + plGY, -plVYMax, plVYMax)
+	// ジャンプ
+	if (plAirFrame < 3/*優しさフレーム*/ && tToJump && plVY <= 0) { plVY = plJumpVY }
+	// 速度
+	tPrevX = plX : tPrevY = plY
+	plX += plVX : plY += plVY
+	// 地面当たり判定（雑）
+	tColX = int(floor(plX / chipSX + 0.5)) : tColY = int(floor(plY / chipSY + 0.5))
+	tColOX = 0, 1, -1, 0, 1, -1, 0, 1, -1
+	tColOY = 0, 0, 0, 1, 1, 1, -1, -1, -1
+	tPBX = 0.0 : tPBY = 0.0 : tFBN = 0
+	repeat 9
+		tX = tColX + tColOX(cnt) : tY = tColY + tColOY(cnt)
+		if (tX < 0 || tX >= chipFX || tY < 0 || tY >= chipFY) : continue
+		if (chips(tY, tX) == 0) : continue
+		tRX = plX + tPBX - tX * chipSX
+		tFBX = double(plSX + chipSX) / 2 + (tRX < 0 then tRX else -tRX)
+		if (tFBX <= 0) : continue
+		tRY = plY - tY * chipSY
+		tFBY = double(plSY + chipSY) / 2 + (tRY < 0 then tRY else -tRY)
+		if (tFBY <= 0) : continue
+		tFBN++
+		if (tFBX <= tFBY) {
+			if (tRX * plVX < 0 && tFBX > absf(tPBX)) {
+				tPBX = (tRX < 0 then -1.0 else 1.0) * tFBX
+			}
+		} else {
+			if (tRY * plVY <= 0 && tFBY > absf(tPBY)) {
+				tPBY = (tRY < 0 then -1.0 else 1.0) * tFBY
+			}
+		}
+	loop
+	if (tPBY > 0) { plAirFrame = -1 }
+	else { plAirFrame++ }
+	if (tPBY < 0 && plVY > 0) { plVY = 0.0 }
+	if (tPBX * plVX < 0) { plVX = 0.0 }
+	plX += tPBX : plY += tPBY; 補正
+	if (plAirFrame < 0) { plVY = 0.0 }; リセット
+	else { tNextPlState = 2 }
+	// オブジェ
+	repeat objNum
+		if (!objType(cnt)) : continue
+		switch objType(cnt)
+		case 1
+			; 鈴
+			tRX = plX - objX(cnt) : tRY = plY - objY(cnt)
+			if (absf(tRX) < (12.0 * pixS + plSX) / 2 && absf(tRY) < (12.0 * pixS + plSY) / 2) {
+				plGoalFail = 1
+			}
+			swbreak
+		swend
+	loop
+	// ステート変更
+	if (plState != tNextPlState) {
+		plState = tNextPlState
+		plStateFrame = 0
+	}
+	++plStateFrame
+	// タイマー
+	if (playerValid) {
+		stageTimeFrame++
+	}
+	// ゴールとか
+	if (plY < -chipSX) { plGoalFail = 2 }; 失敗
+	return
+
+#deffunc implStageComputeCamera
+	// カメラ
+	cameraX = limitf(cameraX, plX - cameraFX + cameraMarginX, plX + cameraFX - cameraMarginX)
+	cameraY = limitf(cameraY, plY - cameraFY + cameraMarginY, plY + cameraFY - cameraMarginY)
+	cameraY = limitf(cameraY, 0.0 - chipSY / 2 + cameraFY, 10000.0); 下限
+	return
+
+#deffunc implStageDrawBlocks
+	gmode 4, , , 255 : transColor
+	// 画面に収まるブロック数
+	tMargin = 1
+	tCameraBlockNumX = SCREEN_SIZEX / chipSX
+	tCameraBlockNumY = SCREEN_SIZEY / chipSY
+	// 描き始め
+	tChipBX = int(floor(double(cameraX) / double(chipSX))) - tCameraBlockNumX / 2 - tMargin
+	tChipBY = int(floor(double(cameraY) / double(chipSY))) - tCameraBlockNumY / 2 - tMargin
+	tOX = 0 : tOY = 0
+	repeat tCameraBlockNumY + tMargin * 2
+		tY = tChipBY + cnt
+		if (tY < 0 || tY >= chipFY) : continue
+		repeat tCameraBlockNumX + tMargin * 2
+			tX = tChipBX + cnt
+			if (tX < 0 || tX >= chipFX) : continue
+			tCelIdx = chips(tY, tX)
+			if (tCelIdx == 0) : continue; 描かない
+			tPX = implToScrX(tX * chipSX) + tOX : tPY = implToScrY(tY * chipSY) + tOY
+			pos tPX, tPY : celput SID_BLOCKMAT, tCelIdx - 1, pixS, pixS
+			//if (ISDEBUG) { font "" : color 0, 0, 0 : pos tPX, tPY : mes `(${tX}, ${tY})` }
+		loop
+	loop
+	return
+
+#deffunc implStageDrawObjs
+	font "Stick", 30
+	repeat objNum
+		if (objType(cnt) == 0) : continue
+		pos implToScrX(objX(cnt)), implToScrY(objY(cnt))
+		switch objType(cnt)
+		case 1
+			transColor
+			celput SID_MAT, 7, pixS, pixS
+			swbreak
+		case 2
+			color 0, 0, 0 : objcolor 255, 255, 255
+			mes objMes(cnt), mesopt_shadow | mesopt_hcenter@n2 | mesopt_vcenter@n2
+			swbreak
+		swend
+	loop
+	return
+
+#deffunc implStageDrawPlayer
+	tCelIdx = -1
+	switch plState
+	case 1
+		tCelIdx = 4 + plStateFrame / plaWalk \ 2; 歩き中
+		swbreak
+	case 2
+		tCelIdx = 8; ジャンプ中
+		swbreak
+	case 0 : default
+		tCelIdx = 0 + plStateFrame / plaWait \ 2; 待機モーション
+		swbreak
+	swend
+	if (tCelIdx >= 0) {
+		gmode 4, , , 255 : transColor
+		tPX = implToScrX(plX) : tPY = implToScrY(plY)
+		pos tPX, tPY
+		celput SID_MAT, tCelIdx, pixS * (plFlipX then -1 else 1), pixS
+	}
+#if ISDEBUG && 0
+	// 当たり範囲
+	color 255, 0, 0
+		pos tPX - plSX / 2, tPY - plSY / 2
+		line tPX + plSX / 2, tPY - plSY / 2
+		line tPX + plSX / 2, tPY + plSY / 2
+		line tPX - plSX / 2, tPY + plSY / 2
+		line tPX - plSX / 2, tPY - plSY / 2
+#endif
+	return
+
+#deffunc implStageDrawScoe
+	font "Stick", 20
+	color 255, 255, 255 : objcolor 0, 0, 0
+	pos SCREEN_SIZEX - 30, 30
+	mes `TIME ${strf("%05d", stageTimeFrame / 5/*10 count per sec*/)}`, mesopt_shadow | mesopt_hright@n2
+	pos SCREEN_SIZEX - 30, 50
+	mes `HIGHSCORE ${gStageRecord(stageCursor) >= 0 then strf("%05d", gStageRecord(stageCursor) / 5) else "99999"}`, mesopt_shadow | mesopt_hright@n2
+	return
+
+*miniJumpFrameCompute
+	// トップ時のみ計算
+	if (!frameIsTop()) { return }
+	// 入力
+	tStick = frameGetStick()
+	tNextStageState = stageState
+	switch stageState
+	case 0;
+		// ステージセレクト
+		if (stageStateFrame == 0) { implStageInit }
+		tPrevStageCursor = stageCursor
+		if (stageStateFrame > 5) {; 入力誤爆ハック
+			if (tStick & 1 || tStick & 2) { --stageCursor }
+			if (tStick & 4 || tStick & 8) { ++stageCursor }
+			if (tStick & 128) { frameRequestPop }
+			if (tStick & 16 || tStick & 32) { tNextStageState = 1 }
+		}
+		stageCursor = (stageCursor + stageMax) \ stageMax
+		if (tPrevStageCursor != stageCursor) {
+			implStageInit
+		}
+		swbreak
+	case 1;
+		// スタート前
+		implStageComputePlaying 1, 0
+		if (stageStateFrame > stageReadyFin) { tNextStageState = 2 }
+		swbreak
+	case 2;
+		// プレイ中
+		implStageComputePlaying 1, 1
+		if (tStick & 128) { tNextStageState = 5 }
+		if (plGoalFail) { tNextStageState = plGoalFail == 1 then 3 else 4 }
+		swbreak
+	case 3;
+		// ゴール＆リザルト
+		cameraX += (plX - cameraX) * 0.1
+		cameraY += (plY - cameraY) * 0.1
+		if (stageStateFrame == 0) {
+			successCursor = 0
+		}
+		if (stageStateFrame > successDelay + successIn) {
+			if (tStick & 2) : successCursor--
+			if (tStick & 8) : successCursor++
+			successCursor = (successCursor + successMax) \ successMax
+			if (tStick & 16 || tStick & 32) {
+				// ハイスコア更新
+				if (gStageRecord(stageCursor) < 0 || stageTimeFrame < gStageRecord(stageCursor)) : gStageRecord(stageCursor) = stageTimeFrame
+				// 次シーケンスへ
+				switch successCursor
+				case 0 : tNextStageState = 0 : swbreak
+				case 1 : implStageInit : tNextStageState = 1 : swbreak
+				default : assert 0 : swbreak
+				swend
+			}
+		}
+		swbreak
+	case 4;
+		// 失敗
+		if (stageStateFrame == 0) {
+			failCursor = 0
+		}
+		if (stageStateFrame > failIn) {
+			if (tStick & 2) : failCursor--
+			if (tStick & 8) : failCursor++
+			failCursor = (failCursor + failMax) \ failMax
+			if (tStick & 16 || tStick & 32) {
+				switch failCursor
+				case 0 : implStageInit : tNextStageState = 1 : swbreak
+				case 1 : tNextStageState = 0 : swbreak
+				default : assert 0 : swbreak
+				swend
+			}
+		}
+		swbreak
+	case 5;
+		// ポーズ
+		if (stageStateFrame == 0) {
+			pauseCursor = 0
+		}
+		if (tStick & 128) : tNextStageState = 2; プレイ中に戻る
+		if (tStick & 2) : pauseCursor--
+		if (tStick & 8) : pauseCursor++
+		pauseCursor = (pauseCursor + pauseMax) \ pauseMax
+		if (tStick & 16 || tStick & 32) {
+			switch pauseCursor
+			case 0 : tNextStageState = 2 : swbreak
+			case 1 : tNextStageState = 0 : swbreak
+			case 2 : frameRequestPop : swbreak
+			default : assert 0 : swbreak
+			swend
+		}
+		swbreak
+	default;
+		assert 0 && "unhandled stageState"
+		swbreak
+	swend
+	// カメラはいつでも
+	implStageComputeCamera
+	// 遷移
+	++stageStateFrame
+	if (tNextStageState != stageState) {
+		stageState = tNextStageState
+		stageStateFrame = 0
+	}
+	// フレーム終了
+	++masterFrame
+	return
+
+*miniJumpFrameDraw
+	// トップ時のみ描画
+	if (!frameIsTop()) { return }
+	// 描画内容
+	gsel SID_BACK
+	rgbcolor $aabbee : boxf
+	// ベース描画
+	implStageDrawBlocks
+	implStageDrawObjs
+	implStageDrawPlayer
+	implStageDrawScoe
+	// オーバーレイ
+	switch stageState
+	case 0
+		font "Stick", 60
+		objcolor 0, 0, 0
+		color 0, 0, 0
+		pos SCREEN_SIZEX / 2 + 3, SCREEN_SIZEY / 2 - 150 + 3
+		mes "猫じゃんぷ", mesopt_hcenter@n2
+		themeColor TC_MAIN
+		pos SCREEN_SIZEX / 2, SCREEN_SIZEY / 2 - 150
+		mes "猫じゃんぷ", mesopt_hcenter@n2
+		font , 40
+		pos SCREEN_SIZEX / 2, SCREEN_SIZEY / 2 - 30
+		mes `Stage. ${stageCursor}`, mesopt_shadow | mesopt_hcenter@n2 | mesopt_vcenter@n2
+		pos SCREEN_SIZEX / 2, SCREEN_SIZEY / 2 + 20
+		font , 28, 2
+		mes `※スペースで決定、Escでもどる`, mesopt_shadow | mesopt_hcenter@n2 | mesopt_vcenter@n2
+		// 左右カーソル
+		setease 0, 1, ease_linear
+		tOX = geteasef(stageStateFrame \ 20, 20) * 20.0
+		transColor : gmode 4, , , 255
+		pos SCREEN_SIZEX / 2 - 100 - tOX, SCREEN_SIZEY / 2 - 30
+		celput SID_MAT, 6, 2, 2
+		pos SCREEN_SIZEX / 2 + 100 + tOX, SCREEN_SIZEY / 2 - 30
+		celput SID_MAT, 6, -2, 2
+		swbreak
+	case 1
+		tR = limitf(double(stageStateFrame) / stageReadyOut, 0, 1)
+		font "Stick", lerpf@n2(180, 40, tR)
+		color 244, 244, 120 : objcolor 122, 100, 100
+		gmode 3, , , 255.0 * ease@n2(ease_quartic_inout, tR, 1, 0)
+		pos SCREEN_SIZEX / 2, SCREEN_SIZEY / 2 - 100
+		mes "よ～い…", mesopt_shadow | mesopt_gmode | mesopt_hcenter@n2 | mesopt_vcenter@n2
+		swbreak
+	case 2
+		if (stageTimeFrame < stageGoOut) {
+			tR = limitf(double(stageTimeFrame) / stageGoOut, 0, 1)
+			font "Stick", lerpf@n2(120, 220, tR)
+			color 244, 244, 120 : objcolor 122, 100, 100
+			gmode 3, , , 255.0 * ease@n2(ease_quartic_inout, tR, 1, 0)
+			pos SCREEN_SIZEX / 2, SCREEN_SIZEY / 2 - 100
+			mes "はじめ", mesopt_shadow | mesopt_gmode | mesopt_hcenter@n2 | mesopt_vcenter@n2
+		}
+		swbreak
+	case 3
+		tR = limitf(double(stageStateFrame - successDelay) / successIn, 0, 1)
+		color 255, 255, 255 : gmode 3, , , 192.0 * tR
+		grect SCREEN_SIZEX / 2, SCREEN_SIZEY / 2, 0, SCREEN_SIZEX, SCREEN_SIZEY
+		font "Stick", 60
+		themeColor TC_MAIN : objcolor 0, 0, 0
+		pos 200, SCREEN_SIZEY / 2 - 140 : mes "クリア！", mesopt_shadow | mesopt_gmode
+		font "Stick", 40
+		repeat successMax
+			tSelecting = cnt == successCursor
+			tPY = SCREEN_SIZEY / 2 - 30 + 50 * cnt
+			if (tSelecting) {
+				pos 250, tPY
+				transColor : gmode 4, , , 255.0 * tR
+				celput SID_MAT, 6, -pixS, pixS
+			}
+			gmode 3, , , 255.0 * tR
+			themeColor TC_MAIN : objcolor 0, 0, 0
+			pos 300, tPY
+			mes successTexts(cnt), mesopt_shadow | mesopt_gmode | mesopt_vcenter@n2
+		loop
+		swbreak
+	case 4
+		tR = limitf(double(stageStateFrame) / failIn, 0, 1)
+		color 0, 0, 0 : gmode 3, , , 192.0 * tR
+		grect SCREEN_SIZEX / 2, SCREEN_SIZEY / 2, 0, SCREEN_SIZEX, SCREEN_SIZEY
+		font "Stick", 60
+		rgbcolor 0x441111 : objcolor 255, 255, 255
+		pos 200, SCREEN_SIZEY / 2 - 140 : mes "ミス。。。", mesopt_shadow | mesopt_gmode
+		font "Stick", 40
+		repeat failMax
+			tSelecting = cnt == failCursor
+			tPY = SCREEN_SIZEY / 2 - 30 + 50 * cnt
+			if (tSelecting) {
+				pos 250, tPY
+				transColor : gmode 4, , , 255.0 * tR
+				celput SID_MAT, 6, -pixS, pixS
+			}
+			gmode 3, , , 255.0 * tR
+			rgbcolor 0x441111 : objcolor 255, 255, 255
+			pos 300, tPY
+			mes failTexts(cnt), mesopt_shadow | mesopt_gmode | mesopt_vcenter@n2
+		loop
+		swbreak
+	case 5
+		color 0, 0, 0 : gmode 3, , , 192
+		grect SCREEN_SIZEX / 2, SCREEN_SIZEY / 2, 0, SCREEN_SIZEX, SCREEN_SIZEY
+		font "Stick", 60
+		themeColor TC_MAIN_S : objcolor 255, 255, 255
+		pos 200, SCREEN_SIZEY / 2 - 140 : mes "― ポーズ中", mesopt_shadow
+		font "Stick", 40
+		repeat pauseMax
+			tSelecting = cnt == pauseCursor
+			tPY = SCREEN_SIZEY / 2 - 30 + 50 * cnt
+			if (tSelecting) {
+				pos 250, tPY
+				transColor : gmode 4, , , 255
+				celput SID_MAT, 6, -pixS, pixS
+			}
+			themeColor TC_MAIN_S : objcolor 255, 255, 255
+			pos 300, tPY
+			mes pauseTexts(cnt), mesopt_shadow | mesopt_vcenter@n2
+		loop
+		swbreak
+	default : swbreak
+	swend
+	// デバッグ
+#if ISDEBUG
+	gmode 0
+	color 0, 0, 0 : objcolor 255, 255, 255
+	pos 10, 30
+	font ""
+		mes `masterFrame=${masterFrame}`, mesopt_shadow
+		mes `cameraX=${cameraX}, cameraY=${cameraY}`, mesopt_shadow
+#endif
+	return
+
+#global
+

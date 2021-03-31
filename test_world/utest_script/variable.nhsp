@@ -1,0 +1,46 @@
+﻿//=============================================================================
+// variable
+
+a = 10 : b = 12.5 : c = "strc"
+c += "neko" : b -= 6.2 : a *= 3
+a |= 3 : a &= 23 : a ^= 49
+
+if (a != 38) { raise }
+if (absf(b - 6.3) > 0.01) { raise }
+if (c != "strcneko") { raise }
+if (strlen(c) != 8) { raise }
+
+mes "peek test"
+mes "a0="+peek(a, 0)+":a1="+peek(a, 1)
+mes "b0="+peek(b, 0)+":b1="+peek(b, 1)+":b2="+peek(b, 2)+":b3="+peek(b, 3)
+mes "b4="+peek(b, 4)+":b5="+peek(b, 5)+":b6="+peek(b, 6)+":b7="+peek(b, 7)
+mes "c0="+peek(c, 0)+":c1="+peek(c, 1)+":c2="+peek(c, 2)+":c3="+peek(c, 3)
+
+mes "wa0="+wpeek(a, 0)+":wa1="+wpeek(a, 1)
+mes "wb4="+wpeek(b, 4)+":wb5="+wpeek(b, 5)+":wb6="+wpeek(b, 6)
+mes "wc0="+wpeek(c, 0)+":wc2="+wpeek(c, 2)+":wc3="+wpeek(c, 3)
+
+mes "lb0="+lpeek(b, 0)+":lb4="+wpeek(b, 4)
+mes "lc0="+lpeek(c, 0)+":lb3="+wpeek(c, 3)
+
+mes "vartype"
+if (vartype("nil") != 0) { raise }
+if (vartype("int") != 4) { raise }
+if (vartype("double") != 3) { raise }
+if (vartype("str") != 2) { raise }
+if (vartype("label") != 1) { raise }
+if (vartype("struct") != 5) { raise }
+if (vartype("nil") != typeid_nil) { raise }
+if (vartype("int") != typeid_int) { raise }
+if (vartype("double") != typeid_double) { raise }
+if (vartype("str") != typeid_str) { raise }
+if (vartype("label") != typeid_label) { raise }
+if (vartype("modinst") != typeid_modinst) { raise }
+
+mes "varsize"
+a = 0 : if (varsize(a) != 8) {raise }
+a = 0.0 : if (varsize(a) != 8) {raise }
+sdim a, 256 : if (varsize(a) < 256) { raise }// 大きいことを保証しているので、違っても良い
+
+// varuseの方はモジュールのテストでやってるので省略
+

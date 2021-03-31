@@ -1,0 +1,54 @@
+﻿
+EXPORTS
+	TestDynInt1
+	TestDynInt2
+	TestDynInt3
+	TestDynInt4
+	TestDynInt8
+
+	TestDynUInt1
+	TestDynUInt2
+	TestDynUInt3
+	TestDynUInt4
+	TestDynUInt8
+
+	TestDynFloat1
+	TestDynFloat2
+	TestDynFloat3
+	TestDynFloat4
+
+	TestDynFloat1Ref
+	TestDynFloat2Ref
+	TestDynFloat3Ref
+	TestDynFloat4Ref
+	TestDynFloat8Ref
+
+	TestDynDouble1
+	TestDynDouble2
+	TestDynDouble3
+	TestDynDouble4
+
+	TestDynDouble1Ref
+	TestDynDouble2Ref
+	TestDynDouble3Ref
+	TestDynDouble4Ref
+	TestDynDouble8Ref
+
+	TestDynInt1Res32
+	TestDynInt2Res32
+	TestDynInt3Res32
+	TestDynInt4Res32
+	TestDynInt8Res32
+
+	TestDynInt1Res64
+	TestDynInt2Res64
+	TestDynInt3Res64
+	TestDynInt4Res64
+	TestDynInt8Res64
+
+	TestDynVariant1
+	TestDynVariant2
+	TestDynVariant3
+
+	TestDynStruct1
+	TestDynStruct2

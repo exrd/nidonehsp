@@ -1,0 +1,44 @@
+﻿
+//=============================================================================
+// random
+
+mes "distribution"
+
+// 確認用
+if (0) {
+	size = 7
+	scale = 1000
+	dim buckets, size
+	repeat size * scale
+		vote = rnd(size)
+		++buckets(vote)
+	loop
+	repeat size
+		print@n2 strf("%d=%f, ", cnt, double(buckets(cnt)) / double(size * scale))
+	loop
+	print@n2 strf("\n REF=%f\n", 1.0 / double(size))
+}
+
+randomize 0xfbca0186
+repeat 5
+	size = 10 + rnd(100)
+	scale = 1000
+
+	dim buckets, size
+	repeat size : if (buckets(cnt) != 0) { raise } : loop
+	repeat size * scale
+		vote = rnd(size)
+		++buckets(vote)
+	loop
+
+	// 各バケットの投票数が
+	repeat size
+		vote_rate = double(buckets(cnt)) / double(scale)
+		// 大きくずれてないかだけ見る
+		if (diff > 0.25) { mes strf("size=%d, scale=%d, bucket=%d, vote=%d:%f, diff=%f", size, scale, cnt, buckets(cnt), vote_rate, diff) : mes diff : raise }
+	loop
+
+	print@n2 "."
+loop
+mes ""
+

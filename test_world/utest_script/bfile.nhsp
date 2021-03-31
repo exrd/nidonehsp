@@ -1,0 +1,26 @@
+
+//=============================================================================
+// bfile
+
+fileroot = "utest_script"
+refsize = 64 * 1024
+
+if (1) {
+	sdim filebuf, 256
+	bload `${fileroot}/ref/btest`, filebuf
+	filesize = strsize
+	if (filesize != refsize) { raise }
+	repeat filesize
+		if (peek(filebuf, cnt) != (cnt & 255)) { raise }
+	loop
+}
+
+if (1) {
+	wsize = refsize
+	sdim filebuf, wsize
+	repeat wsize
+		poke filebuf, cnt, cnt & 0xff
+	loop
+	bsave `${fileroot}/out/btest`, filebuf
+}
+

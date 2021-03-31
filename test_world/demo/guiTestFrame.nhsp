@@ -1,0 +1,66 @@
+﻿//=============================================================================
+// guiTestFrame.nhsp
+
+#module "guiTestFrame"
+
+#deffunc global guiTestFrameInit
+	// グローバル初期化
+	if (!gIsInitialized) {
+		gIsInitialized = 1
+	}
+	// ローカル初期化
+	toReturn = 0
+	buttonPushed = 0
+	checked = 0
+	masterFrame = 0
+	// GUI初期化
+	gsel 0 : cls
+	objsize 200, 20 : pos 20, 60 : button gosub "ボタンをおしてください", *implPushButton
+	objsize 200, 20 : pos 20, 90 : chkbox "チェックボックスのテスト", checked
+	objsize 200, 20 : pos 20, 120 : input textInput
+	objsize 60, 20 : pos 600, 400 : button gosub "終わる", *implReturnTo
+	return
+
+#deffunc global guiTestFramePush
+	guiTestFrameInit; ともあれ初期化
+	framePush "guiTestFrame", *guiTestFrameCompute, *guiTestFrameDraw, 0
+	return
+
+*implPushButton
+	buttonPushed++
+	return
+
+*implReturnTo
+	toReturn = 1
+	return
+
+*guiTestFrameCompute
+	// トップ時のみ計算
+	if (!frameIsTop()) { return }
+	// 入力
+	if (toReturn) {
+		gsel 0 : cls
+		framePop
+	}
+	// フレーム終了
+	++masterFrame
+	return
+
+*guiTestFrameDraw
+	// トップ時のみ描画
+	if (!frameIsTop()) { return }
+	// 描画内容
+	gsel 0
+		tMouseX = mousex : tMouseY = mousey
+	gsel SID_BACK
+		color 128, 128, 128 : boxf
+		font "", 24
+		color 255, 255, 255
+		pos 20, 20 : mes `mousex=${tMouseX}, mousey=${tMouseY}`
+		pos 240, 60 : mes buttonPushed > 0 then `ボタンが ${buttonPushed} 回押されました` else ""
+		pos 240, 90 : mes `チェック状態 ${checked}`
+		pos 240, 120 : mes `テキスト入力 ${textInput}`
+	return
+
+#global
+

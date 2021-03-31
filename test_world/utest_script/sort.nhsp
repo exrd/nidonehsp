@@ -1,0 +1,59 @@
+﻿
+//=============================================================================
+// sort
+//
+// ※n2hsp拡張機能のstrf("%U")とprint@n2
+
+mes "sortval"
+dim a, 3
+a(0) = 16 : a(1) = 10 : a(2) = 23
+sortval a
+if (a(0) != 10) { raise }
+if (a(1) != 16) { raise }
+if (a(2) != 23) { raise }
+sortget b, 0 : if (b != 1) { raise }
+sortget b, 1 : if (b != 0) { raise }
+sortget b, 2 : if (b != 2) { raise }
+
+repeat 100
+	test = cnt
+	num = rnd(1000) + 10
+	if (rnd(1)) {
+		dim a, num
+		repeat num : a(cnt) = rnd(100000) : loop
+	} else {
+		ddim a, num
+		repeat num : a(cnt) = rndf@n2(100000) : loop
+	}
+	sortval a
+	p = -1
+	repeat num
+		if (a(cnt) < p) { mes strf("sortval %f < %f", a(cnt), p) : raise }
+		p = a(cnt)
+	loop
+	print@n2 "."
+loop
+mes ""
+
+mes "sortstr"
+repeat 16
+	test = cnt
+	num = rnd(10) + 4
+	sdim a, 128, num
+	repeat num
+		s = ""
+		repeat rnd(16) + 5
+			s += strf("%U", rnd(25) + 65)
+		loop
+		a(cnt) = s
+	loop
+	sortstr a
+	p = ""
+	repeat num
+		if (a(cnt) < p) { mes strf("sortstr %s < %s", a(cnt), p) : raise }
+		p = a(cnt)
+	loop
+	print@n2 "."
+loop
+mes
+
