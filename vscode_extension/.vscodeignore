@@ -12,6 +12,7 @@ dev/**
 **/*.map
 **/*.ts
 **/*.vsix
+**/*.code-workspace
 
 node_modules/uikit/build/**
 node_modules/uikit/src/**
