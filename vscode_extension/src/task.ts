@@ -232,7 +232,7 @@ export class ExportTaskProvider implements vscode.TaskProvider {
             '--error-dialog', showDialog ? '1' : '0',
             '--success-dialog', showDialog ? '1' : '0',
             '--startup-script', taskDef.program,
-            '--export-platform', taskDef.targetPlatform === 'auto' ? 'html' : taskDef.targetPlatform,
+            '--export-platform', taskDef.targetPlatform === 'auto' ? 'native' : taskDef.targetPlatform,
             '--formatted-output', '1',
         ]
         .concat(util.shared.makeAdditionalIncludePathsArgs())
