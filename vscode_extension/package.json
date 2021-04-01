@@ -3,7 +3,7 @@
 	"displayName": "nidonehsp-env",
 	"description": "nidonehsp environment for VSCode",
 	"icon": "nidonehsp_icon.png",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"engines": {
 		"vscode": "^1.52.0"
 	},
