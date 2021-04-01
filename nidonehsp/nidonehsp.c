@@ -15770,6 +15770,24 @@ static n2_bool_t n2si_texturebuffer_resize(n2_state_t* state, n2s_texturebuffer_
 	return n2s_texture_resize(state, &tb->texture_, width, height, keep_content);
 }
 
+static n2_bool_t n2si_texturebuffer_clear(n2_state_t* state, n2s_texturebuffer_t* tb, n2s_u8color_t color)
+{
+	N2_UNUSE(state);
+#if N2_CONFIG_USE_SDL_LIB
+	glBindFramebuffer(GL_FRAMEBUFFER, tb->gl_framebuffer_);
+	const n2s_fcolor_t fcolor = n2s_u8color_to_fcolor(color);
+	glClearColor(fcolor.r_, fcolor.g_, fcolor.b_, fcolor.a_);
+	glClear(GL_COLOR_BUFFER_BIT);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	N2SI_ASSERT_GL(state);
+	return N2_TRUE;
+#else
+	N2_UNUSE(tb);
+	N2_UNUSE(color);
+	return N2_FALSE;
+#endif
+}
+
 N2_API n2_bool_t n2s_texturebuffer_read(n2_state_t* state, n2s_texturebuffer_t* tb)
 {
 	N2_UNUSE(state);
@@ -26383,16 +26401,27 @@ static int n2si_bifunc_screen(const n2_funcarg_t* arg)
 	if (id == 0)
 	{
 		// 0は特殊処理。GL_Contextなどを作り直さないため。
+		const size_t pw = mw->width_;
+		const size_t ph = mw->height_;
 		mw->width_ = N2_SCAST(size_t, w);
 		mw->height_ = N2_SCAST(size_t, h);
-		n2si_texturebuffer_resize(arg->state_, mw->texturebuffer_, mw->width_, mw->height_, N2_FALSE);
-		n2si_texturebuffer_resize(arg->state_, mw->drawcachebuffer_, mw->width_, mw->height_, N2_FALSE);
-		n2si_window_reset_state(arg->state_, se, mw);
-		if (mw->window_)
+		if (mw->width_ != pw && mw->height_ != ph)
 		{
-			SDL_ShowWindow(mw->window_);
-			SDL_SetWindowSize(mw->window_, N2_SCAST(int, mw->width_), N2_SCAST(int, mw->height_));
-			SDL_RaiseWindow(mw->window_);
+			n2si_texturebuffer_resize(arg->state_, mw->texturebuffer_, mw->width_, mw->height_, N2_FALSE);
+			n2si_texturebuffer_resize(arg->state_, mw->drawcachebuffer_, mw->width_, mw->height_, N2_FALSE);
+			n2si_window_reset_state(arg->state_, se, mw);
+			if (mw->window_)
+			{
+				SDL_ShowWindow(mw->window_);
+				SDL_SetWindowSize(mw->window_, N2_SCAST(int, mw->width_), N2_SCAST(int, mw->height_));
+				{
+					// 中心位置固定
+					int posx = 0, posy = 0;
+					SDL_GetWindowPosition(mw->window_, &posx, &posy);
+					SDL_SetWindowPosition(mw->window_, posx - (N2_SCAST(int, mw->width_) - N2_SCAST(int, pw)) / 2, posy - (N2_SCAST(int, mw->height_) - N2_SCAST(int, ph)) / 2);
+				}
+				SDL_RaiseWindow(mw->window_);
+			}
 		}
 		nw = mw;
 	}
@@ -26457,8 +26486,7 @@ static int n2si_bifunc_cls(const n2_funcarg_t* arg)
 	case 4:		ccol = n2s_u8color(0, 0, 0, 255); break;
 	default:	break;
 	}
-	n2s_texture_fill_color(&nw->texturebuffer_->texture_, ccol);
-	n2s_texture_submit(arg->state_, &nw->texturebuffer_->texture_, N2_TRUE);
+	n2si_texturebuffer_clear(arg->state_, nw->texturebuffer_, ccol);
 	n2si_window_reset_state(arg->state_, se, nw);
 	n2si_environment_fullsync_gmode_commandbuffer(arg->state_, se, se->commandbuffer_);
 	return 0;

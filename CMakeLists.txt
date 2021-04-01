@@ -331,8 +331,8 @@ if(N2_BUILD_STUDIO AND NOT EMSCRIPTEN AND N2_BUILD_SDL AND N2_APP_STD_BUILD)
 
 	if(MSVC)
 		# デバッグ実行時のワーキングディレクトリ
-		#set_property(TARGET n2studio PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/test_world/studio")
-		set_property(TARGET n2studio PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/test_world/demo")
+		set_property(TARGET n2studio PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/test_world/studio")
+		#set_property(TARGET n2studio PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/test_world/demo")
 
 		# CONSOLEサブシステムに（printf等を見せる）
 		set_target_properties(n2studio PROPERTIES LINK_FLAGS /SUBSYSTEM:CONSOLE)
