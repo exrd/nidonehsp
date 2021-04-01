@@ -9162,16 +9162,49 @@ static n2_ast_node_t* n2i_parser_parse_muldivmod(n2_state_t* state, n2_parser_t*
 
 static n2_ast_node_t* n2i_parser_parse_term(n2_state_t* state, n2_parser_t* p)
 {
-	const n2_token_t* token = n2_parser_read_token(state, p);
-	switch (token->token_)
+	n2_ast_node_t* node = NULL;
+	n2_ast_node_t* cur = NULL;
+	for (;;)
 	{
-	case N2_TOKEN_OP_NOT:		return n2_ast_node_alloc(state, N2_AST_NODE_UNARY_NOT, n2i_parser_parse_primitive(state, p), NULL);
-	case N2_TOKEN_OP_SUB:		return n2_ast_node_alloc(state, N2_AST_NODE_UNARY_MINUS, n2i_parser_parse_primitive(state, p), NULL);
-	default: break;
+		n2_bool_t is_continue = N2_TRUE;
+		const n2_token_t* token = n2_parser_read_token(state, p);
+		switch (token->token_)
+		{
+		case N2_TOKEN_OP_NOT:
+		case N2_TOKEN_OP_SUB:
+			{
+				n2_ast_node_t* next = NULL;
+				switch (token->token_)
+				{
+				case N2_TOKEN_OP_NOT: next = n2_ast_node_alloc_token(state, N2_AST_NODE_UNARY_NOT, token, NULL); break;
+				case N2_TOKEN_OP_SUB: next = n2_ast_node_alloc_token(state, N2_AST_NODE_UNARY_MINUS, token, NULL); break;
+				default: N2_ASSERT(0); break;
+				}
+				N2_ASSERT(next);
+				if (cur) { N2_ASSERT(node); cur->left_ = next; cur = next; }
+				else { N2_ASSERT(!node); node = cur = next; }
+			}
+			break;
+		default:
+			is_continue = N2_FALSE;
+			n2_parser_unread_token(p, 1);
+			break;
+		}
+		if (!is_continue) { break; }
 	}
 
-	n2_parser_unread_token(p, 1);
-	return n2i_parser_parse_primitive(state, p);
+	n2_ast_node_t* prim = n2i_parser_parse_primitive(state, p);
+	if (prim)
+	{
+		if (cur) { N2_ASSERT(node); cur->left_ = prim; }
+		else { node = prim; }
+	}
+	else
+	{
+		n2_ast_node_free(state, node);
+		node = NULL;
+	}
+	return node;
 }
 
 static n2_ast_node_t* n2i_parser_parse_primitive(n2_state_t* state, n2_parser_t* p)
