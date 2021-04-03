@@ -27,6 +27,11 @@
   - nidonehsp での実際のスクリプト実行の流れを説明しています。
   - 特に VSCode と連携した操作について触れています。
 
+# デモ
+
+- テスト用[demoスクリプト](test_world/demo)のHTML出力したもの
+  - [HTML](https://exrd.github.io/nidonehsp/demos/n2demo/n2r_std.html)
+
 # ディレクトリ構成とライセンス
 
 nidonehsp 本体は NYSL でライセンスされます。
