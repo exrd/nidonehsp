@@ -34,6 +34,7 @@ test_world/demo/n2demo/
 test_world/**/n2bin
 test_world/**/*.zip
 test_world/**/*.exe
+test_world/**/staging.*
 
 #
 internal/
