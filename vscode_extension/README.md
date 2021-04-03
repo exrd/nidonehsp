@@ -17,8 +17,8 @@
 
 ## ドキュメント
 
-- [言語クイックリファレンス](./doc/quickReference.md)
-- [開発環境](./doc/developEnvironment.md)
+- [言語クイックリファレンス](./docs/quickReference.md)
+- [開発環境](./docs/developEnvironment.md)
 
 ## 既知の不具合
 

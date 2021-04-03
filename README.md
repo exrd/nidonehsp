@@ -20,10 +20,10 @@
 
 # ドキュメント
 
-- [クイックリファレンス](./doc/quickReference.md)
+- [クイックリファレンス](./docs/quickReference.md)
   - nidonehsp の文法や基本的な仕様について説明しています。
   - HSP3 との違いについても触れられています。
-- [開発環境](./doc/developEnvironment.md)
+- [開発環境](./docs/developEnvironment.md)
   - nidonehsp での実際のスクリプト実行の流れを説明しています。
   - 特に VSCode と連携した操作について触れています。
 
