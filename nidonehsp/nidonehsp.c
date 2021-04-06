@@ -2602,7 +2602,7 @@ N2_API void n2_array_setup(n2_state_t* state, n2_array_t* a, size_t element_size
 {
 	a->element_size_ = N2_MAX(element_size, 1);
 	a->buffer_size_ = initial_buffer_size;
-	if (a->buffer_size_ > 0)
+	if (a->buffer_size_ > 0 && state)
 	{
 		a->elements_ = n2_malloc(state, a->element_size_ * a->buffer_size_);
 	}
@@ -10792,6 +10792,11 @@ N2_API n2_variable_t* n2_vartable_peek(n2_vartable_t* vartable, int index)
 	return n2_vararray_peekv(&vartable->vararray_, index, NULL);
 }
 
+N2_API const n2_variable_t* n2_vartable_peekc(const n2_vartable_t* vartable, int index)
+{
+	return n2_vararray_peekcv(&vartable->vararray_, index, NULL);
+}
+
 N2_API n2_variable_t* n2_vartable_find(n2_vartable_t* vartable, const char* name)
 {
 	n2_variable_t** pvar = n2i_vartable_findp(vartable, name);
@@ -11647,6 +11652,22 @@ N2_DEFINE_TARRAY(n2_label_t, n2_labelarray, N2_API, n2i_setupfunc_nothing, n2i_l
 
 N2_DEFINE_TARRAY(n2_opcode_t, n2_opcodearray, N2_API, n2i_setupfunc_nothing, n2i_freefunc_nothing);
 
+static void n2i_codeline_init(n2_codeline_t* codeline)
+{
+	codeline->pc_ = -1;
+	codeline->sourcecode_ = NULL;
+	codeline->package_ = NULL;
+	codeline->line_ = -1;
+	codeline->column_ = -1;
+	codeline->line_head_ = NULL;
+	n2_intset_setup(NULL, &codeline->relative_var_indices_, 0, 8);
+}
+
+static void n2i_codeline_teardown(n2_state_t* state, n2_codeline_t* codeline)
+{
+	n2_intset_teardown(state, &codeline->relative_var_indices_);
+}
+
 static int n2i_codelinetable_cmpfunc(const n2_sorted_array_t* a, const void* lkey, const void* rkey, const void* key)
 {
 	n2_pc_t l, r;
@@ -11672,7 +11693,13 @@ static void n2i_codelinetable_setupfunc(n2_state_t* state, n2_codelinetable_t* c
 	codelinetable->cmp_ = n2i_codelinetable_cmpfunc;
 	codelinetable->match_ = n2i_codelinetable_matchfunc;
 }
-N2_DEFINE_TSORTED_ARRAY(n2_codeline_t, void, n2_pc_t, n2_codelinetable, N2_API, n2i_codelinetable_setupfunc, n2i_freefunc_nothing);
+static void n2i_codelinetable_freefunc(n2_state_t* state, n2_array_t* a, void* element)
+{
+	N2_UNUSE(a);
+	n2_codeline_t* codeline = N2_RCAST(n2_codeline_t*, element);
+	n2i_codeline_teardown(state, codeline);
+}
+N2_DEFINE_TSORTED_ARRAY(n2_codeline_t, void, n2_pc_t, n2_codelinetable, N2_API, n2i_codelinetable_setupfunc, n2i_codelinetable_freefunc);
 
 static const n2_codeline_t* n2i_codelinetable_find_from_pc(const n2_codelinetable_t* codelinetable, n2_pc_t pc)
 {
@@ -12224,6 +12251,21 @@ N2_API void n2_codeimage_dump(n2_state_t* state, const n2_codeimage_t* codeimage
 				n2_str_clear(&tstr);
 				n2i_str_cutoff_append(state, &tstr, line_head, 64, '\n', "...");
 				n2i_printf(state, "    >> %s\n", tstr.str_);
+
+				if (flags & N2_CODEIMAGE_DUMP_RELATIVE_VARS)
+				{
+					n2_str_clear(&tstr);
+					for (size_t vi = 0, vl = n2_intset_size(&codeline->relative_var_indices_); vi < vl; ++vi)
+					{
+						const int* varindex = n2_intset_peekc(&codeline->relative_var_indices_, N2_SCAST(int, vi));
+						if (!varindex) { continue; }
+						const n2_variable_t* var = n2_vartable_peekc(e->vartable_, *varindex);
+						if (!var) { continue; }
+						if (tstr.size_ > 0) { n2_str_append(state, &tstr, ", ", SIZE_MAX); }
+						n2_str_append_fmt(state, &tstr, "%s", var->name_);
+					}
+					n2i_printf(state, "    >> RelativeVars: %s\n", tstr.str_);
+				}
 			}
 		}
 
@@ -19761,6 +19803,7 @@ static void n2i_environment_generate_register_codeline(n2_state_t* state, n2_env
 
 	// 新しく追加
 	n2_codeline_t codeline;
+	n2i_codeline_init(&codeline);
 	codeline.pc_ = pc;
 	codeline.sourcecode_ = token->sourcecode_;
 	codeline.package_ = token->package_;
@@ -19774,6 +19817,15 @@ static void n2i_environment_generate_register_codeline(n2_state_t* state, n2_env
 	{
 		n2_szarray_pushv(state, &N2_CCAST(n2_sourcecode_t*, inserted->sourcecode_)->codeline_indices_, N2_SCAST(size_t, inserted_index));
 	}
+}
+
+static void n2i_environment_generate_register_codeline_relative_var(n2_state_t* state, n2_environment_t* e, n2i_codegen_context_t* c, n2_pc_t pc, int varindex)
+{
+	N2_UNUSE(c);
+	if (varindex < 0) { return; }
+	n2_codeline_t* ecodeline = N2_CCAST(n2_codeline_t*, n2i_codelinetable_find_from_pc(e->codeimage_->codelinetable_, pc));
+	if (!ecodeline) { return; }
+	n2_intset_insert(state, &ecodeline->relative_var_indices_, &varindex, NULL);
 }
 
 static void n2i_environment_generate_sync_opcodeflags(n2_state_t* state, n2_environment_t* e, n2i_codegen_context_t* c, size_t opcode_cursor)
@@ -20597,6 +20649,8 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 				const int varindex = n2_vartable_register(state, e, e->vartable_, fullname.str_);
 				N2_ASSERT(varindex >= 0);
 
+				if (c->generate_codelines_) { n2i_environment_generate_register_codeline_relative_var(state, e, c, N2_SCAST(n2_pc_t, n2_opcodearray_size(opcodes)), varindex); }
+
 				n2_opcodearray_pushv(state, opcodes, N2_OPCODE_PUSH_VARIABLE);
 				n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, varindex));
 				if (arg_num > 0)
@@ -20959,6 +21013,8 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 
 				const int varindex = n2_vartable_register(state, e, e->vartable_, fullname.str_);
 				N2_ASSERT(varindex >= 0);
+
+				if (c->generate_codelines_) { n2i_environment_generate_register_codeline_relative_var(state, e, c, N2_SCAST(n2_pc_t, n2_opcodearray_size(opcodes)), varindex); }
 
 				n2_opcodearray_pushv(state, opcodes, N2_OPCODE_PUSH_VARIABLE);
 				n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, varindex));

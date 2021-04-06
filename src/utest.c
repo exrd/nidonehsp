@@ -664,8 +664,10 @@ int main(int argc, char* argv[])
 		config.allocator_.alloc_user_ = &ac;
 		config.print_ = n2u_print;
 		config.print_error_ = n2u_print_error;
+		config.generate_opcodeflags_ = N2_TRUE;
 		config.generate_codelines_ = N2_TRUE;
 		config.generate_debugvars_ = N2_TRUE;
+		config.enable_graphics_assert_ = N2_TRUE;
 
 		size_t test_num = 0;
 		size_t passed_test_num = 0;
@@ -703,9 +705,9 @@ int main(int argc, char* argv[])
 				cur_utest = cur_utest->next;
 				continue;
 			}
-			thistest_predump_ppsrc = N2_TRUE;
+			//thistest_predump_ppsrc = N2_TRUE;
 			//thistest_predump_ast = N2_TRUE;
-			//thistest_predump_opcode = N2_TRUE;
+			thistest_predump_opcode = N2_TRUE;
 			//thistest_ac_print = N2_TRUE;
 #else
 			if (strcmp(thistest_name.str_, "Staging") == 0)
@@ -757,7 +759,7 @@ int main(int argc, char* argv[])
 				}
 				if (thistest_predump_opcode)
 				{
-					n2_codeimage_dump(state, state->environment_->codeimage_, state->environment_, N2_CODEIMAGE_DUMP_DEFAULT);
+					n2_codeimage_dump(state, state->environment_->codeimage_, state->environment_, N2_CODEIMAGE_DUMP_ALL);
 				}
 
 				if (n2_state_execute(state))

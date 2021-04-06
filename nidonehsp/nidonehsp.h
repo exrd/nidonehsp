@@ -1205,6 +1205,9 @@ N2_API size_t n2_sorted_array_erase(n2_state_t* state, n2_sorted_array_t* a, con
 
 #define N2_DECLARE_TSORTED_ARRAY(type, cmpkeytype, matchkeytype, prefix, extn) \
 	typedef n2_sorted_array_t prefix##_t; \
+	extn void prefix##_setup(n2_state_t* state, prefix##_t* a, size_t initial_buffer_size, size_t expand_step); \
+	extn void prefix##_setup_user(n2_state_t* state, prefix##_t* a, size_t initial_buffer_size, size_t expand_step, void* user); \
+	extn void prefix##_teardown(n2_state_t* state, prefix##_t* a); \
 	extn prefix##_t* prefix##_alloc(n2_state_t* state, size_t initial_buffer_size, size_t expand_step); \
 	extn prefix##_t* prefix##_alloc_user(n2_state_t* state, size_t initial_buffer_size, size_t expand_step, void* user); \
 	extn void prefix##_free(n2_state_t* state, prefix##_t* a); \
@@ -1228,6 +1231,20 @@ N2_API size_t n2_sorted_array_erase(n2_state_t* state, n2_sorted_array_t* a, con
 	extn size_t prefix##_erase(n2_state_t* state, prefix##_t* a, const matchkeytype* key);
 
 #define N2_DEFINE_TSORTED_ARRAY(type, cmpkeytype, matchkeytype, prefix, extn, setupfunc, freefunc) \
+	extn void prefix##_setup(n2_state_t* state, prefix##_t* a, size_t initial_buffer_size, size_t expand_step) \
+	{ \
+		n2_sorted_array_setup(state, a, sizeof(type), initial_buffer_size, expand_step, freefunc); \
+		if (setupfunc) { setupfunc(state, a); } \
+	} \
+	extn void prefix##_setup_user(n2_state_t* state, prefix##_t* a, size_t initial_buffer_size, size_t expand_step, void* user) \
+	{ \
+		prefix##_setup(state, a, initial_buffer_size, expand_step); \
+		a->a_.user_ = user; \
+	} \
+	extn void prefix##_teardown(n2_state_t* state, prefix##_t* a) \
+	{ \
+		n2_sorted_array_teardown(state, a); \
+	} \
 	extn prefix##_t* prefix##_alloc(n2_state_t* state, size_t initial_buffer_size, size_t expand_step) \
 	{ \
 		prefix##_t* a = n2_sorted_array_alloc(state, sizeof(type), initial_buffer_size, expand_step, freefunc); \
@@ -2729,6 +2746,7 @@ struct n2_vartable_t
 N2_API n2_vartable_t* n2_vartable_alloc(n2_state_t* state, size_t initial_buffer_size, size_t expand_step);
 N2_API void n2_vartable_free(n2_state_t* state, n2_vartable_t* vartable);
 N2_API n2_variable_t* n2_vartable_peek(n2_vartable_t* vartable, int index);
+N2_API const n2_variable_t* n2_vartable_peekc(const n2_vartable_t* vartable, int index);
 N2_API n2_variable_t* n2_vartable_find(n2_vartable_t* vartable, const char* name);
 N2_API int n2_vartable_register(n2_state_t* state, n2_environment_t* e, n2_vartable_t* vartable, const char* name);
 N2_API size_t n2_vartable_size_named(const n2_vartable_t* vartable);
@@ -2957,6 +2975,7 @@ struct n2_codeline_t
 	int line_;
 	int column_;// @todo not supported yet
 	const char* line_head_;
+	n2_intset_t relative_var_indices_;
 };
 
 N2_DECLARE_TSORTED_ARRAY(n2_codeline_t, void, n2_pc_t, n2_codelinetable, N2_API);
@@ -2994,8 +3013,10 @@ N2_API const n2_codeline_t* n2_codeimage_find_codeline_from_pc(const n2_codeimag
 enum n2_codeimage_dump_e
 {
 	N2_CODEIMAGE_DUMP_CODELINES = 0x01,
+	N2_CODEIMAGE_DUMP_RELATIVE_VARS = 0x02,
 
-	N2_CODEIMAGE_DUMP_DEFAULT = N2_CODEIMAGE_DUMP_CODELINES
+	N2_CODEIMAGE_DUMP_DEFAULT = (N2_CODEIMAGE_DUMP_CODELINES),
+	N2_CODEIMAGE_DUMP_ALL = 0x0fffffff,
 };
 
 N2_API void n2_codeimage_dump(n2_state_t* state, const n2_codeimage_t* codeimage, const n2_environment_t* e, size_t flags);
