@@ -254,11 +254,34 @@ static n2_bool_t n2ri_do_frame_loop_yield_wait(n2_state_t* state, n2_fiber_t* f)
 {
 	if (f->fiber_state_ != N2_FIBER_STATE_YIELD_AWAIT) { return N2_FALSE; }
 
-	const n2_valint_t wait_ms = f->yield_await_duration_ms_;
+	const n2_valint_t raw_wait_ms = f->yield_await_duration_ms_;
 	const n2_valint_t exit_margin = N2_MAX(0, state->config_.standard_await_exit_margin_);
-	if (wait_ms > exit_margin)
+	const n2_valint_t wait_ms = raw_wait_ms - exit_margin;
+	if (wait_ms > 0)
 	{
-		SDL_Delay(N2_SCAST(Uint32, wait_ms - exit_margin));// ちょっと早めに抜ける
+		if (state->config_.standard_await_step_duration_ > 0 && wait_ms > state->config_.standard_await_step_duration_)
+		{
+			const Uint64 wait_start = SDL_GetPerformanceCounter();
+			const Uint64 freq = SDL_GetPerformanceFrequency();
+			const Uint64 wait_end = wait_start + freq * N2_SCAST(Uint64, wait_ms) / 1000;
+
+			Uint64 cur_counter = wait_start;
+
+			// ステップ毎に待つ
+			for (;;)
+			{
+				if (cur_counter >= wait_end) { break; }
+				const Uint64 step_wait_ms = N2_MIN((wait_end - cur_counter) * 1000 / freq, N2_SCAST(Uint64, state->config_.standard_await_step_duration_));
+				SDL_Delay(N2_MAX(N2_SCAST(Uint32, step_wait_ms), 1));
+				cur_counter = SDL_GetPerformanceCounter();
+
+				if (!n2_state_loop_frame(state)) { break; }
+			}
+		}
+		else
+		{
+			SDL_Delay(N2_SCAST(Uint32, wait_ms));// ちょっと早めに抜ける
+		}
 	}
 
 	// 待ったので、最終時間をここに設定

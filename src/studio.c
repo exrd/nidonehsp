@@ -9,6 +9,8 @@
 #include <nidonehsp.h>
 #include <SDL.h>
 
+#define N2RI_DEBUG			(0)
+
 enum
 {
 	MODE_PREVIEW = 0,
@@ -484,6 +486,7 @@ int main(int argc, char* argv[])
 	opts.define_macros_ = n2ai_define_macros;
 
 	// テスト用
+#if N2RI_DEBUG
 	{
 		//opts.startup_script_ = "../demo/main.nhsp";
 
@@ -503,6 +506,7 @@ int main(int argc, char* argv[])
 		//opts.include_paths_[opts.include_paths_count_++] = "./ipath";
 		//opts.define_macros_[opts.define_macros_count_++] = "TESTDEF=12";
 	}
+#endif
 
 	// コマンド引数
 	{
@@ -957,6 +961,16 @@ int main(int argc, char* argv[])
 
 			n2_state_t* state = n2_state_alloc(&config);
 
+#if N2RI_DEBUG && 0
+			{
+				n2_str_t relpath;
+				n2_str_init(&relpath);
+				n2_str_set(state, &relpath, "../demo", SIZE_MAX);
+				n2ri_change_cwd(state, &relpath);
+				n2_str_teardown(state, &relpath);
+			}
+#endif
+
 			n2_state_bind_basics(state);
 			n2_state_bind_standards(state);
 			n2ai_apply_opts_to_state_bindings(state, &opts);
@@ -1030,7 +1044,9 @@ int main(int argc, char* argv[])
 			case MODE_PREVIEW:
 				{
 					// プレビュー実行
+#if N2RI_DEBUG
 					//n2_codeimage_dump(state, state->environment_->codeimage_, state->environment_, N2_CODEIMAGE_DUMP_DEFAULT);
+#endif
 
 					n2ri_apply_packopt_from_ppc(state);// プリプロセス結果から適用できるオプションを適用
 

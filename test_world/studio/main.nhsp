@@ -36,9 +36,11 @@ newmod modvar, moda
 repeat
 	gmode 0
 	color 128, 128, 128 : boxf
-	pos mousex, mousey : gmode 3, 64, 64, 255 : grotate 1, , , deg2rad(cnt), 128, 128
+	pos mousex, mousey
+	gmode 3, 64, 64, 255 : grotate 1, , , deg2rad(cnt), 128, 128
+	//picload "icon.png", 1
 	font "Stick", 36
-	gmode 3, , , 128 : pos 10, 60 : color : mes `counter=${cnt}\uf381`, mesopt_gmode
+	gmode 3, , , 128 : pos 10, 300 : color : mes `counter=${cnt}\uf381`, mesopt_gmode
 	color 200, 100, 100 : boxf 20, 100, 200, 150
 	color 255, 255, 255 : pos 20, 100 : picmes@n2 `魅惑の文字に魅せられて`, 48, 1
 	font "" : gmode 0

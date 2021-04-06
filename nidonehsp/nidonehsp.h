@@ -427,6 +427,7 @@
 #define N2_DEFAULT_REFERRENCE_HSPVER				(0x3601)
 
 #define N2S_DEFAULT_WINDOW_NUM						(128)
+#define N2S_DEFAULT_AWAIT_STEP_DURATION				(16)
 #define N2S_DEFAULT_AWAIT_EXIT_MARGIN				(N2_PLATFORM_IS_WINDOWS ? 3 : 1)
 #define N2S_DEFAULT_WINDOW_WIDTH					(640)
 #define N2S_DEFAULT_WINDOW_HEIGHT					(480)
@@ -4757,6 +4758,9 @@ struct n2_state_config_t
 
 	// n2s_window_tの（最大）数
 	size_t standard_window_num_;// = N2S_DEFAULT_WINDOW_NUM
+
+	// awaitのステップ
+	n2_valint_t standard_await_step_duration_;// = N2S_DEFAULT_AWAIT_STEP_DURATION
 
 	// awaitの早期解除
 	n2_valint_t standard_await_exit_margin_;// = N2S_DEFAULT_AWAIT_EXIT_MARGIN
