@@ -1229,4 +1229,4 @@ in English:
 
 現状、Windows のバイナリではライセンス表記は必要ありません。
 
-[1]:developmentEnvironment.md
+[1]:developEnvironment.md
