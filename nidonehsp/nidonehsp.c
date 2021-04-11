@@ -17902,6 +17902,8 @@ static n2s_environment_t* n2si_environment_alloc(n2_state_t* state, const char**
 		n2s_windowarray_push(state, se->windows_, &wnull);
 	}
 
+	se->widget_value_dirty_count_ = 0;
+
 	se->commandbuffer_ = n2s_commandbuffer_alloc(state, state->config_.standard_command_num_, state->config_.standard_vertex_num_, state->config_.standard_index_num_, state->config_.standard_command_data_num_);
 	se->syscommandbuffer_ = n2s_commandbuffer_alloc(state, 16, 256, 256, 256);
 
@@ -18878,6 +18880,13 @@ static n2_bool_t n2si_environment_present_widgets(n2_state_t* state, n2s_environ
 	// 入力処理
 	n2si_environemnt_input_gui(state, se, w);
 
+#define N2SI_WIDGET_DIRTY(widget) \
+	do { \
+		++widget->value_dirty_count_; \
+		/*++w->widget_value_dirty_count_;*/ \
+		++se->widget_value_dirty_count_; \
+	} while (0)
+
 	// キャンバスとして使う
 	{
 		const float width = N2_SCAST(float, w->width_);
@@ -18913,14 +18922,14 @@ static n2_bool_t n2si_environment_present_widgets(n2_state_t* state, n2s_environ
 			case N2S_WIDGET_BUTTON:
 				nk_layout_space_push(c, nk_rect(widget->position_.x_, widget->position_.y_, widget->size_.x_, widget->size_.y_));
 				n2_str_fmt_to(state, &widgetlabel, "%s", widget->label_.str_);
-				if (nk_button_label(c, widgetlabel.str_)) { ++widget->value_dirty_count_; }
+				if (nk_button_label(c, widgetlabel.str_)) { N2SI_WIDGET_DIRTY(widget); }
 				break;
 			case N2S_WIDGET_CHECKBOX:
 				{
 					nk_layout_space_push(c, nk_rect(widget->position_.x_, widget->position_.y_, widget->size_.x_, widget->size_.y_));
 					n2_str_fmt_to(state, &widgetlabel, "%s", widget->label_.str_);
 					nk_bool active = widget->ivalue_ ? nk_true : nk_false;
-					if (nk_checkbox_label(c, widgetlabel.str_, &active)) { ++widget->value_dirty_count_; widget->ivalue_ = !widget->ivalue_; }
+					if (nk_checkbox_label(c, widgetlabel.str_, &active)) { N2SI_WIDGET_DIRTY(widget); widget->ivalue_ = !widget->ivalue_; }
 				}
 				break;
 			case N2S_WIDGET_INPUT:
@@ -18934,7 +18943,7 @@ static n2_bool_t n2si_environment_present_widgets(n2_state_t* state, n2s_environ
 					widget->strvalue_.size_ = N2_SCAST(size_t, len);
 					widget->strvalue_.str_[widget->strvalue_.size_] = '\0';
 					const nk_flags comit_flags = NK_EDIT_DEACTIVATED;
-					if (action & comit_flags) { ++widget->value_dirty_count_; }
+					if (action & comit_flags) { N2SI_WIDGET_DIRTY(widget); }
 				}
 				break;
 			default:
@@ -18952,6 +18961,8 @@ static n2_bool_t n2si_environment_present_widgets(n2_state_t* state, n2s_environ
 			c->style.window.fixed_background = window_background;
 		}
 	}
+
+#undef N2SI_WIDGET_DIRTY
 
 	// 実際の描画
 	n2si_environemnt_draw_gui(state, se, w, framew, frameh);
@@ -19099,7 +19110,7 @@ static void n2si_environment_present_window(n2_state_t* state, n2s_environment_t
 
 static n2_bool_t n2si_environment_update_widget_dirty(n2_state_t* state, n2_fiber_t* f, n2s_window_t* w);
 
-static void n2si_environment_frame_update(n2_state_t* state, n2s_environment_t* se)
+static n2_bool_t n2si_environment_frame_update(n2_state_t* state, n2s_environment_t* se)
 {
 #if N2_CONFIG_USE_SDL_LIB
 	// flush all command
@@ -19279,8 +19290,10 @@ static void n2si_environment_frame_update(n2_state_t* state, n2s_environment_t* 
 		n2s_window_t* w = n2s_windowarray_peekv(se->windows_, N2_SCAST(int, i), NULL);
 		if (!w) { continue; }
 
-		n2si_environment_update_widget_dirty(state, state->main_fiber_, w);
+		if (!n2si_environment_update_widget_dirty(state, state->main_fiber_, w)) { return N2_FALSE; }
 	}
+
+	return N2_TRUE;
 }
 
 //=============================================================================
@@ -23768,7 +23781,10 @@ N2_API n2_bool_t n2_state_loop_frame(n2_state_t* state)
 
 	n2_bool_t res = N2_TRUE;
 
-	n2si_environment_frame_update(state, se);
+	if (!n2si_environment_frame_update(state, se))
+	{
+		res = N2_FALSE;
+	}
 
 	if (se->is_quit_requested_)
 	{
@@ -23776,6 +23792,55 @@ N2_API n2_bool_t n2_state_loop_frame(n2_state_t* state)
 	}
 
 	return res;
+}
+
+N2_API n2_bool_t n2_state_do_frame_loop_yield_wait(n2_state_t* state, n2_fiber_t* f)
+{
+	if (f->fiber_state_ != N2_FIBER_STATE_YIELD_AWAIT) { return N2_FALSE; }
+
+#if N2_CONFIG_USE_SDL_LIB
+	const n2_valint_t raw_wait_ms = f->yield_await_duration_ms_;
+	const n2_valint_t exit_margin = N2_MAX(0, state->config_.standard_await_exit_margin_);
+	const n2_valint_t wait_ms = raw_wait_ms - exit_margin;
+	if (wait_ms > 0)
+	{
+		if (state->config_.standard_await_step_duration_ > 0 && wait_ms > state->config_.standard_await_step_duration_)
+		{
+			const Uint64 wait_start = SDL_GetPerformanceCounter();
+			const Uint64 freq = SDL_GetPerformanceFrequency();
+			const Uint64 wait_end = wait_start + freq * N2_SCAST(Uint64, wait_ms) / 1000;
+
+			Uint64 cur_counter = wait_start;
+
+			const size_t prev_widget_dirty_count = state->environment_->standard_environment_->widget_value_dirty_count_;
+
+			// ステップ毎に待つ
+			for (;;)
+			{
+				if (cur_counter >= wait_end) { break; }
+				const Uint64 step_wait_ms = N2_MIN((wait_end - cur_counter) * 1000 / freq, N2_SCAST(Uint64, state->config_.standard_await_step_duration_));
+				SDL_Delay(N2_MAX(N2_SCAST(Uint32, step_wait_ms), 1));
+				cur_counter = SDL_GetPerformanceCounter();
+
+				if (!n2_state_loop_frame(state)) { break; }
+				if (prev_widget_dirty_count != state->environment_->standard_environment_->widget_value_dirty_count_) { break; }// ウィジェットに変化があったら待ちをキャンセル
+			}
+		}
+		else
+		{
+			SDL_Delay(N2_SCAST(Uint32, wait_ms));// ちょっと早めに抜ける
+		}
+	}
+
+	// 待ったので、最終時間をここに設定
+	if (state->environment_ && state->environment_->standard_environment_)
+	{
+		state->environment_->standard_environment_->last_async_time_ = SDL_GetPerformanceCounter();
+	}
+#else
+	N2_UNUSE(state);
+#endif
+	return N2_TRUE;
 }
 
 N2_API n2_bool_t n2_state_is_quit_requested(const n2_state_t* state)

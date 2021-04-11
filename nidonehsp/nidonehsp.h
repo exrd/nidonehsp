@@ -4325,6 +4325,7 @@ struct n2s_environment_t
 
 	int selected_window_index_;
 	n2s_windowarray_t* windows_;
+	size_t widget_value_dirty_count_;
 
 	n2s_commandbuffer_t* commandbuffer_;
 	n2s_commandbuffer_t* syscommandbuffer_;
@@ -4907,6 +4908,9 @@ N2_API n2_bool_t n2_state_execute(n2_state_t* state);
 
 // ループ実行（外部実行用）
 N2_API n2_bool_t n2_state_loop_frame(n2_state_t* state);
+
+// await処理
+N2_API n2_bool_t n2_state_do_frame_loop_yield_wait(n2_state_t* state, n2_fiber_t* f);
 
 // 終了する？
 N2_API n2_bool_t n2_state_is_quit_requested(const n2_state_t* state);

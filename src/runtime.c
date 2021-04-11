@@ -189,7 +189,7 @@ static void n2ri_mainloop(void* user)
 	if (!n2_state_loop_frame(context->state_)) { return; }
 
 	// await状態の待ち
-	n2ri_do_frame_loop_yield_wait(state, f);
+	n2_state_do_frame_loop_yield_wait(state, f);
 }
 
 // スタートアップ

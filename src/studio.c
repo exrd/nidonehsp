@@ -961,7 +961,7 @@ int main(int argc, char* argv[])
 
 			n2_state_t* state = n2_state_alloc(&config);
 
-#if N2RI_DEBUG && 0
+#if N2RI_DEBUG && 1
 			{
 				n2_str_t relpath;
 				n2_str_init(&relpath);
@@ -1073,7 +1073,7 @@ int main(int argc, char* argv[])
 						}
 
 						// await状態の待ち
-						if (!n2ri_do_frame_loop_yield_wait(state, f))
+						if (!n2_state_do_frame_loop_yield_wait(state, f))
 						{
 							// 待ちが存在しないので適当な待ちを入れる
 							SDL_Delay(n2ri_default_frame_delay);
@@ -1630,7 +1630,7 @@ int main(int argc, char* argv[])
 							}
 
 							// await状態の待ち
-							if (!n2ri_do_frame_loop_yield_wait(state, f))
+							if (!n2_state_do_frame_loop_yield_wait(state, f))
 							{
 								// 待ちが存在しないので適当な待ちを入れる
 								SDL_Delay(n2ri_default_frame_delay);
