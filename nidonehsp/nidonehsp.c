@@ -26549,7 +26549,6 @@ static int n2si_bifunc_screen(const n2_funcarg_t* arg)
 		n2si_window_reset_state(arg->state_, se, mw);
 		if (mw->window_)
 		{
-			SDL_ShowWindow(mw->window_);
 			if (mw->width_ != pw || mw->height_ != ph)
 			{
 				n2si_texturebuffer_resize(arg->state_, mw->texturebuffer_, mw->width_, mw->height_, N2_FALSE);
@@ -26562,6 +26561,8 @@ static int n2si_bifunc_screen(const n2_funcarg_t* arg)
 					SDL_SetWindowPosition(mw->window_, posx - (N2_SCAST(int, mw->width_) - N2_SCAST(int, pw)) / 2, posy - (N2_SCAST(int, mw->height_) - N2_SCAST(int, ph)) / 2);
 				}
 			}
+			n2si_environment_present_window(arg->state_, se, mw);// 表示する前に内容を更新しておく
+			SDL_ShowWindow(mw->window_);
 			SDL_RaiseWindow(mw->window_);
 		}
 		nw = mw;
