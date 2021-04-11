@@ -9,7 +9,7 @@
 #include <nidonehsp.h>
 #include <SDL.h>
 
-#define N2RI_DEBUG			(1)
+#define N2RI_DEBUG			(0)
 
 enum
 {
