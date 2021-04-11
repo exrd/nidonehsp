@@ -3,8 +3,10 @@
 
 #module "miniJumpFrame"
 
-#define ctype implToScrX(%1) SCREEN_SIZEX / 2 + ((%1) - cameraX)
-#define ctype implToScrY(%1) SCREEN_SIZEY / 2 - ((%1) - cameraY)
+#define ctype implToScrX(%1) \
+	SCREEN_SIZEX / 2 + ((%1) - cameraX)
+#define ctype implToScrY(%1) \
+	SCREEN_SIZEY / 2 - ((%1) - cameraY)
 
 #deffunc global miniJumpFrameInit
 	// グローバル初期化
@@ -157,7 +159,7 @@
 			plVX = plSpdX * double(tX)
 		} else {
 			// 慣性計算
-			tAX = plAirAX * double(tX) * ease@n2(ease_cubic_out, absf(plVX) / plSpdX, 1, 0.2) + (tx then 0.0 else plAirLX * -plVX)
+			tAX = plAirAX * double(tX) * ease@n2(ease_cubic_out, absf(plVX) / plSpdX, 1, 0.4) + (tx then 0.0 else plAirLX * -plVX)
 		}
 	}
 	// 加速度
