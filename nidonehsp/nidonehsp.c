@@ -8333,6 +8333,18 @@ static n2_ast_node_t* n2i_parser_parse_control_safe(n2_state_t* state, n2_parser
 			n2_ast_node_t* true_statements = n2_ast_node_alloc(state, N2_AST_NODE_BLOCK_STATEMENTS, NULL, NULL);
 			n2_ast_node_t* false_statements = NULL;
 			n2_ast_node_t* tfs_cur = NULL;
+			if (next->token_ == N2_TOKEN_EOL)
+			{
+				const n2_token_t* nn = n2_parser_read_token(state, p);
+				if (nn->token_ == N2_TOKEN_LBRACE)
+				{
+					next = nn;
+				}
+				else
+				{
+					n2_parser_unread_token(p, 1);
+				}
+			}
 			if (next->token_ == N2_TOKEN_LBRACE)
 			{
 				tfs_cur = true_statements;
@@ -8426,6 +8438,18 @@ static n2_ast_node_t* n2i_parser_parse_control_safe(n2_state_t* state, n2_parser
 				false_statements = n2_ast_node_alloc(state, N2_AST_NODE_BLOCK_STATEMENTS, NULL, NULL);
 
 				const n2_token_t* nextf = n2_parser_read_token(state, p);
+				if (nextf->token_ == N2_TOKEN_EOL)
+				{
+					const n2_token_t* nnf = n2_parser_read_token(state, p);
+					if (nnf->token_ == N2_TOKEN_LBRACE)
+					{
+						nextf = nnf;
+					}
+					else
+					{
+						n2_parser_unread_token(p, 1);
+					}
+				}
 				if (nextf->token_ == N2_TOKEN_LBRACE)
 				{
 					tfs_cur = false_statements;

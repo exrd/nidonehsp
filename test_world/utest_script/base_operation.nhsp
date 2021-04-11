@@ -75,6 +75,21 @@ mes "controlflow"
 		if (10 != 10) { i = 1 : raise }
 		else { i = 2 }
 		if (i != 2) { raise }
+	i = 0 
+		if (10 != 10)
+		{ i = 1 : raise }
+		else
+		{ i = 2 }
+		if (i != 2) { raise }
+#if 0// これはダメ：複数行後のブレース開始は認められない
+	i = 0 
+		if (10 != 10)
+		
+		{ i = 1 : raise }
+		else
+		{ i = 2 }
+		if (i != 2) { raise }
+#endif
 
 	sum = 0 : gcnt = 0
 	repeat 10
