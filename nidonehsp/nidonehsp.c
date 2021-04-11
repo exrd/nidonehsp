@@ -26248,6 +26248,7 @@ static int n2si_bifunc_gsel(const n2_funcarg_t* arg)
 			break;
 		case 1:
 		case 2:
+			n2si_environment_present_window(arg->state_, se, nw);// 表示する前に内容を更新しておく
 			SDL_ShowWindow(nw->window_); SDL_RaiseWindow(nw->window_);
 #if N2_PLATFORM_IS_WINDOWS
 			SDL_SysWMinfo wminfo;
