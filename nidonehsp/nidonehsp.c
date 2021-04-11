@@ -6765,6 +6765,7 @@ N2_API void n2_tokenize_context_init(n2_state_t* state, n2_tokenize_context_t* c
 	c->sourcecode_ = sourcecode;
 	c->package_ = sourcecode->package_.str_;
 	c->script_ = sourcecode->src_ppscript_.str_;
+	c->ignore_backslash_eol_ = N2_FALSE;
 	c->template_str_depth_ = 0;
 	for (size_t i = 0; i < N2_MAX_TEMPLATE_STRING_DEPTH; ++i)
 	{
@@ -7083,7 +7084,24 @@ restart:
 			token->token_ = N2_TOKEN_OP_DIV;
 		}
 		break;
-	case '\\':	++p; if (p[0] == '=') { ++p; token->token_ = N2_TOKEN_MOD_ASSIGN; } else { token->token_ = N2_TOKEN_OP_MOD; } break;
+	case '\\':
+		++p;
+		if (p[0] == '=')
+		{
+			++p;
+			token->token_ = N2_TOKEN_MOD_ASSIGN;
+		}
+		else if (p[0] == '\n' && c->ignore_backslash_eol_)
+		{
+			++p;
+			N2I_TK_NEXT_LINE();
+			goto restart;
+		}
+		else
+		{
+			token->token_ = N2_TOKEN_OP_MOD;
+		}
+		break;
 
 		// 代入
 	case '=':
@@ -13921,9 +13939,6 @@ static n2_bool_t n2i_pp_preprocess_line_to(n2_state_t* state, n2_pp_context_t* p
 						// パラメータなし
 						n2_str_set(state, &nmacro->replacing_, p->tokenize_context_.script_ + lt->cursor_begin_, SIZE_MAX);
 					}
-
-					// 改行削除
-					n2_str_replace_pattern(state, &nmacro->replacing_, "\\\n", SIZE_MAX, "\n", SIZE_MAX);
 				}
 			}
 			break;
@@ -15156,67 +15171,83 @@ static n2_bool_t n2i_pp_preprocess_line_expand_to(n2_state_t* state, n2_pp_conte
 								goto fail_exit;
 							}
 						}
+					}
 
-						// 置き換え
+					// 置き換え（一部のトークンをスキップするので、引数がなくても単純な文字列置き換えにならない）
+					{
+						inner_p = n2_parser_alloc(state);
+						n2_parser_rewind_raw(state, inner_p, package, macro->replacing_.str_);
+
+						const n2_token_t* iprev = NULL;
+						for (;;)
 						{
-							inner_p = n2_parser_alloc(state);
-							n2_parser_rewind_raw(state, inner_p, package, macro->replacing_.str_);
+							const n2_token_t* ist = n2_parser_read_token(state, inner_p);
+							if (ist->token_ == N2_TOKEN_EOF) { break; }
 
-							const n2_token_t* iprev = NULL;
-							for (;;)
+							// バックスラッシュ改行は意味的にスキップ
+							if (ist->token_ == N2_TOKEN_OP_MOD && !ist->right_space_)
 							{
-								const n2_token_t* ist = n2_parser_read_token(state, inner_p);
-								if (ist->token_ == N2_TOKEN_EOF) { break; }
-
-								if (ist->token_ == N2_TOKEN_PP_ARG_INDICATOR)
+								const n2_token_t* istn = n2_parser_read_token(state, inner_p);
+								if (istn->token_ == N2_TOKEN_EOL)
 								{
-									const n2_token_t* it = n2_parser_read_token(state, inner_p);
-									if (it->token_ != N2_TOKEN_INT || it->left_space_)
-									{
-										N2I_PP_RAISE(state, "プリプロセス：マクロ展開（%s）に失敗：展開後のパラメータ%%のあと、スペースなしで数値を入れる必要があります", macro->name_);
-										goto fail_exit;
-									}
-
-									const n2_valint_t itindex = N2_SCAST(n2_valint_t, N2_STRTOLL(it->content_, NULL, 0) - 1);
-									if (itindex < 0 || itindex > N2_SCAST(n2_valint_t, n2_ppmacroparamarray_size(macro->params_)))
-									{
-										N2I_PP_RAISE(state, "プリプロセス：マクロ展開（%s）に失敗：パラメータ%が存在しません", macro->name_);
-										goto fail_exit;
-									}
-									const n2_pp_macro_param_t* mp = n2_ppmacroparamarray_peek(macro->params_, N2_SCAST(int, itindex));
-									N2_ASSERT(mp);
-									const n2_pp_macro_arg_t* ma = n2_ppmacroargarray_peek(macroargs, N2_SCAST(int, itindex));
-
-									n2_str_append(state, dst, ma && ma->content_.size_ > 0 ? ma->content_.str_ : mp->default_param_.str_, SIZE_MAX);
-									iprev = it;
+									iprev = istn;
+									continue;
 								}
 								else
 								{
-									if (iprev)
-									{
-										n2_str_append(state, dst, macro->replacing_.str_ + iprev->cursor_end_, ist->cursor_begin_ - iprev->cursor_end_);
-									}
-									n2_str_append(state, dst, macro->replacing_.str_ + ist->cursor_begin_, ist->cursor_end_ - ist->cursor_begin_);
-									iprev = ist;
+									n2_parser_unread_token(inner_p, 1);
 								}
 							}
 
-							if (iprev)
+							if (ist->token_ == N2_TOKEN_PP_ARG_INDICATOR)
 							{
-								n2_str_append(state, dst, macro->replacing_.str_ + iprev->cursor_end_, SIZE_MAX);
-							}
+								const n2_token_t* it = n2_parser_read_token(state, inner_p);
+								if (it->token_ != N2_TOKEN_INT || it->left_space_)
+								{
+									N2I_PP_RAISE(state, "プリプロセス：マクロ展開（%s）に失敗：展開後のパラメータ%%のあと、スペースなしで数値を入れる必要があります", macro->name_);
+									goto fail_exit;
+								}
 
-							n2_parser_free(state, inner_p);
-							inner_p = NULL;
+								const n2_valint_t itindex = N2_SCAST(n2_valint_t, N2_STRTOLL(it->content_, NULL, 0) - 1);
+								if (itindex < 0 || itindex > N2_SCAST(n2_valint_t, n2_ppmacroparamarray_size(macro->params_)))
+								{
+									N2I_PP_RAISE(state, "プリプロセス：マクロ展開（%s）に失敗：パラメータ%が存在しません", macro->name_);
+									goto fail_exit;
+								}
+								const n2_pp_macro_param_t* mp = n2_ppmacroparamarray_peek(macro->params_, N2_SCAST(int, itindex));
+								N2_ASSERT(mp);
+								N2_ASSERT(macroargs);
+								const n2_pp_macro_arg_t* ma = n2_ppmacroargarray_peek(macroargs, N2_SCAST(int, itindex));
+								N2_ASSERT(ma);
+
+								n2_str_append(state, dst, ma && ma->content_.size_ > 0 ? ma->content_.str_ : mp->default_param_.str_, SIZE_MAX);
+								iprev = it;
+							}
+							else
+							{
+								if (iprev)
+								{
+									n2_str_append(state, dst, macro->replacing_.str_ + iprev->cursor_end_, ist->cursor_begin_ - iprev->cursor_end_);
+								}
+								n2_str_append(state, dst, macro->replacing_.str_ + ist->cursor_begin_, ist->cursor_end_ - ist->cursor_begin_);
+								iprev = ist;
+							}
 						}
 
+						// EOF直前のトークンからEOFまで
+						if (iprev)
+						{
+							n2_str_append(state, dst, macro->replacing_.str_ + iprev->cursor_end_, SIZE_MAX);
+						}
+
+						n2_parser_free(state, inner_p);
+						inner_p = NULL;
+					}
+
+					if (macroargs)
+					{
 						n2_ppmacroargarray_free(state, macroargs);
 						macroargs = NULL;
-					}
-					else
-					{
-						// 単純置き換え
-						n2_str_append(state, dst, macro->replacing_.str_, SIZE_MAX);
 					}
 
 					is_replaced = N2_TRUE;

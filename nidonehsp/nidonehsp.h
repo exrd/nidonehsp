@@ -2235,6 +2235,8 @@ struct n2_tokenize_context_t
 	const char* package_;
 	const char* script_;
 
+	n2_bool_t ignore_backslash_eol_;
+
 	size_t template_str_depth_;
 	size_t template_str_levels_[N2_MAX_TEMPLATE_STRING_DEPTH];
 	const n2_token_t* template_str_token_[N2_MAX_TEMPLATE_STRING_DEPTH];
