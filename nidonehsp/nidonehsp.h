@@ -3090,7 +3090,8 @@ enum n2_func_e
 N2_DECLARE_ENUM(n2_funcflag_e);
 enum n2_funcflag_e
 {
-	N2_FUNCFLAG_DEFINED = 0x01
+	N2_FUNCFLAG_DEFINED = 0x01,
+	N2_FUNCFLAG_CONSTEXPR = 0x02,
 };
 
 struct n2_func_t
