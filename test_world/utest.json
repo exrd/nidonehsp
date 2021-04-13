@@ -14,6 +14,10 @@
 			"path": "ppinc.nhsp"
 		},
 		{
+			"name": "Define",
+			"path": "define.nhsp"
+		},
+		{
 			"name": "BaseOperation",
 			"path": "base_operation.nhsp"
 		},

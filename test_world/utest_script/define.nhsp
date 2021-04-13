@@ -1,0 +1,38 @@
+﻿
+//=============================================================================
+// define
+
+#define A 
+
+i = 0
+#ifdef A
+	i = 2
+#else
+	i = 3
+#endif
+	if (i ! 2) { raise }
+
+#undef A
+
+i = 0
+#ifdef A
+	i = 2
+#else
+	i = 3
+#endif
+	if (i ! 3) { raise }
+
+#define A a@b
+i = 0
+A = 5
+i = A
+	if (i ! 5) { raise }
+
+#undef A
+#define A \
+	10 + \
+	20
+i = 0
+i = A
+	if (i ! 30) { raise }
+

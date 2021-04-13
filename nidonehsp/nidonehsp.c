@@ -4,6 +4,8 @@
 #define N2_MPI	(3.141592653589793238)
 #define N2_ME	(2.718281828459045235)
 
+#define N2I_MAX_MACRO_EXPAND_DEPTH	(256)
+
 // ヘッダ群
 #if N2_COMPILER_IS_MSVC
 #pragma warning(push, 0)// disable all
@@ -6753,6 +6755,7 @@ static void n2i_tokenize_context_init(n2_tokenize_context_t* c)
 	c->sourcecode_ = NULL;
 	c->package_ = NULL;
 	c->script_ = NULL;
+	c->ignore_backslash_eol_ = N2_FALSE;
 	c->cursor_ = 0;
 	c->line_ = 0;
 	c->line_head_ = NULL;
@@ -6913,7 +6916,7 @@ N2_API n2_bool_t n2_tokenize_context_next(n2_state_t* state, n2_token_t* to, n2_
 	token->content_ = NULL;
 	token->cursor_begin_ = token->cursor_end_ = c->cursor_;
 	token->left_space_ = N2_FALSE;
-	token->right_space_ =N2_FALSE;
+	token->right_space_ = N2_FALSE;
 
 	const char* pp = c->script_ + c->cursor_;
 	const char* p = c->script_ + c->cursor_;
@@ -8663,6 +8666,7 @@ static n2_ast_node_t* n2i_parser_parse_arguments(n2_state_t* state, n2_parser_t*
 {
 	n2_ast_node_t* res = n2_ast_node_alloc(state, N2_AST_NODE_ARGUMENTS, NULL, NULL);
 	n2_ast_node_t* args = res;
+	n2_bool_t last_token_must_be_comma = N2_FALSE;
 
 	for (;;)
 	{
@@ -8672,6 +8676,14 @@ static n2_ast_node_t* n2i_parser_parse_arguments(n2_state_t* state, n2_parser_t*
 		{
 			n2_parser_unread_token(p, 1);
 			break;
+		}
+
+		// 最後のコンマチェック
+		if (last_token_must_be_comma)
+		{
+			N2I_PS_RAISE(state, token, "引数間にはカンマが必要です");
+			n2_ast_node_free(state, args);
+			return NULL;
 		}
 
 		// 引数省略
@@ -8691,9 +8703,10 @@ static n2_ast_node_t* n2i_parser_parse_arguments(n2_state_t* state, n2_parser_t*
 		args->right_ = n2_ast_node_alloc(state, N2_AST_NODE_ARGUMENTS_PARTS, nextarg, NULL);
 		args = args->right_;
 
-		// 一個先読みでカンマを取り除く
+		// 一個先読みでカンマを取り除く（カンマでない場合、次の引数が必要になるまで後回し）
 		const n2_token_t* ntoken = n2_parser_read_token(state, p);
-		if (ntoken->token_ != N2_TOKEN_COMMA) { n2_parser_unread_token(p, 1); }
+		if (ntoken->token_ == N2_TOKEN_COMMA) { last_token_must_be_comma = N2_FALSE; }
+		else { last_token_must_be_comma = N2_TRUE; n2_parser_unread_token(p, 1); }
 	}
 	return res;
 }
@@ -8875,7 +8888,7 @@ static n2_ast_node_t* n2i_parser_parse_thenelse(n2_state_t* state, n2_parser_t* 
 			goto fail_exit;
 		}
 
-		// 末尾再起と同じ感じでループさせる。左結合じゃなくて右結合なので、ちょっと複雑だがこうする
+		// 末尾再帰と同じ感じでループさせる。左結合じゃなくて右結合なので、ちょっと複雑だがこうする
 	}
 	goto do_exit;
 
@@ -9243,8 +9256,11 @@ static n2_ast_node_t* n2i_parser_parse_term(n2_state_t* state, n2_parser_t* p)
 	}
 	else
 	{
-		n2_ast_node_free(state, node);
-		node = NULL;
+		if (node)
+		{
+			n2_ast_node_free(state, node);
+			node = NULL;
+		}
 	}
 	return node;
 }
@@ -13697,9 +13713,9 @@ static n2_bool_t n2i_pp_preprocess_line_to(n2_state_t* state, n2_pp_context_t* p
 			n2_str_clear(dst);
 
 			++replaced_loop;
-			if (replaced_loop > 256)
+			if (replaced_loop > N2I_MAX_MACRO_EXPAND_DEPTH)
 			{
-				N2I_PP_RAISE(state, "マクロの再起展開が上限数（%d）を突破しました、マクロが無限ループしてる可能性があります", replaced_loop);
+				N2I_PP_RAISE(state, "マクロの再帰展開が上限数（%d）を突破しました、マクロが無限ループしてる可能性があります", N2I_MAX_MACRO_EXPAND_DEPTH);
 				res = N2_FALSE;
 				break;
 			}
@@ -13991,6 +14007,7 @@ static n2_bool_t n2i_pp_preprocess_line_to(n2_state_t* state, n2_pp_context_t* p
 
 					inner_p = n2_parser_alloc(state);
 					n2_parser_rewind_raw(state, inner_p, package, inner_eval_exp.str_);
+					inner_p->tokenize_context_.ignore_backslash_eol_ = N2_TRUE;
 
 					inner_p->tokenize_context_.line_ = ppc->line_;// ラインを強制的に同期
 
@@ -14096,6 +14113,7 @@ static n2_bool_t n2i_pp_preprocess_line_to(n2_state_t* state, n2_pp_context_t* p
 
 					inner_p = n2_parser_alloc(state);
 					n2_parser_rewind_raw(state, inner_p, package, inner_eval_exp.str_);
+					inner_p->tokenize_context_.ignore_backslash_eol_ = N2_TRUE;
 
 					inner_p->tokenize_context_.line_ = ppc->line_;// ラインを強制的に同期
 
@@ -14214,6 +14232,7 @@ static n2_bool_t n2i_pp_preprocess_line_to(n2_state_t* state, n2_pp_context_t* p
 
 					inner_p = n2_parser_alloc(state);
 					n2_parser_rewind_raw(state, inner_p, package, inner_eval_exp.str_);
+					inner_p->tokenize_context_.ignore_backslash_eol_ = N2_TRUE;
 
 					inner_p->tokenize_context_.line_ = ppc->line_;// ラインを強制的に同期
 
@@ -14314,6 +14333,7 @@ static n2_bool_t n2i_pp_preprocess_line_to(n2_state_t* state, n2_pp_context_t* p
 
 				inner_p = n2_parser_alloc(state);
 				n2_parser_rewind_raw(state, inner_p, package, inner_eval_exp.str_);
+				inner_p->tokenize_context_.ignore_backslash_eol_ = N2_TRUE;
 
 				inner_p->tokenize_context_.line_ = ppc->line_;// ラインを強制的に同期
 
@@ -19695,6 +19715,7 @@ N2_API n2_bool_t n2_environment_load_str(n2_state_t* state, n2_pp_context_t* ppc
 	// パース
 	p = n2_parser_alloc(state);
 	n2_parser_rewind(state, p, rootsourcecode);
+	p->tokenize_context_.ignore_backslash_eol_ = N2_TRUE;
 
 	staging_ast = n2_parser_parse(state, p);
 	if (!staging_ast) { goto fail_exit; }
