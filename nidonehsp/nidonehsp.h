@@ -444,7 +444,7 @@
 
 #define N2S_DEFAULT_FONT_FALLBACK_CODEPOINT			0x3f// '?' in unicode
 #define N2S_DEFAULT_FONT_ATLAS_WIDTH				(2048)
-#define N2S_DEFAULT_FONT_ATLAS_HEIGHT				(2048)
+#define N2S_DEFAULT_FONT_ATLAS_HEIGHT				(1024)
 #define N2S_DEFAULT_FONT_BAKE_HEIGHT				(18.f)
 #define N2S_DEFAULT_FONT_DRAW_HEIGHT				(18.f)
 
@@ -3904,6 +3904,17 @@ enum n2s_picmesopt_e
 	N2S_PICMESOPT_FLAG_ALPHA_BLEND = 0x1,
 };
 
+N2_DECLARE_ENUM(n2s_sysreq_e);
+enum n2s_sysreq_e
+{
+	N2S_SYSREQ_PLATFORM = 0,
+
+	N2S_SYSREQ_FONT_ATLAS_WIDTH,
+	N2S_SYSREQ_FONT_ATLAS_HEIGHT,
+
+	N2S_MAX_SYSREQ
+};
+
 N2_DECLARE_ENUM(n2sc_sysreq_e);
 enum n2sc_sysreq_e
 {
@@ -3918,6 +3929,7 @@ enum n2sc_sysreq_e
 N2_DECLARE_ENUM(n2sc_platform_e);
 enum n2sc_platform_e
 {
+	N2SC_PLATFORM_UNKNOWN = -1,
 	N2SC_PLATFORM_WINDOWS = 0,
 	N2SC_PLATFORM_IOS,
 	N2SC_PLATFORM_ANDROID,
@@ -3927,6 +3939,8 @@ enum n2sc_platform_e
 
 	N2SC_MAX_PLATFORM
 };
+
+N2_API n2sc_platform_e n2s_convert_platform(int n2platform);
 
 N2_DECLARE_ENUM(n2s_command_e);
 enum n2s_command_e

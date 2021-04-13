@@ -54,9 +54,9 @@
 		tMouseX = mousex : tMouseY = mousey
 	gsel SID_BACK
 		color 128, 128, 128 : boxf
-		font "", 24
+		font "", 20
 		color 255, 255, 255
-		pos 20, 20 : mes `mousex=${tMouseX}, mousey=${tMouseY}`
+		pos 20, 20 : mes `platform=${sysreq@n2(sysreq_platform@n2)}, mouse(X=${tMouseX}, Y=${tMouseY})`
 		pos 240, 60 : mes buttonPushed > 0 then `ボタンが ${buttonPushed} 回押されました` else ""
 		pos 240, 90 : mes `チェック状態 ${checked}`
 		pos 240, 120 : mes `テキスト入力 ${textInput}`

@@ -16779,6 +16779,18 @@ N2_API void n2s_gprogram_draw_cache_reset(n2s_gprogram_draw_cache_t* pdc)
 	pdc->ub_cached_ = (1 << N2S_MAX_GPROGRAM_UNIFORM_BLOCK) - 1;
 }
 
+N2_API n2sc_platform_e n2s_convert_platform(int n2platform)
+{
+	switch (n2platform)
+	{
+	case N2_PLATFORM_WINDOWS: return N2SC_PLATFORM_WINDOWS;
+	case N2_PLATFORM_EMSCRIPTEN: return N2SC_PLATFORM_WEBGL;
+	case N2_PLATFORM_UNIX: return N2SC_PLATFORM_LINUX;
+	default: break;
+	}
+	return N2SC_PLATFORM_UNKNOWN;
+}
+
 N2_API void n2s_command_draw_to(n2s_command_t* c, size_t vertex, size_t index, const n2s_texture_t* texture)
 {
 	c->type_ = N2S_COMMAND_DRAW;
@@ -25274,7 +25286,7 @@ static int n2i_bifunc_strmid(const n2_funcarg_t* arg)
 	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
 	if (arg_num != 3) { n2e_funcarg_raise(arg, "strmid：引数の数（%d）が期待（%d）と違います", arg_num, 3); return -1; }
 	const n2_value_t* val = n2e_funcarg_getarg(arg, 0);
-	if (n2_value_get_type(val) != N2_VALUE_STRING) { n2e_funcarg_raise(arg, "instr：対象が文字列ではありません"); return -1; }
+	if (n2_value_get_type(val) != N2_VALUE_STRING) { n2e_funcarg_raise(arg, "strmid：対象が文字列ではありません"); return -1; }
 	const n2_value_t* offsetval = n2e_funcarg_getarg(arg, 1);
 	const n2_valint_t offset = n2e_funcarg_eval_int(arg, offsetval);
 	const n2_value_t* getval = n2e_funcarg_getarg(arg, 2);
@@ -25487,7 +25499,7 @@ static int n2i_bifunc_cnvstow(const n2_funcarg_t* arg)
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "cnvstow：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
 	n2_value_t* varval = n2e_funcarg_getarg(arg, 0);
 	if (varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "cnvstow：対象の引数が変数ではありません"); return -1; }
-	const n2_value_t* strval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* strval = n2e_funcarg_getarg(arg, 1);
 	n2_str_t* str = n2e_funcarg_eval_str_and_push(arg, strval);
 	n2_str_t* converted = n2e_funcarg_pushs(arg, "");
 	n2_encoding_utf16ne_convert_from_utf8(arg->state_, converted, str->str_, str->size_, '?');
@@ -25518,7 +25530,7 @@ static int n2i_bifunc_cnvstoa(const n2_funcarg_t* arg)
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "cnvstoa：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
 	n2_value_t* varval = n2e_funcarg_getarg(arg, 0);
 	if (varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "cnvstoa：対象の引数が変数ではありません"); return -1; }
-	const n2_value_t* strval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* strval = n2e_funcarg_getarg(arg, 1);
 	n2_str_t* str = n2e_funcarg_eval_str_and_push(arg, strval);
 	n2_str_t* converted = n2e_funcarg_pushs(arg, "");
 	n2_encoding_cp932_convert_from_utf8(arg->state_, converted, str->str_, str->size_, '?');
@@ -25528,6 +25540,38 @@ static int n2i_bifunc_cnvstoa(const n2_funcarg_t* arg)
 	return 0;
 }
 #endif
+
+static int n2i_bifunc_strcodepoints_n2(const n2_funcarg_t* arg)
+{
+	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	if (arg_num != 2) { n2e_funcarg_raise(arg, "strcodepoints@n2：引数の数（%d）が期待（%d）と違います", arg_num, 2); return -1; }
+	n2_value_t* varval = n2e_funcarg_getarg(arg, 0);
+	if (varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "strcodepoints@n2：対象の引数が変数ではありません"); return -1; }
+	if (varval->field_.varvalue_.aptr_ >= 0) { n2e_funcarg_raise(arg, "strcodepoints@n2：対象の変数の配列要素が指定されています"); return -1; }
+	const n2_value_t* strval = n2e_funcarg_getarg(arg, 1);
+	const n2_str_t* str = n2e_funcarg_eval_str_and_push(arg, strval);
+	n2_variable_t* var = varval->field_.varvalue_.var_;
+	size_t varlength[N2_VARIABLE_DIM] = {str->size_ + 1/*at most*/, 0};
+	n2_variable_prepare(arg->state_, var, N2_VALUE_INT, 0, varlength);
+	const char* p = str->str_;
+	const char* e = p + str->size_;
+	size_t i = 0;
+	n2_value_t setval;
+	n2i_value_init(&setval);
+	while (p < e)
+	{
+		n2_unicp_t unicp = 0;
+		p = n2_encoding_utf8_fetch(p, &unicp);
+		n2_value_seti(arg->state_, &setval, N2_SCAST(n2_valint_t, unicp));
+		n2_variable_set(arg->state_, arg->fiber_, var, N2_SCAST(int, i++), &setval);
+	}
+	arg->fiber_->strsize_ = N2_SCAST(n2_valint_t, i);
+	{
+		n2_value_seti(arg->state_, &setval, 0);
+		n2_variable_set(arg->state_, arg->fiber_, var, N2_SCAST(int, i++), &setval);
+	}
+	return 0;
+}
 
 static int n2i_bifunc_reintfb2d_n2(const n2_funcarg_t* arg)
 {
@@ -25816,7 +25860,7 @@ static int n2i_bifunc_delmod(const n2_funcarg_t* arg)
 static int n2i_bifunc_gettime(const n2_funcarg_t* arg)
 {
 	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
-	if (arg_num > 1) { n2e_funcarg_raise(arg, "gettime：引数の数（0 - %d）が期待（%d）と違います", arg_num, 1); return -1; }
+	if (arg_num > 1) { n2e_funcarg_raise(arg, "gettime：引数の数（%d）が期待（0 - %d）と違います", arg_num, 1); return -1; }
 	const n2_value_t* fval = n2e_funcarg_getarg(arg, 0);
 	const n2_valint_t f = fval && fval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, fval) : 0;
 	time_t t = N2_TIME();
@@ -25868,7 +25912,7 @@ static n2_bool_t n2i_bifunc_internal_fssave(const n2_funcarg_t* arg, size_t* dst
 static int n2i_bifunc_bload(const n2_funcarg_t* arg)
 {
 	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
-	if (arg_num < 2 || arg_num > 4) { n2e_funcarg_raise(arg, "bload：引数の数（%d - %d）が期待（%d）と違います", arg_num, 2, 4); return -1; }
+	if (arg_num < 2 || arg_num > 4) { n2e_funcarg_raise(arg, "bload：引数の数（%d）が期待（%d - %d）と違います", arg_num, 2, 4); return -1; }
 	const n2_value_t* filepathval = n2e_funcarg_getarg(arg, 0);
 	N2_ASSERT(filepathval);
 	const n2_str_t* filepath = n2e_funcarg_eval_str_and_push(arg, filepathval);
@@ -25910,7 +25954,7 @@ static int n2i_bifunc_bload(const n2_funcarg_t* arg)
 static int n2i_bifunc_bsave(const n2_funcarg_t* arg)
 {
 	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
-	if (arg_num < 2 || arg_num > 4) { n2e_funcarg_raise(arg, "bsave：引数の数（%d - %d）が期待（%d）と違います", arg_num, 2, 4); return -1; }
+	if (arg_num < 2 || arg_num > 4) { n2e_funcarg_raise(arg, "bsave：引数の数（%d）が期待（%d - %d）と違います", arg_num, 2, 4); return -1; }
 	const n2_value_t* filepathval = n2e_funcarg_getarg(arg, 0);
 	N2_ASSERT(filepathval);
 	const n2_str_t* filepath = n2e_funcarg_eval_str_and_push(arg, filepathval);
@@ -26017,6 +26061,7 @@ static void n2i_environment_bind_basic_builtins(n2_state_t* state, n2_environmen
 		{"cnvatos",				n2i_bifunc_cnvatos},
 		{"cnvstoa",				n2i_bifunc_cnvstoa},
 #endif
+		{"strcodepoints@n2",	n2i_bifunc_strcodepoints_n2},
 		{"reintfb2d@n2",		n2i_bifunc_reintfb2d_n2},
 		{"reintd2fb@n2",		n2i_bifunc_reintd2fb_n2},
 		{"notesel",				n2i_bifunc_notesel},
@@ -26271,6 +26316,50 @@ N2SI_DEFINE_BISYSVAR_SE_SWIN_1I(mesy, 0);
 N2SI_DEFINE_BISYSVAR_SE_SWIN_1I(hwnd, 0);
 N2SI_DEFINE_BISYSVAR_SE_SWIN_1I(hdc, 0);
 N2SI_DEFINE_BISYSVAR_SE_SWIN_1I(hinstance, 0);
+
+static int n2si_bifunc_sysreq_n2(const n2_funcarg_t* arg)
+{
+	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	if (arg_num < 1 || arg_num > 2) { n2e_funcarg_raise(arg, "sysreq@n2：引数の数（%d）が期待（%d - %d）と違います", arg_num, 1, 2); return -1; }
+	const n2_value_t* reqval = n2e_funcarg_getarg(arg, 0);
+	const n2_valint_t req = reqval && reqval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, reqval) : 0;
+	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
+	if (arg_num <= 1)
+	{
+		switch (req)
+		{
+		case N2S_SYSREQ_PLATFORM: n2e_funcarg_pushi(arg, n2s_convert_platform(N2_PLATFORM)); break;
+#if N2_CONFIG_USE_N2_STANDARD
+		case N2S_SYSREQ_FONT_ATLAS_WIDTH: n2e_funcarg_pushi(arg, se ? N2_SCAST(n2_valint_t, se->font_atlas_width_) : 0); break;
+		case N2S_SYSREQ_FONT_ATLAS_HEIGHT: n2e_funcarg_pushi(arg, se ? N2_SCAST(n2_valint_t, se->font_atlas_height_) : 0); break;
+#endif
+		default: n2e_funcarg_raise(arg, "sysreq@n2：リクエストの種類（%" N2_VALINT_PRI "）が不正です", req); return -1;
+		}
+		return 1;
+	}
+	else
+	{
+#define N2I_RAISE_ON_NO_STDENV() \
+	if (!se) { n2e_funcarg_raise(arg, "sysreq@n2：標準環境が未初期かです"); return -1; }
+
+		const n2_value_t* reqsetval = n2e_funcarg_getarg(arg, 1);
+		switch (req)
+		{
+#if N2_CONFIG_USE_N2_STANDARD
+		case N2S_SYSREQ_FONT_ATLAS_WIDTH: case N2S_SYSREQ_FONT_ATLAS_HEIGHT:
+			{
+				N2I_RAISE_ON_NO_STDENV();
+				const n2_valint_t reqset = n2e_funcarg_eval_int(arg, reqsetval);
+				if (reqset <= 0) { n2e_funcarg_raise(arg, "sysreq@n2：設定しようとした値（%" N2_VALINT_PRI "）がアトラステクスチャのサイズとしては不正です", reqset); return -1; }
+				*(req == N2S_SYSREQ_FONT_ATLAS_WIDTH ? &se->font_atlas_width_ : &se->font_atlas_height_) = N2_SCAST(size_t, reqset);
+			}
+			break;
+#endif
+		default: n2e_funcarg_raise(arg, "sysreq@n2：設定できないリクエストの種類（%" N2_VALINT_PRI "）です", req); return -1;
+		}
+		return 0;
+	}
+}
 
 static int n2si_bifunc_gsel(const n2_funcarg_t* arg)
 {
@@ -28082,6 +28171,17 @@ static void n2i_environment_bind_standards_builtins(n2_state_t* state, n2_pp_con
 		n2i_pp_context_register_macro_rawi(state, ppc, "celbitmap_rgb", 0);
 		n2i_pp_context_register_macro_rawi(state, ppc, "celbitmap_bgr", 1);
 		n2i_pp_context_register_macro_rawi(state, ppc, "celbitmap_capture", 16);
+
+		n2i_pp_context_register_macro_rawi(state, ppc, "sysreq_platform@n2", N2S_SYSREQ_PLATFORM);
+		n2i_pp_context_register_macro_rawi(state, ppc, "sysreq_font_atlas_width@n2", N2S_SYSREQ_FONT_ATLAS_WIDTH);
+		n2i_pp_context_register_macro_rawi(state, ppc, "sysreq_font_atlas_height@n2", N2S_SYSREQ_FONT_ATLAS_HEIGHT);
+
+		n2i_pp_context_register_macro_rawi(state, ppc, "platform_windows", N2SC_PLATFORM_WINDOWS);
+		n2i_pp_context_register_macro_rawi(state, ppc, "platform_ios", N2SC_PLATFORM_IOS);
+		n2i_pp_context_register_macro_rawi(state, ppc, "platform_android", N2SC_PLATFORM_ANDROID);
+		n2i_pp_context_register_macro_rawi(state, ppc, "platform_webgl", N2SC_PLATFORM_WEBGL);
+		n2i_pp_context_register_macro_rawi(state, ppc, "platform_linux", N2SC_PLATFORM_LINUX);
+		n2i_pp_context_register_macro_rawi(state, ppc, "platform_raspbia", N2SC_PLATFORM_RASPBIAN);
 	}
 
 	// システム変数
@@ -28142,6 +28242,7 @@ static void n2i_environment_bind_standards_builtins(n2_state_t* state, n2_pp_con
 			n2_func_callback_t callback_;
 		} builtins[] =
 		{
+			{"sysreq@n2",			n2si_bifunc_sysreq_n2},
 			{"gsel",				n2si_bifunc_gsel},
 			{"pos",					n2si_bifunc_pos},
 			{"color",				n2si_bifunc_color},

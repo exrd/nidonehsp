@@ -52,6 +52,14 @@ if (strf("%g", 20.22) != "20.22") { raise }
 if (strf("%G", 20.22) != "20.22") { raise }
 if ( strf("%s", "mystr") != "mystr") { raise }
 
+mes "strcodepoints"
+strcodepoints@n2 cps, "ABC"
+	if (strsize != 3) { raise }
+	if (cps(0) != 'A' || cps(1) != 'B' || cps(2) != 'C') { raise }
+strcodepoints@n2 cps, "z日你😀"
+	if (strsize != 4) { raise }
+	if (cps(0) != 0x7a || cps(1) != 0x65e5 || cps(2) != 0x4f60 || cps(3) != 0x1f600) { raise }
+
 mes "getpath"
 path = "D:\\path\\to\\file.txt"
 if (0) {
