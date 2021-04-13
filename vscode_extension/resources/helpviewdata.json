@@ -3108,6 +3108,31 @@
 				"stringCommon"
 			]
 		},
+		"strcodepoints@n2": {
+			"type": "function",
+			"summary": "コードポイントを配列に変換",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "outVar",
+					"description": "コードポイントを格納する変数"
+				},
+				{
+					"name": "str",
+					"description": "文字列"
+				}
+			],
+			"description": [
+				"strで指定した文字列の各文字のコードポイントをoutVarに配列として格納します。",
+				"この命令により、outVarは整数型の1次元配列に初期化されます。",
+				"この命令後、$ref(strsize)に格納されたコードポイントの数（＝文字数）が格納されます。",
+				"なお、outVarの配列サイズはコードポイントの数より大きい値になり得るため、$ref(length)等で得られる値とは異なる可能性があります。"
+			],
+			"relationGroup": [
+				"stringCommon"
+			]
+		},
 
 		"reintfb2d@n2": {
 			"type": "function",
@@ -3527,6 +3552,182 @@
 			],
 			"relationGroup": [
 				"systemVariableCommon"
+			]
+		},
+
+		"sysreq@n2": {
+			"type": "function",
+			"summary": "システム情報の取得・設定",
+			"group": ["standard"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "requestType",
+					"description": "参照する情報の種類",
+					"omitted": "0"
+				},
+				{
+					"name": "[setVal]",
+					"description": "（設定時）設定する値"
+				}
+			],
+			"description": [
+				"システム情報の取得・設定を行います。",
+				"この命令は引数の数によって挙動が変化します。",
+				"",
+				"引数が 1 つだけの場合、requestTypeに該当する情報を返します。",
+				"引数が 2 つ以上の場合、requestTypeに該当する情報を設定します。",
+				"設定できない情報を設定しようとした場合エラーになります。",
+				"",
+				"requestType の値と取得・設定の可否については次の表の通りです。$",
+				"$",
+				"|requestType|型|取得|設定|内容|$",
+				"|:--|:--|:--|:--|:--|$",
+				"|`sysreq_platform@n2`|`int`|〇|×|現在のプラットフォーム。<br>プラットフォームを表す値は後述。|$",
+				"|`sysreq_font_atlas_width@n2`<br>`sysreq_font_atlas_height@n2`|`int`|〇|〇|$ref(fontload@n2)命令で生成するフォントのアトラステクスチャのサイズ|$",
+				"$",
+				"プラットフォームを表す定数は次の通りです。$",
+				"$",
+				"|platform|マクロ|$",
+				"|:--|:--|$",
+				"|Windows|`platform_windows`|$",
+				"|iOS|`platform_ios`|$",
+				"|Android|`platform_android`|$",
+				"|HTML|`platform_webgl`|$",
+				"|Unix/Linux|`platform_linux`|$",
+				"|RaspberryPi|`platform_raspbia`|$",
+				"$",
+				""
+			],
+			"relationGroup": [
+				"stdSystemCommon"
+			]
+		},
+		"sysreq_platform@n2": {
+			"type": "constant",
+			"summary": "プラットフォームリクエスト",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"$ref(sysreq@n2)におけるリクエストの種類（プラットフォーム）を示す整数の定数です。"
+			],
+			"relationGroup": [
+				"stdConstantSysreq"
+			]
+		},
+		"sysreq_font_atlas_width@n2": {
+			"type": "constant",
+			"summary": "フォントアトラステクスチャリクエスト",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"$ref(sysreq@n2)におけるリクエストの種類（フォントアトラステクスチャの幅）を示す整数の定数です。"
+			],
+			"relationGroup": [
+				"stdConstantSysreq"
+			]
+		},
+		"sysreq_font_atlas_height@n2": {
+			"type": "constant",
+			"summary": "フォントアトラステクスチャリクエスト",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"$ref(sysreq@n2)におけるリクエストの種類（フォントアトラステクスチャの高さ）を示す整数の定数です。"
+			],
+			"relationGroup": [
+				"stdConstantSysreq"
+			]
+		},
+
+		"platform_windows": {
+			"type": "constant",
+			"summary": "Windowsプラットフォームを表す定数",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"Windowsのプラットフォームを示す整数の定数です。"
+			],
+			"relationGroup": [
+				"stdConstantPlatform"
+			]
+		},
+		"platform_ios": {
+			"type": "constant",
+			"summary": "iOSプラットフォームを表す定数",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"iOSのプラットフォームを示す整数の定数です。"
+			],
+			"relationGroup": [
+				"stdConstantPlatform"
+			]
+		},
+		"platform_android": {
+			"type": "constant",
+			"summary": "Androidプラットフォームを表す定数",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"Androidのプラットフォームを示す整数の定数です。"
+			],
+			"relationGroup": [
+				"stdConstantPlatform"
+			]
+		},
+		"platform_webgl": {
+			"type": "constant",
+			"summary": "HTMLプラットフォームを表す定数",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"HTMLのプラットフォームを示す整数の定数です。"
+			],
+			"relationGroup": [
+				"stdConstantPlatform"
+			]
+		},
+		"platform_linux": {
+			"type": "constant",
+			"summary": "Unix/Linuxプラットフォームを表す定数",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"Unix/Linuxのプラットフォームを示す整数の定数です。"
+			],
+			"relationGroup": [
+				"stdConstantPlatform"
+			]
+		},
+		"platform_raspbi": {
+			"type": "constant",
+			"summary": "RaspberryPiプラットフォームを表す定数",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"RaspberryPiのプラットフォームを示す整数の定数です。"
+			],
+			"relationGroup": [
+				"stdConstantPlatform"
 			]
 		},
 
@@ -5057,7 +5258,9 @@
 				"",
 				"fontBakeHeight は、システムが持つフォントのアトラステクスチャに対して、フォントのグリフをベイクする時の高さ（ピクセル）として使われます。",
 				"この値を大きくすればグリフの解像度が上がりますが、グリフが使用するアトラステクスチャのスペースも広くなります。",
-				"アトラステクスチャにベイクするスペースがなくなった時、新しいグリフは代替文字で描画されます。"
+				"アトラステクスチャにベイクするスペースがなくなった時、新しいグリフは代替文字で描画されます。",
+				"アトラステクスチャのサイズを変更するには$ref(sysreq@n2)を参照してください。",
+				"この命令実行時に、システムに設定されているアトラステクスチャのサイズが参照されます。"
 			],
 			"relationGroup": [
 				"stdDrawFont"
