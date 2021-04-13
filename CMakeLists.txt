@@ -209,6 +209,8 @@ function(n2_set_app_common target)
 	target_compile_definitions(${target} PUBLIC N2_CONFIG_USE_ENCODING_CP932=$<BOOL:${N2_SUPPORT_CP932}>)
 	target_compile_definitions(${target} PUBLIC N2_CONFIG_USE_N2_STANDARD=$<BOOL:${N2_ENABLE_STANDARD}>)
 
+	target_compile_definitions(${target} PUBLIC N2_CONFIG_HINT_RELEASE_BUILD=$<BOOL:${N2_BUILD_TYPE_RELEASE}>)
+
 	# set common include
 	target_include_directories(${target} BEFORE PRIVATE ${CMAKE_SOURCE_DIR}/nidonehsp)
 

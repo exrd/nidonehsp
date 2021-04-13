@@ -9,7 +9,14 @@
 #include <SDL.h>
 #endif
 
+#ifndef N2_CONFIG_HINT_RELEASE_BUILD
+#define N2_CONFIG_HINT_RELEASE_BUILD	(1)
+#endif
+#if N2_CONFIG_HINT_RELEASE_BUILD
 #define N2RI_DEBUG			(0)
+#else
+#define N2RI_DEBUG			(1)
+#endif
 
 #if N2RI_DEBUG && 0
 #define N2RI_DPRINT(...) \
