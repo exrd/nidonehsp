@@ -2,6 +2,8 @@
 //=============================================================================
 // note
 
+fileroot = "utest_script"
+
 a = "abc\ndef\nghi"
 notesel a
 if (notemax != 3) { raise }
@@ -40,6 +42,8 @@ if (notemax != 3) { raise }
 
 noteget b, 1
 if (b != "def") { raise }
+
+//notesave `${fileroot}/out/noteout.txt`
 
 //mes `+${a}+`
 //mes `+${b}+`

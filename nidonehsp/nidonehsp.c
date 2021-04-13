@@ -24395,6 +24395,35 @@ static void n2i_environment_bind_core_builtins(n2_state_t* state, n2_environment
 //=============================================================================
 // 基本組み込み機能
 
+static n2_bool_t n2i_bifunc_internal_fsload(const n2_funcarg_t* arg, n2_buffer_t* to, const char* filepath, n2_bool_t is_binary, size_t readsize, size_t readoffset)
+{
+	if (!n2_state_fs_load(arg->state_, to, N2_STATE_FSFLAG_DEFAULT, filepath, is_binary, readsize, readoffset))
+	{
+		n2_buffer_teardown(arg->state_, to);
+		return N2_FALSE;
+	}
+	return N2_TRUE;
+}
+
+static n2_bool_t n2i_bifunc_internal_fsload_str(const n2_funcarg_t* arg, n2_str_t* to, const char* filepath, size_t readsize, size_t readoffset)
+{
+	if (!n2_state_fs_load_str(arg->state_, to, N2_STATE_FSFLAG_DEFAULT, filepath, readsize, readoffset))
+	{
+		n2_str_teardown(arg->state_, to);
+		return N2_FALSE;
+	}
+	return N2_TRUE;
+}
+
+static n2_bool_t n2i_bifunc_internal_fssave(const n2_funcarg_t* arg, size_t* dst_writtensize, const char* filepath, n2_bool_t is_binary, const void* writedata, size_t writesize, size_t writeoffset)
+{
+	if (!n2_state_fs_save(arg->state_, dst_writtensize, N2_STATE_FSFLAG_DEFAULT, filepath, is_binary, writedata, writesize, writeoffset))
+	{
+		return N2_FALSE;
+	}
+	return N2_TRUE;
+}
+
 static int n2i_bifunc_end(const n2_funcarg_t* arg)
 {
 	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
@@ -25737,6 +25766,56 @@ static int n2i_bifunc_noteget(const n2_funcarg_t* arg)
 	return 0;
 }
 
+static int n2i_bifunc_noteload(const n2_funcarg_t* arg)
+{
+	const char* label = "noteload";
+	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	if (arg_num < 1 || arg_num > 2) { n2e_funcarg_raise(arg, "%s：引数の数（%d）が期待（%d - %d）と違います", label, arg_num, 1, 2); return -1; }
+	if (!n2i_bifunc_internal_notecheck(arg, label)) { return -1; }
+	const n2_value_t* filepathval = n2e_funcarg_getarg(arg, 0);
+	N2_ASSERT(filepathval);
+	const n2_str_t* filepath = n2e_funcarg_eval_str_and_push(arg, filepathval);
+	const n2_value_t* readsizeval = n2e_funcarg_getarg(arg, 1);
+	const n2_valint_t readsize = readsizeval && readsizeval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, readsizeval) : -1;
+
+	n2_variable_t* var = arg->fiber_->notevar_;
+	const int aptr = arg->fiber_->noteaptr_;
+	n2_valstr_t* fstr = n2_variable_get_str(var, aptr);
+	N2_ASSERT(fstr);
+
+	if (!n2i_bifunc_internal_fsload_str(arg, fstr, filepath->str_, readsize < 0 ? SIZE_MAX : N2_SCAST(size_t, readsize), 0))
+	{
+		n2e_funcarg_raise(arg, "%s：ファイル（%s）の読み込みに失敗しました。", label, filepath->str_);
+		return -1;
+	}
+
+	return 0;
+}
+
+static int n2i_bifunc_notesave(const n2_funcarg_t* arg)
+{
+	const char* label = "notesave";
+	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	if (arg_num != 1) { n2e_funcarg_raise(arg, "%s：引数の数（%d）が期待（%d）と違います", label, arg_num, 1); return -1; }
+	if (!n2i_bifunc_internal_notecheck(arg, label)) { return -1; }
+	const n2_value_t* filepathval = n2e_funcarg_getarg(arg, 0);
+	N2_ASSERT(filepathval);
+	const n2_str_t* filepath = n2e_funcarg_eval_str_and_push(arg, filepathval);
+
+	n2_variable_t* var = arg->fiber_->notevar_;
+	const int aptr = arg->fiber_->noteaptr_;
+	const n2_valstr_t* fstr = n2_variable_get_str(var, aptr);
+	N2_ASSERT(fstr);
+
+	size_t writtensize = 0;
+	if (!n2i_bifunc_internal_fssave(arg, &writtensize, filepath->str_, N2_FALSE, fstr->str_, n2_str_compute_size(fstr), SIZE_MAX))
+	{
+		n2e_funcarg_raise(arg, "%s：ファイル（%s）の書き込みに失敗しました。", label, filepath->str_);
+		return -1;
+	}
+	return 0;
+}
+
 static int n2si_bifunc_assert(const n2_funcarg_t* arg)
 {
 #if N2_CONFIG_USE_DEBUGGING
@@ -25878,35 +25957,6 @@ static int n2i_bifunc_gettime(const n2_funcarg_t* arg)
 	default:	n2e_funcarg_pushi(arg, 0); break;
 	}
 	return 1;
-}
-
-static n2_bool_t n2i_bifunc_internal_fsload(const n2_funcarg_t* arg, n2_buffer_t* to, const char* filepath, n2_bool_t is_binary, size_t readsize, size_t readoffset)
-{
-	if (!n2_state_fs_load(arg->state_, to, N2_STATE_FSFLAG_DEFAULT, filepath, is_binary, readsize, readoffset))
-	{
-		n2_buffer_teardown(arg->state_, to);
-		return N2_FALSE;
-	}
-	return N2_TRUE;
-}
-
-static n2_bool_t n2i_bifunc_internal_fsload_str(const n2_funcarg_t* arg, n2_str_t* to, const char* filepath, size_t readsize, size_t readoffset)
-{
-	if (!n2_state_fs_load_str(arg->state_, to, N2_STATE_FSFLAG_DEFAULT, filepath, readsize, readoffset))
-	{
-		n2_str_teardown(arg->state_, to);
-		return N2_FALSE;
-	}
-	return N2_TRUE;
-}
-
-static n2_bool_t n2i_bifunc_internal_fssave(const n2_funcarg_t* arg, size_t* dst_writtensize, const char* filepath, n2_bool_t is_binary, const void* writedata, size_t writesize, size_t writeoffset)
-{
-	if (!n2_state_fs_save(arg->state_, dst_writtensize, N2_STATE_FSFLAG_DEFAULT, filepath, is_binary, writedata, writesize, writeoffset))
-	{
-		return N2_FALSE;
-	}
-	return N2_TRUE;
 }
 
 static int n2i_bifunc_bload(const n2_funcarg_t* arg)
@@ -26069,6 +26119,8 @@ static void n2i_environment_bind_basic_builtins(n2_state_t* state, n2_environmen
 		{"noteadd"	,			n2i_bifunc_noteadd},
 		{"notedel"	,			n2i_bifunc_notedel},
 		{"noteget"	,			n2i_bifunc_noteget},
+		{"noteload"	,			n2i_bifunc_noteload},
+		{"notesave"	,			n2i_bifunc_notesave},
 		{"assert",				n2si_bifunc_assert},
 		{"logmes",				n2si_bifunc_logmes},
 		{"newmod",				n2i_bifunc_newmod},
