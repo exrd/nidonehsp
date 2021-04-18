@@ -22421,7 +22421,7 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 				break;
 			case N2_DEBUGINT_NEXT:
 			case N2_DEBUGINT_STEPIN:
-				if (f->debugint_call_depth_ <= 0)
+				if (f->debugint_call_depth_ <= 0)// returnでマイナスになることがある
 				{
 					n2_bool_t valid_step = N2_FALSE;
 					switch (f->debugint_granularity_)
