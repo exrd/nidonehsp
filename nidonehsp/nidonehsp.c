@@ -9701,6 +9701,31 @@ N2_API void n2_debugvarpool_push(n2_state_t* state, n2_debugvarpool_t* debugvarp
 	n2_list_append(&debugvarpool->debugvar_pool_, &debugvar->entry_);
 }
 
+N2_API n2_bool_t n2_debugvarrelatives_update(n2_state_t* state, n2_environment_t* e, n2_intset_t* relatives, n2_pc_t* cached_pc, n2_pc_t curr_pc, int range)
+{
+	if (!e || !e->codeimage_) { return N2_FALSE; }
+	if (!relatives || !cached_pc) { return N2_FALSE; }
+	if (*cached_pc == curr_pc) { return N2_FALSE; }
+	n2_intset_clear(state, relatives);
+	*cached_pc = curr_pc;
+	if (range < 0) { return N2_FALSE; }
+	const n2_codeline_t* ccodeline = n2_codeimage_find_codeline_from_pc(e->codeimage_, curr_pc);
+	if (!ccodeline) { return N2_FALSE; }
+	const int cclindex = n2_codelinetable_compute_index(e->codeimage_->codelinetable_, ccodeline);
+	for (int i_codeline = cclindex - range / 2, end_codeline = cclindex + range / 2; i_codeline <= end_codeline; ++i_codeline)
+	{
+		const n2_codeline_t* codeline = i_codeline >= 0 ? n2_codelinetable_peekc(e->codeimage_->codelinetable_, i_codeline) : NULL;
+		if (!codeline) { continue; }
+		for (size_t i_rel = 0, rels_num = n2_intset_size(&codeline->relative_var_indices_); i_rel < rels_num; ++i_rel)
+		{
+			const int* rel_index = n2_intset_peekc(&codeline->relative_var_indices_, N2_SCAST(int, i_rel));
+			if (!rel_index) { continue; }
+			n2_intset_insert(state, relatives, rel_index, NULL);
+		}
+	}
+	return N2_TRUE;
+}
+
 //=============================================================================
 // 変数
 static const size_t n2i_variable_nlength[N2_VARIABLE_DIM] = {0};
@@ -19389,6 +19414,9 @@ static void n2i_callframe_init(n2_callframe_t* cf)
 	cf->debugvarpool_ = NULL;
 	cf->debugvarroot_ = NULL;
 	cf->debugvarargs_ = NULL;
+	cf->debugvarrelroot_ = NULL;
+	n2_intset_setup(NULL, &cf->debugvarrelatives_, 0, 8);
+	cf->debugvarrelpc_ = -1;
 #endif
 #if N2_CONFIG_USE_PROFILING
 	cf->call_timestamp_ = 0;
@@ -19399,6 +19427,9 @@ static void n2i_callframe_teardown(n2_state_t* state, n2_callframe_t* cf)
 	N2_UNUSE(state);
 	N2_UNUSE(cf);
 #if N2_CONFIG_USE_DEBUGGING
+	cf->debugvarrelpc_ = -1;
+	n2_intset_teardown(state, &cf->debugvarrelatives_);
+	if (cf->debugvarrelroot_) { n2_debugvarpool_push(state, cf->debugvarpool_, cf->debugvarrelroot_); cf->debugvarrelroot_ = NULL; }
 	if (cf->debugvarargs_) { n2_debugvararray_free(state, cf->debugvarargs_); cf->debugvarargs_ = NULL; }
 	if (cf->debugvarroot_) { n2_debugvarpool_push(state, cf->debugvarpool_, cf->debugvarroot_); cf->debugvarroot_ = NULL; }
 	cf->debugvarpool_ = NULL;
@@ -19518,6 +19549,9 @@ N2_API n2_fiber_t* n2_fiber_alloc(n2_state_t* state, n2_environment_t* e, int id
 	fiber->debugint_call_depth_ = 0;
 	fiber->debugvarpool_ = NULL;
 	fiber->debugvarroot_ = NULL;
+	fiber->debugvarrelroot_ = NULL;
+	n2_intset_setup(state, &fiber->debugvarrelatives_, 0, 8);
+	fiber->debugvarrelpc_ = -1;
 	fiber->debugvarsysvar_ = NULL;
 	for (size_t i = 0; i < N2_ARRAYDIM(fiber->debugvarsysvarelements_); ++i) { fiber->debugvarsysvarelements_[i] = NULL; }
 	if (state->config_.generate_debugvars_)
@@ -19526,6 +19560,9 @@ N2_API n2_fiber_t* n2_fiber_alloc(n2_state_t* state, n2_environment_t* e, int id
 		fiber->debugvarroot_ = n2_debugvarpool_pop_or_alloc(state, e->debugvarpool_);
 		fiber->debugvarroot_->type_ = N2_DEBUGVARIABLE_FIBER;
 		fiber->debugvarroot_->v_.fiber_ = fiber;
+		fiber->debugvarrelroot_ = n2_debugvarpool_pop_or_alloc(state, e->debugvarpool_);
+		fiber->debugvarrelroot_->type_ = N2_DEBUGVARIABLE_FIBER_RELATIVES;
+		fiber->debugvarrelroot_->v_.fiber_ = fiber;
 		fiber->debugvarsysvar_ = n2_debugvarpool_pop_or_alloc(state, e->debugvarpool_);;
 		fiber->debugvarsysvar_->type_ = N2_DEBUGVARIABLE_SYSVAR;
 		fiber->debugvarsysvar_->v_.sysvar_.fiber_ = fiber;
@@ -19545,6 +19582,9 @@ N2_API void n2_fiber_free(n2_state_t* state, n2_fiber_t* fiber)
 {
 #if N2_CONFIG_USE_DEBUGGING
 	if (fiber->debugvarroot_) { n2_debugvarpool_push(state, fiber->debugvarpool_, fiber->debugvarroot_); fiber->debugvarroot_ = NULL; }
+	if (fiber->debugvarrelroot_) { n2_debugvarpool_push(state, fiber->debugvarpool_, fiber->debugvarrelroot_); fiber->debugvarrelroot_ = NULL; }
+	n2_intset_teardown(state, &fiber->debugvarrelatives_);
+	fiber->debugvarrelpc_ = -1;
 	if (fiber->debugvarsysvar_) { n2_debugvarpool_push(state, fiber->debugvarpool_, fiber->debugvarsysvar_); fiber->debugvarsysvar_ = NULL; }
 	for (size_t i = 0; i < N2_ARRAYDIM(fiber->debugvarsysvarelements_); ++i) { if (fiber->debugvarsysvarelements_[i]) { n2_debugvarpool_push(state, fiber->debugvarpool_, fiber->debugvarsysvarelements_[i]); fiber->debugvarsysvarelements_[i] = NULL; } }
 	fiber->debugvarpool_ = NULL;
@@ -21684,6 +21724,10 @@ static void n2i_execute_fill_to_callframe(n2_state_t* state, n2_callframe_t* cf,
 		cf->debugvarroot_->type_ = N2_DEBUGVARIABLE_FIBER_CALLFRAME;
 		cf->debugvarroot_->v_.fiber_cf_.fiber_ = f;
 		cf->debugvarroot_->v_.fiber_cf_.callframe_index_ = n2_callframearray_compute_index(f->callframes_, cf);
+		cf->debugvarrelroot_ = n2_debugvarpool_pop_or_alloc(state, cf->debugvarpool_);
+		cf->debugvarrelroot_->type_ = N2_DEBUGVARIABLE_FIBER_CALLFRAME_RELATIVES;
+		cf->debugvarrelroot_->v_.fiber_cf_.fiber_ = f;
+		cf->debugvarrelroot_->v_.fiber_cf_.callframe_index_ = n2_callframearray_compute_index(f->callframes_, cf);
 		cf->debugvarargs_ = f->callstate_.debugvarargs_; f->callstate_.debugvarargs_ = NULL;
 		// 所属するcallframeが変わったので再設定
 		if (cf->debugvarargs_)
@@ -22377,7 +22421,7 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 				break;
 			case N2_DEBUGINT_NEXT:
 			case N2_DEBUGINT_STEPIN:
-				if (f->debugint_call_depth_ == 0)
+				if (f->debugint_call_depth_ <= 0)
 				{
 					n2_bool_t valid_step = N2_FALSE;
 					switch (f->debugint_granularity_)

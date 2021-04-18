@@ -968,7 +968,7 @@ int main(int argc, char* argv[])
 
 			n2_state_t* state = n2_state_alloc(&config);
 
-#if N2RI_DEBUG && 1
+#if N2RI_DEBUG && 0
 			{
 				n2_str_t relpath;
 				n2_str_init(&relpath);

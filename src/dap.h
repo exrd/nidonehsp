@@ -110,6 +110,7 @@ struct n2r_dap_t
 	n2_bool_t enable_varref_;
 	n2_bool_t enable_dap_logging_;
 	n2_bool_t resolve_to_parent_callframe_on_external_;
+	int relative_variabls_line_range_;// don't show Relatives scope if less than 0
 
 	n2_bool_t close_when_dap_disconnected_;
 
@@ -797,6 +798,24 @@ static n2_bool_t n2ri_dap_push_variables_reference(n2_state_t* s, n2_str_t* t, n
 			}
 		}
 		break;
+	case N2_DEBUGVARIABLE_FIBER_RELATIVES:
+		{
+			n2_fiber_t* f = debugvar->v_.fiber_;
+			n2_debugvarrelatives_update(state, f->environment_, &f->debugvarrelatives_, &f->debugvarrelpc_, f->op_pc_, dap->relative_variabls_line_range_);
+			named_variables = n2_intset_size(&f->debugvarrelatives_);
+		}
+		break;
+	case N2_DEBUGVARIABLE_FIBER_CALLFRAME_RELATIVES:
+		{
+			const n2_fiber_t* f = debugvar->v_.fiber_cf_.fiber_;
+			n2_callframe_t* cf = debugvar->v_.fiber_cf_.callframe_index_ >= 0 ? n2_callframearray_peek(f->callframes_, debugvar->v_.fiber_cf_.callframe_index_) : NULL;
+			if (cf)
+			{
+				n2_debugvarrelatives_update(state, f->environment_, &cf->debugvarrelatives_, &cf->debugvarrelpc_, cf->caller_pc_, dap->relative_variabls_line_range_);
+				named_variables = n2_intset_size(&cf->debugvarrelatives_);
+			}
+		}
+		break;
 	case N2_DEBUGVARIABLE_VARIABLE_ROOT:
 		{
 			const n2_variable_t* var = debugvar->v_.var_root_;
@@ -896,6 +915,25 @@ static void n2ri_dap_push_variable_content(n2_state_t* s, n2_str_t* t, n2r_dap_t
 		case N2_DEBUGVARIABLE_FIBER_CALLFRAME:
 			{
 				n2_str_append_fmt(s, t, "\"name\": \"callFrame(%d)\"\n", debugvar->v_.fiber_cf_.callframe_index_);
+				n2_str_append_fmt(s, t, ", \"type\": \"callFrame\"\n");
+				n2_str_append_fmt(s, t, ", \"value\": \"(no value)\"\n");
+				n2_str_append_fmt(s, t, ", ");
+				n2ri_dap_push_variables_reference(s, t, dap, state, debugvar);
+			}
+			break;
+		case N2_DEBUGVARIABLE_FIBER_RELATIVES:
+			{
+				n2_fiber_t* f = debugvar->v_.fiber_;
+				n2_str_append_fmt(s, t, "\"name\": \"fiberRels(%d:%s)\"\n", f->id_, f->name_);
+				n2_str_append_fmt(s, t, ", \"type\": \"fiber\"\n");
+				n2_str_append_fmt(s, t, ", \"value\": \"(%p)\"\n", f);
+				n2_str_append_fmt(s, t, ", ");
+				n2ri_dap_push_variables_reference(s, t, dap, state, debugvar);
+			}
+			break;
+		case N2_DEBUGVARIABLE_FIBER_CALLFRAME_RELATIVES:
+			{
+				n2_str_append_fmt(s, t, "\"name\": \"callFrameRels(%d)\"\n", debugvar->v_.fiber_cf_.callframe_index_);
 				n2_str_append_fmt(s, t, ", \"type\": \"callFrame\"\n");
 				n2_str_append_fmt(s, t, ", \"value\": \"(no value)\"\n");
 				n2_str_append_fmt(s, t, ", ");
@@ -1092,10 +1130,11 @@ static void n2ri_dap_push_variable_filtered(n2_state_t* s, n2_str_t* t, n2r_dap_
 		case N2_DEBUGVARIABLE_FIBER:
 		case N2_DEBUGVARIABLE_FIBER_CALLFRAME:
 			{
-				n2_fiber_t* f = debugvar->type_ == N2_DEBUGVARIABLE_FIBER ? debugvar->v_.fiber_ : debugvar->v_.fiber_cf_.fiber_;
+				const n2_bool_t is_fiber = debugvar->type_ == N2_DEBUGVARIABLE_FIBER;
+				n2_fiber_t* f = is_fiber ? debugvar->v_.fiber_ : debugvar->v_.fiber_cf_.fiber_;
 				const n2_func_t* func = NULL;
 				n2_debugvararray_t* funcargs = NULL;
-				if (debugvar->type_ == N2_DEBUGVARIABLE_FIBER)
+				if (is_fiber)
 				{
 					func = f->callstate_.func_;
 					funcargs = f->callstate_.debugvarargs_;
@@ -1120,6 +1159,50 @@ static void n2ri_dap_push_variable_filtered(n2_state_t* s, n2_str_t* t, n2r_dap_
 								{
 									N2RI_DAP_IMPL_PREPUSH();
 									n2ri_dap_push_variable_content(s, t, dap, state, funcarg);
+									N2RI_DAP_IMPL_POSTPUSH();
+								}
+							}
+						}
+					}
+				}
+			}
+			break;
+		case N2_DEBUGVARIABLE_FIBER_RELATIVES:
+		case N2_DEBUGVARIABLE_FIBER_CALLFRAME_RELATIVES:
+			{
+				const n2_bool_t is_fiber = debugvar->type_ == N2_DEBUGVARIABLE_FIBER_RELATIVES;
+				n2_fiber_t* f = is_fiber ? debugvar->v_.fiber_ : debugvar->v_.fiber_cf_.fiber_;
+				const n2_intset_t* relatives = NULL;
+
+				if (is_fiber)
+				{
+					n2_debugvarrelatives_update(state, f->environment_, &f->debugvarrelatives_, &f->debugvarrelpc_, f->op_pc_, dap->relative_variabls_line_range_);
+					relatives = &f->debugvarrelatives_;
+				}
+				else
+				{
+					n2_callframe_t* cf = debugvar->v_.fiber_cf_.callframe_index_ >= 0 ? n2_callframearray_peek(f->callframes_, debugvar->v_.fiber_cf_.callframe_index_) : NULL;
+					if (cf)
+					{
+						n2_debugvarrelatives_update(state, f->environment_, &cf->debugvarrelatives_, &cf->debugvarrelpc_, cf->caller_pc_, dap->relative_variabls_line_range_);
+						relatives = &cf->debugvarrelatives_;
+					}
+				}
+
+				if (varreq->include_named_)
+				{
+					if (relatives)
+					{
+						for (size_t i = 0, l = n2_intset_size(relatives); i < l; ++i)
+						{
+							N2RI_DAP_IMPL_TOPUSH()
+							{
+								const int* relvarindex = n2_intset_peekc(relatives, N2_SCAST(int, i));
+								const n2_variable_t* relvar = relvarindex ? n2_vartable_peek(state->environment_->vartable_, *relvarindex) : NULL;
+								if (relvar && relvar->debugvarroot_)
+								{
+									N2RI_DAP_IMPL_PREPUSH();
+									n2ri_dap_push_variable_content(s, t, dap, state, relvar->debugvarroot_);
 									N2RI_DAP_IMPL_POSTPUSH();
 								}
 							}
@@ -1217,10 +1300,25 @@ static void n2ri_dap_push_scopes(n2_state_t* s, n2_str_t* t, n2r_dap_t* dap, n2_
 			//n2_str_append_fmt(s, t, ", \"endLine\": 0\n");
 			//n2_str_append_fmt(s, t, ", \"endColumn\": 0\n");
 		}
-		if (dap->enable_varref_)
+		n2_debugvariable_t* debugvar = cf ? cf->debugvarroot_ : f->debugvarroot_;
+		if (dap->enable_varref_ && debugvar)
 		{
 			n2_str_append_fmt(s, t, ", ");
-			n2ri_dap_push_variables_reference(s, t, dap, state, cf ? cf->debugvarroot_ : f->debugvarroot_);
+			n2ri_dap_push_variables_reference(s, t, dap, state, debugvar);
+		}
+		n2_str_append_fmt(s, t, "}\n");
+	}
+	// relative variables scope
+	if (dap->relative_variabls_line_range_ >= 0)
+	{
+		n2_str_append_fmt(s, t, ", {\n");
+		n2_str_append_fmt(s, t, "\"name\": \"Relatives\"\n");
+		n2_str_append_fmt(s, t, ", \"expensive\": false\n");
+		n2_debugvariable_t* debugvar = cf ? cf->debugvarrelroot_ : f->debugvarrelroot_;
+		if (dap->enable_varref_ && debugvar)
+		{
+			n2_str_append_fmt(s, t, ", ");
+			n2ri_dap_push_variables_reference(s, t, dap, state, debugvar);
 		}
 		n2_str_append_fmt(s, t, "}\n");
 	}
@@ -1464,7 +1562,7 @@ static n2_bool_t n2r_dap_handle_set_breakpoints(n2r_dap_t* dap, int seq, const n
 				}
 			}
 		}
-		if (breakpointsnode && n2h_datatree_type(breakpointsnode) == N2H_DATATREE_ARRAY && sourcefile)
+		if (breakpointsnode && n2h_datatree_type(breakpointsnode) == N2H_DATATREE_ARRAY)
 		{
 			// 全ブレイクポイントを張りなおす
 			const size_t breakpointnum = n2h_datatree_arraysize(breakpointsnode);
@@ -1484,7 +1582,7 @@ static n2_bool_t n2r_dap_handle_set_breakpoints(n2r_dap_t* dap, int seq, const n
 			}
 
 			n2_u8array_t* opcodeflags = codeimage->opcodeflags_;
-			if (opcodeflags)
+			if (opcodeflags && sourcefile)// sourcefileが見つからないものは無視（全てUnverified）
 			{
 				for (size_t si = 0, sl = n2_sourcecodeptrarray_size(&sourcefile->sourcecodeptrs_); si < sl; ++si)
 				{
@@ -2178,6 +2276,7 @@ static n2r_dap_t* n2r_dap_alloc(n2_state_t* estate)
 	dap->enable_varref_ = N2_TRUE;
 	dap->enable_dap_logging_ = N2_FALSE;
 	dap->resolve_to_parent_callframe_on_external_ = N2_TRUE;
+	dap->relative_variabls_line_range_ = 10;
 
 	dap->close_when_dap_disconnected_ = N2_TRUE;
 

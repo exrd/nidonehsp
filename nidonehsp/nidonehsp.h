@@ -595,6 +595,7 @@ typedef struct n2_value_t n2_value_t;
 
 typedef struct n2_uselib_t n2_uselib_t;
 
+typedef int32_t n2_pc_t;
 typedef struct n2_func_t n2_func_t;
 
 typedef struct n2_module_t n2_module_t;
@@ -2631,6 +2632,8 @@ enum n2_debugvariable_e
 	N2_DEBUGVARIABLE_SYSVAR_ELEMENT,
 	N2_DEBUGVARIABLE_FIBER,
 	N2_DEBUGVARIABLE_FIBER_CALLFRAME,
+	N2_DEBUGVARIABLE_FIBER_RELATIVES,
+	N2_DEBUGVARIABLE_FIBER_CALLFRAME_RELATIVES,
 	N2_DEBUGVARIABLE_VARIABLE_ROOT,
 	N2_DEBUGVARIABLE_VARIABLE_DIMENSION,
 	N2_DEBUGVARIABLE_VARIABLE_ELEMENT,
@@ -2706,6 +2709,8 @@ N2_API void n2_debugvarpool_free(n2_state_t* state, n2_debugvarpool_t* debugvarp
 
 N2_API n2_debugvariable_t* n2_debugvarpool_pop_or_alloc(n2_state_t* state, n2_debugvarpool_t* debugvarpool);
 N2_API void n2_debugvarpool_push(n2_state_t* state, n2_debugvarpool_t* debugvarpool, n2_debugvariable_t* debugvar);
+
+N2_API n2_bool_t n2_debugvarrelatives_update(n2_state_t* state, n2_environment_t* e, n2_intset_t* relatives, n2_pc_t* cached_pc, n2_pc_t curr_pc, int range);
 
 //=============================================================================
 // プリミティブ値
@@ -2909,8 +2914,6 @@ N2_DECLARE_TARRAY(n2_value_t, n2_flatvaluearray, N2_API);
 
 //=============================================================================
 // 実行コード
-typedef int32_t n2_pc_t;
-
 typedef struct n2_label_t n2_label_t;
 struct n2_label_t
 {
@@ -4478,6 +4481,9 @@ struct n2_callframe_t
 	n2_debugvarpool_t* debugvarpool_;
 	n2_debugvariable_t* debugvarroot_;
 	n2_debugvararray_t* debugvarargs_;
+	n2_debugvariable_t* debugvarrelroot_;
+	n2_intset_t debugvarrelatives_;
+	n2_pc_t debugvarrelpc_;
 #endif
 #if N2_CONFIG_USE_PROFILING
 	uint64_t call_timestamp_;
@@ -4662,6 +4668,9 @@ struct n2_fiber_t
 
 	n2_debugvarpool_t* debugvarpool_;
 	n2_debugvariable_t* debugvarroot_;
+	n2_debugvariable_t* debugvarrelroot_;
+	n2_intset_t debugvarrelatives_;
+	n2_pc_t debugvarrelpc_;
 	n2_debugvariable_t* debugvarsysvar_;
 	n2_debugvariable_t* debugvarsysvarelements_[N2_MAX_SYSVAR];
 #endif
