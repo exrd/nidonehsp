@@ -3192,6 +3192,11 @@ N2_API n2_fvec2_t n2_fvec2_max(const n2_fvec2_t lhs, const n2_fvec2_t rhs)
 	return n2_fvec2(N2_MAX(lhs.x_, rhs.x_), N2_MAX(lhs.y_, rhs.y_));
 }
 
+N2_API n2_fvec2_t n2_fvec2_cossin(float rad)
+{
+	return n2_fvec2(N2_COSF(rad), N2_SINF(rad));
+}
+
 N2_API n2_fvec3_t n2_fvec3(float x, float y, float z)
 {
 	n2_fvec3_t res;
@@ -17068,7 +17073,7 @@ N2_API void n2s_commandbuffer_roundrect_ex(n2_state_t* state, n2s_commandbuffer_
 	n2s_index_t* i = n2s_commandbuffer_alloc_index(state, cb, inum);
 	const n2_fvec2_t pivot_diff = n2_fvec2_mul(scale, n2_fvec2_sub(n2_fvec2(0.5f, 0.5f), pivot));
 	const n2_fvec3_t center = n2_fvec3_add(position, n2_fvec3(pivot_diff.x_, pivot_diff.y_, 0));
-	const n2_fvec2_t cs = n2_fvec2(N2_SCAST(float, N2_COS(rad)), N2_SCAST(float, N2_SIN(rad)));
+	const n2_fvec2_t cs = n2_fvec2_cossin(rad);
 	const n2_fvec2_t hcs = n2_fvec2_scale(cs, 0.5f);
 	const n2_fvec2_t diff = n2_fvec2(hcs.x_ * scale.x_ + hcs.y_ * scale.y_, -hcs.y_ * scale.x_ + hcs.x_ * scale.y_);
 	size_t vi = 0;
@@ -17124,7 +17129,7 @@ N2_API void n2s_commandbuffer_rect_textured_rotskew(n2_state_t* state, n2s_comma
 	n2s_index_t* i = n2s_commandbuffer_alloc_index(state, cb, 6);
 	const n2_fvec2_t pivot_diff = n2_fvec2_mul(scale, n2_fvec2_sub(n2_fvec2(0.5f, 0.5f), pivot));
 	const n2_fvec3_t center = n2_fvec3_add(position, n2_fvec3(pivot_diff.x_, pivot_diff.y_, 0));
-	const n2_fvec2_t cs = n2_fvec2(N2_SCAST(float, N2_COS(rad)), N2_SCAST(float, N2_SIN(rad)));
+	const n2_fvec2_t cs = n2_fvec2_cossin(rad);
 	const n2_fvec2_t hcs = n2_fvec2_scale(cs, 0.5f);
 	const n2_fvec2_t fqdiff = n2_fvec2( hcs.x_ * scale.x_ + hcs.y_ * scale.y_,  hcs.y_ * scale.x_ - hcs.x_ * scale.y_);
 	const n2_fvec2_t sqdiff = n2_fvec2(-hcs.x_ * scale.x_ + hcs.y_ * scale.y_, -hcs.y_ * scale.x_ - hcs.x_ * scale.y_);
@@ -17153,7 +17158,7 @@ N2_API void n2s_commandbuffer_circle_wire(n2_state_t* state, n2s_commandbuffer_t
 	for (size_t r = 0; r < div; ++r)
 	{
 		const float rad = N2_SCAST(float, r) / N2_SCAST(float, div) * N2_SCAST(float, N2_MPI) * 2.f;
-		const float c = N2_SCAST(float, N2_COS(rad)); const float s = N2_SCAST(float, N2_SIN(rad));
+		const float c = N2_COSF(rad); const float s = N2_SINF(rad);
 		n2s_vertex_to(v + r * 2 + 0, n2_fvec3_add(center, n2_fvec3(c * (scale.x_ + ht), s * (scale.y_ + ht), 0)), n2_fvec2(0, 0), color);
 		n2s_vertex_to(v + r * 2 + 1, n2_fvec3_add(center, n2_fvec3(c * (scale.x_ - ht), s * (scale.y_ - ht), 0)), n2_fvec2(0, 0), color);
 		const n2s_index_t ri = N2_SCAST(n2s_index_t, r);
@@ -17177,7 +17182,7 @@ N2_API void n2s_commandbuffer_circle(n2_state_t* state, n2s_commandbuffer_t* cb,
 	for (size_t r = 0; r < div; ++r)
 	{
 		const float rad = N2_SCAST(float, r) / N2_SCAST(float, div) * N2_SCAST(float, N2_MPI) * 2.f;
-		const float c = N2_SCAST(float, N2_COS(rad)); const float s = N2_SCAST(float, N2_SIN(rad));
+		const float c = N2_COSF(rad); const float s = N2_SINF(rad);
 		n2s_vertex_to(v + r + 1, n2_fvec3_add(center, n2_fvec3(c * scale.x_ * 0.5f, s * scale.y_ * 0.5f, 0)), n2_fvec2(0, 0), color);
 		i[r * 3 + 0] = top_index + 0; i[r * 3 + 1] = top_index + N2_SCAST(n2s_index_t, r); i[r * 3 + 2] = top_index + N2_SCAST(n2s_index_t, r == div - 1 ? 1 : r + 1);
 	}
@@ -21631,6 +21636,14 @@ N2_API n2_bool_t n2_ast_node_evaluate(n2_state_t* state, n2_fiber_t* f, const n2
 				n2_valstr_t s; n2_str_init(&s); n2_str_set(state, &s, node->token_->content_, SIZE_MAX);
 				n2_valuearray_pushv(state, f->values_, n2_value_allocs(state, &s));
 				n2_str_teardown(state, &s);
+			}
+			break;
+		case N2_TOKEN_CHAR:
+			{
+				n2_codepoint_t codepoint = 0;
+				n2_encoding_utf8_fetch(node->token_->content_, &codepoint);
+				const n2_valint_t vali = N2_SCAST(n2_valint_t, codepoint);
+				n2_valuearray_pushv(state, f->values_, n2_value_alloci(state, vali));
 			}
 			break;
 		default:				N2_ASSERT(0); break;

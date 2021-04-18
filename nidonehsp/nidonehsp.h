@@ -351,6 +351,63 @@
 #define N2_ROUND(x)			round(x)
 #define N2_FLOOR(x)			floor(x)
 #define N2_CEIL(x)			ceil(x)
+#define N2_SINF(x)			sinf(x)
+#define N2_COSF(x)			cosf(x)
+#define N2_TANF(x)			tanf(x)
+#define N2_ASINF(x)			sin(x)
+#define N2_ACOSF(x)			cos(x)
+#define N2_ATAN2F(y, x)		atan2f(y, x)
+#define N2_SQRTF(x)			sqrtf(x)
+#define N2_POWF(x, y)		powf(x, y)
+#define N2_EXPF(x)			expf(x)
+#define N2_LOGF(x)			logf(x)
+#define N2_FMODF(x, y)		fmodf(x, y)
+#define N2_ROUNDF(x)		roundf(x)
+#define N2_FLOORF(x)		floorf(x)
+#define N2_CEILF(x)			ceilf(x)
+#endif
+
+#ifndef N2_SINF
+#define N2_SINF(x)			N2_SCAST(float, N2_SIN(N2_SCAST(double, x)))
+#endif
+#ifndef N2_COSF
+#define N2_COSF(x)			N2_SCAST(float, N2_COS(N2_SCAST(double, x)))
+#endif
+#ifndef N2_TANF
+#define N2_TANF(x)			N2_SCAST(float, N2_TAN(N2_SCAST(double, x)))
+#endif
+#ifndef N2_ASINF
+#define N2_ASINF(x)			N2_SCAST(float, N2_ASIN(N2_SCAST(double, x)))
+#endif
+#ifndef N2_ACOSF
+#define N2_ACOSF(x)			N2_SCAST(float, N2_ACOS(N2_SCAST(double, x)))
+#endif
+#ifndef N2_ATAN2F
+#define N2_ATAN2F(y, x)		N2_SCAST(float, N2_ATAN2(N2_SCAST(double, y), N2_SCAST(double, x)))
+#endif
+#ifndef N2_SQRTF
+#define N2_SQRTF(x)			N2_SCAST(float, N2_SQRT(N2_SCAST(double, x)))
+#endif
+#ifndef N2_POWF
+#define N2_POWF(x)			N2_SCAST(float, N2_POW(N2_SCAST(double, x)))
+#endif
+#ifndef N2_EXPF
+#define N2_EXPF(x)			N2_SCAST(float, N2_EXP(N2_SCAST(double, x)))
+#endif
+#ifndef N2_LOGF
+#define N2_LOGF(x)			N2_SCAST(float, N2_LOG(N2_SCAST(double, x)))
+#endif
+#ifndef N2_FMODF
+#define N2_FMODF(x)			N2_SCAST(float, N2_FMOD(N2_SCAST(double, x)))
+#endif
+#ifndef N2_ROUNDF
+#define N2_ROUNDF(x)		N2_SCAST(float, N2_ROUND(N2_SCAST(double, x)))
+#endif
+#ifndef N2_FLOORF
+#define N2_FLOORF(x)		N2_SCAST(float, N2_FLOOR(N2_SCAST(double, x)))
+#endif
+#ifndef N2_CEILF
+#define N2_CEILF(x)			N2_SCAST(float, N2_CEIL(N2_SCAST(double, x)))
 #endif
 
 #if N2_CONFIG_USE_STD_STR
@@ -1393,6 +1450,7 @@ N2_API float n2_fvec2_cross(const n2_fvec2_t lhs, const n2_fvec2_t rhs);
 N2_API float n2_fvec2_normalize_to(n2_fvec2_t* lhs);
 N2_API n2_fvec2_t n2_fvec2_min(const n2_fvec2_t lhs, const n2_fvec2_t rhs);
 N2_API n2_fvec2_t n2_fvec2_max(const n2_fvec2_t lhs, const n2_fvec2_t rhs);
+N2_API n2_fvec2_t n2_fvec2_cossin(float rad);
 
 typedef union n2_fvec3_t n2_fvec3_t;
 union n2_fvec3_t
