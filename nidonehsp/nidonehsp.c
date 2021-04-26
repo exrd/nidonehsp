@@ -17458,7 +17458,7 @@ static n2s_gprogram_e n2si_gmode_to_program(n2s_gmode_e gmode)
 	case N2S_GMODE_BLEND_COLTRANS:		return N2S_GPROGRAM_2D_TRANSCOLOR;
 	case N2S_GMODE_BLEND_ADD:			return N2S_GPROGRAM_2D;
 	case N2S_GMODE_BLEND_SUB:			return N2S_GPROGRAM_2D;
-	case N2S_GMODE_BLEND_RALPHA:		return N2S_GPROGRAM_2D;
+	case N2S_GMODE_BLEND_RALPHA:		return N2S_GPROGRAM_2D_RALPHA;
 	default:							break;
 	}
 	return N2S_GPROGRAM_2D;
@@ -17475,7 +17475,7 @@ static n2s_renderstate_e n2si_gmode_to_renderstate(n2s_gmode_e gmode)
 	case N2S_GMODE_BLEND_COLTRANS:		return N2S_RENDERSTATE_2D_BLEND_ALPHA;
 	case N2S_GMODE_BLEND_ADD:			return N2S_RENDERSTATE_2D_BLEND_ADD;
 	case N2S_GMODE_BLEND_SUB:			return N2S_RENDERSTATE_2D_BLEND_SUB;
-	case N2S_GMODE_BLEND_RALPHA:		return N2S_RENDERSTATE_2D_BLEND_ALPHA;// サポートされてない
+	case N2S_GMODE_BLEND_RALPHA:		return N2S_RENDERSTATE_2D_BLEND_ALPHA;
 	default:							break;
 	}
 	return N2S_RENDERSTATE_2D_NOBLEND;
@@ -18126,6 +18126,45 @@ static n2s_environment_t* n2si_environment_alloc(n2_state_t* state, const char**
 			"	oColor = color;\n"
 			"}\n";
 		const n2_bool_t load_succeeded = n2s_gprogram_load_to(state, &se->gprograms_[N2S_GPROGRAM_2D_TRANSCOLOR], vsh_src, fsh_src);
+		N2_ASSERT(load_succeeded);
+		N2_UNUSE(load_succeeded);
+	}
+	{
+		const char* vsh_src = 
+			N2I_GL_SHADER_HEADER()
+			N2I_GL_SHADER_DEF_UB_DRAWENV()
+			N2I_GL_SHADER_DEF_ATTR_POSITION()
+			N2I_GL_SHADER_DEF_ATTR_TEXCOORD()
+			N2I_GL_SHADER_DEF_ATTR_COLOR()
+			N2I_GL_SHADER_DEF_ATTR_TEXCOORD_CLAMP()
+			"out vec2 vUV;\n"
+			"out vec4 vColor;\n"
+			"out vec4 vUVClamp;\n"
+			"void main()\n"
+			"{\n"
+			"	vUV = N2_ATTR_TEXCOORD;\n"
+			"	vColor = N2_ATTR_COLOR;\n"
+			"	vUVClamp = vec4(min(N2_ATTR_TEXCOORD_CLAMP.xy, N2_ATTR_TEXCOORD_CLAMP.zw), max(N2_ATTR_TEXCOORD_CLAMP.xy, N2_ATTR_TEXCOORD_CLAMP.zw));\n"
+			"	gl_Position = N2_PVMTX * vec4(N2_ATTR_POSITION.xyz, 1.0);\n"
+			"}\n";
+		const char* fsh_src =
+			N2I_GL_SHADER_HEADER()
+			N2I_GL_SHADER_DEF_UNIFORM_TEXTURE()
+			N2I_GL_SHADER_DEF_UNIFORM_TRANS_COLOR()
+			"in vec2 vUV;\n"
+			"in vec4 vColor;\n"
+			"in vec4 vUVClamp;\n"
+			"out vec4 oColor;\n"
+			"void main()\n"
+			"{\n"
+			"	vec2 uv = clamp(vUV, vUVClamp.xy, vUVClamp.zw);\n"
+			"	vec4 texcolor = texture(N2_UTEXTURE, uv);\n"
+			"	vec4 texrcolor = texture(N2_UTEXTURE, uv + vec2(0.5, 0));\n"
+			"	vec4 color = vColor * texcolor;\n"
+			"	color.a = texrcolor.r;/*replace A as R in right half*/\n"
+			"	oColor = color;\n"
+			"}\n";
+		const n2_bool_t load_succeeded = n2s_gprogram_load_to(state, &se->gprograms_[N2S_GPROGRAM_2D_RALPHA], vsh_src, fsh_src);
 		N2_ASSERT(load_succeeded);
 		N2_UNUSE(load_succeeded);
 	}

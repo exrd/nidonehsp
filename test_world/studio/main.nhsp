@@ -25,6 +25,13 @@ input b, 100
 buffer 1
 picload "icon.png", -1
 
+#if 1
+buffer 2, 640, 480
+cls 4
+font , 20 : color 255, 255, 0 : pos 0, 0 : mes "Buffer2のフォント描画"
+font , 24 : color 255, 0, 255 : pos 320, 0 : mes "Buffer2のフォント描画"
+#endif
+
 gsel 0
 
 z = ""
@@ -43,6 +50,7 @@ repeat
 	gmode 3, , , 128 : pos 10, 300 : color : mes `counter=${cnt}\uf381`, mesopt_gmode
 	color 200, 100, 100 : boxf 20, 100, 200, 150
 	color 255, 255, 255 : pos 20, 100 : picmes@n2 `魅惑の文字に魅せられて`, 48, 1
+	gmode 7, , , 255 : pos 100, 300 : gcopy 2, 0, 0, 200, 100
 	font "" : gmode 0
 	mes z : mes b : mes a
 	color 255, 255, 128 : grect 100, 100, deg2rad(cnt), 100, 50
