@@ -3971,11 +3971,22 @@ enum n2s_sysreq_e
 {
 	N2S_SYSREQ_PLATFORM = 0,
 
+	//N2S_SYSREQ_CPU_TYPE,
+	N2S_SYSREQ_CPU_CORE_COUNT,
+	N2S_SYSREQ_CPU_CACHE_LINE_SIZE,
+
+	N2S_SYSREQ_SYSTEM_RAM_MB,
+
+	N2S_SYSREQ_BATTERY_SECONDS,
+	N2S_SYSREQ_BATTERY_PERCENTAGE,
+
 	N2S_SYSREQ_FONT_ATLAS_WIDTH,
 	N2S_SYSREQ_FONT_ATLAS_HEIGHT,
 
 	N2S_MAX_SYSREQ
 };
+
+N2_API const char* n2s_sysreq_get_name(n2s_sysreq_e sysreq, const char* on_failed);
 
 N2_DECLARE_ENUM(n2sc_sysreq_e);
 enum n2sc_sysreq_e

@@ -16809,6 +16809,24 @@ N2_API void n2s_gprogram_draw_cache_reset(n2s_gprogram_draw_cache_t* pdc)
 	pdc->ub_cached_ = (1 << N2S_MAX_GPROGRAM_UNIFORM_BLOCK) - 1;
 }
 
+N2_API const char* n2s_sysreq_get_name(n2s_sysreq_e sysreq, const char* on_failed)
+{
+	switch (sysreq)
+	{
+	case N2S_SYSREQ_PLATFORM:				return "platform";
+	//case N2S_SYSREQ_CPU_TYPE:				return "cpu_type";
+	case N2S_SYSREQ_CPU_CORE_COUNT:			return "cpu_core_count";
+	case N2S_SYSREQ_CPU_CACHE_LINE_SIZE:	return "cpu_cache_line_size";
+	case N2S_SYSREQ_SYSTEM_RAM_MB:			return "system_ram_mb";
+	case N2S_SYSREQ_BATTERY_SECONDS:		return "battery_seconds";
+	case N2S_SYSREQ_BATTERY_PERCENTAGE:		return "battery_percentage";
+	case N2S_SYSREQ_FONT_ATLAS_WIDTH:		return "font_atlas_width";
+	case N2S_SYSREQ_FONT_ATLAS_HEIGHT:		return "font_atlas_height";
+	default: break;
+	}
+	return on_failed;
+}
+
 N2_API n2sc_platform_e n2s_convert_platform(int n2platform)
 {
 	switch (n2platform)
@@ -26440,11 +26458,19 @@ static int n2si_bifunc_sysreq_n2(const n2_funcarg_t* arg)
 		switch (req)
 		{
 		case N2S_SYSREQ_PLATFORM: n2e_funcarg_pushi(arg, n2s_convert_platform(N2_PLATFORM)); break;
+#if N2_CONFIG_USE_SDL_LIB
+		//case N2S_SYSREQ_CPU_TYPE: n2e_funcarg_pushs(arg, SDL_GetCPUType()); break;
+		case N2S_SYSREQ_CPU_CORE_COUNT: n2e_funcarg_pushi(arg, SDL_GetCPUCount()); break;
+		case N2S_SYSREQ_CPU_CACHE_LINE_SIZE: n2e_funcarg_pushi(arg, SDL_GetCPUCacheLineSize()); break;
+		case N2S_SYSREQ_SYSTEM_RAM_MB: n2e_funcarg_pushi(arg, SDL_GetSystemRAM()); break;
+		case N2S_SYSREQ_BATTERY_SECONDS: { int seconds = -1; SDL_GetPowerInfo(&seconds, NULL); n2e_funcarg_pushi(arg, seconds); } break;
+		case N2S_SYSREQ_BATTERY_PERCENTAGE: { int percent = -1; SDL_GetPowerInfo(NULL, &percent); n2e_funcarg_pushi(arg, percent); } break;
+#endif
 #if N2_CONFIG_USE_N2_STANDARD
 		case N2S_SYSREQ_FONT_ATLAS_WIDTH: n2e_funcarg_pushi(arg, se ? N2_SCAST(n2_valint_t, se->font_atlas_width_) : 0); break;
 		case N2S_SYSREQ_FONT_ATLAS_HEIGHT: n2e_funcarg_pushi(arg, se ? N2_SCAST(n2_valint_t, se->font_atlas_height_) : 0); break;
 #endif
-		default: n2e_funcarg_raise(arg, "sysreq@n2：リクエストの種類（%" N2_VALINT_PRI "）が不正です", req); return -1;
+		default: n2e_funcarg_raise(arg, "sysreq@n2：読み込みサポートされてないリクエストの種類（%" N2_VALINT_PRI "＝%s）です", req, n2s_sysreq_get_name(req, NULL)); return -1;
 		}
 		return 1;
 	}
@@ -26466,7 +26492,7 @@ static int n2si_bifunc_sysreq_n2(const n2_funcarg_t* arg)
 			}
 			break;
 #endif
-		default: n2e_funcarg_raise(arg, "sysreq@n2：設定できないリクエストの種類（%" N2_VALINT_PRI "）です", req); return -1;
+		default: n2e_funcarg_raise(arg, "sysreq@n2：設定できないリクエストの種類（%" N2_VALINT_PRI "＝%s）です", req, n2s_sysreq_get_name(req, NULL)); return -1;
 		}
 		return 0;
 	}
@@ -28284,6 +28310,11 @@ static void n2i_environment_bind_standards_builtins(n2_state_t* state, n2_pp_con
 		n2i_pp_context_register_macro_rawi(state, ppc, "celbitmap_capture", 16);
 
 		n2i_pp_context_register_macro_rawi(state, ppc, "sysreq_platform@n2", N2S_SYSREQ_PLATFORM);
+		n2i_pp_context_register_macro_rawi(state, ppc, "sysreq_cpu_count@n2", N2S_SYSREQ_CPU_CORE_COUNT);
+		n2i_pp_context_register_macro_rawi(state, ppc, "sysreq_cpu_cache_line_size@n2", N2S_SYSREQ_CPU_CACHE_LINE_SIZE);
+		n2i_pp_context_register_macro_rawi(state, ppc, "sysreq_system_ram_mb@n2", N2S_SYSREQ_SYSTEM_RAM_MB);
+		n2i_pp_context_register_macro_rawi(state, ppc, "sysreq_battery_seconds@n2", N2S_SYSREQ_BATTERY_SECONDS);
+		n2i_pp_context_register_macro_rawi(state, ppc, "sysreq_battery_percentage@n2", N2S_SYSREQ_BATTERY_PERCENTAGE);
 		n2i_pp_context_register_macro_rawi(state, ppc, "sysreq_font_atlas_width@n2", N2S_SYSREQ_FONT_ATLAS_WIDTH);
 		n2i_pp_context_register_macro_rawi(state, ppc, "sysreq_font_atlas_height@n2", N2S_SYSREQ_FONT_ATLAS_HEIGHT);
 

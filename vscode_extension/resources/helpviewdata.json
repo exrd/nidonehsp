@@ -3709,6 +3709,11 @@
 				"|requestType|型|取得|設定|内容|$",
 				"|:--|:--|:--|:--|:--|$",
 				"|`sysreq_platform@n2`|`int`|〇|×|現在のプラットフォーム。<br>プラットフォームを表す値は後述。|$",
+				"|`sysreq_cpu_core_count@n2`|`int`|〇|×|CPUのコア数。|$",
+				"|`sysreq_cpu_cache_line_size@n2`|`int`|〇|×|CPUのキャッシュラインサイズ。|$",
+				"|`sysreq_system_ram_mb@n2`|`int`|〇|×|システムのメモリ量[MB]。|$",
+				"|`sysreq_battery_seconds@n2`|`int`|〇|×|バッテリーの残り時間[sec]。バッテリーが存在しない場合は`-1`。|$",
+				"|`sysreq_battery_percentage@n2`|`int`|〇|×|バッテリーの残りパーセンテージ[%]。バッテリーが存在しない場合は`-1`。|$",
 				"|`sysreq_font_atlas_width@n2`<br>`sysreq_font_atlas_height@n2`|`int`|〇|〇|$ref(fontload@n2)命令で生成するフォントのアトラステクスチャのサイズ|$",
 				"$",
 				"プラットフォームを表す定数は次の通りです。$",
@@ -3737,6 +3742,76 @@
 			],
 			"description": [
 				"$ref(sysreq@n2)におけるリクエストの種類（プラットフォーム）を示す整数の定数です。"
+			],
+			"relationGroup": [
+				"stdConstantSysreq"
+			]
+		},
+		"sysreq_cpu_core_count@n2": {
+			"type": "constant",
+			"summary": "CPUコア数リクエスト",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"$ref(sysreq@n2)におけるリクエストの種類（CPUのコア数）を示す整数の定数です。"
+			],
+			"relationGroup": [
+				"stdConstantSysreq"
+			]
+		},
+		"sysreq_cpu_cache_line_size@n2": {
+			"type": "constant",
+			"summary": "CPUキャッシュラインサイズリクエスト",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"$ref(sysreq@n2)におけるリクエストの種類（CPUキャッシュラインサイズ）を示す整数の定数です。"
+			],
+			"relationGroup": [
+				"stdConstantSysreq"
+			]
+		},
+		"sysreq_system_ram_mb@n2": {
+			"type": "constant",
+			"summary": "システムメモリリクエスト",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"$ref(sysreq@n2)におけるリクエストの種類（システムメモリ）を示す整数の定数です。"
+			],
+			"relationGroup": [
+				"stdConstantSysreq"
+			]
+		},
+		"sysreq_battery_seconds@n2": {
+			"type": "constant",
+			"summary": "バッテリー残時間リクエスト",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"$ref(sysreq@n2)におけるリクエストの種類（バッテリー残時間）を示す整数の定数です。"
+			],
+			"relationGroup": [
+				"stdConstantSysreq"
+			]
+		},
+		"sysreq_battery_percentage@n2": {
+			"type": "constant",
+			"summary": "バッテリー残量リクエスト",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"$ref(sysreq@n2)におけるリクエストの種類（バッテリー残量）を示す整数の定数です。"
 			],
 			"relationGroup": [
 				"stdConstantSysreq"
