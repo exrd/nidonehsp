@@ -3209,6 +3209,130 @@
 				"noteCommon"
 			]
 		},
+		"noteadd": {
+			"type": "function",
+			"summary": "noteへ行を追加",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "line",
+					"description": "行として追加する文字列"
+				},
+				{
+					"name": "lineIndex",
+					"description": "追加する行のインデックス",
+					"omitted": "-1"
+				},
+				{
+					"name": "insertMode",
+					"description": "追加モード（0＝追加、1＝上書き）",
+					"omitted": "0"
+				}
+			],
+			"description": [
+				"noteへlineを新しく行を追加します。",
+				"",
+				"lineIndexの行へ新しく追加しますが、lineIndexが負の場合は最後尾に行が追加されます。",
+				"lineIndexに対応する行が存在しない場合、行を追加せずに処理を終えます。",
+				"",
+				"insertModeを`1`にすることで追加ではなくその行を上書きすることができます。",
+				"ただし、lineIndexが負の場合は行の上書きではなく、最終行の追加と同じ意味になります。"
+			],
+			"relationGroup": [
+				"noteCommon"
+			]
+		},
+		"notedel": {
+			"type": "function",
+			"summary": "noteから行を削除",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "lineIndex",
+					"description": "削除する行のインデックス",
+					"omitted": "0"
+				}
+			],
+			"description": [
+				"noteからlineIndexで指定した行を削除します。",
+				"",
+				"lineIndexに対応する行が存在しない場合、エラーにはならず行を削除せずに処理を返します。"
+			],
+			"relationGroup": [
+				"noteCommon"
+			]
+		},
+		"noteget": {
+			"type": "function",
+			"summary": "noteから行を取得",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "toVariable",
+					"description": "行の内容を格納する変数"
+				},
+				{
+					"name": "lineIndex",
+					"description": "取得する行のインデックス",
+					"omitted": "0"
+				}
+			],
+			"description": [
+				"noteからlineIndexで指定した行の内容をtoVariableへ取得・格納します。",
+				"",
+				"lineIndexに対応する行が存在しない場合、エラーにはならず空文字を格納します。"
+			],
+			"relationGroup": [
+				"noteCommon"
+			]
+		},
+		"noteload": {
+			"type": "function",
+			"summary": "noteへファイルの内容を読み込む",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "filePath",
+					"description": "読み込むファイルパス"
+				},
+				{
+					"name": "readSize",
+					"description": "読み込むサイズ",
+					"omitted": "-1"
+				}
+			],
+			"description": [
+				"filePathのファイルの内容をテキストとしてnoteへ読み込みます。",
+				"",
+				"readSizeで読み込むサイズを指定できます。",
+				"readSizeが負の場合、ファイルの内容全体が読み込まれます。"
+			],
+			"relationGroup": [
+				"noteCommon"
+			]
+		},
+		"notesave": {
+			"type": "function",
+			"summary": "noteの内容をファイルへ書き込む",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "filePath",
+					"description": "書き込むファイルパス"
+				}
+			],
+			"description": [
+				"noteの内容をテキストとしてfilePathのファイルへ書き込みます。"
+			],
+			"relationGroup": [
+				"noteCommon"
+			]
+		},
 
 		"assert": {
 			"type": "function",
@@ -3361,12 +3485,12 @@
 				},
 				{
 					"name": "readSize",
-					"description": "読み込むサイズ",
+					"description": "読み込むサイズ[byte]",
 					"omitted": "-1"
 				},
 				{
 					"name": "readOffset",
-					"description": "読み込むオフセット",
+					"description": "読み込むオフセット[byte]",
 					"omitted": "-1"
 				}
 			],

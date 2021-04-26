@@ -45,6 +45,11 @@ if (b != "def") { raise }
 
 //notesave `${fileroot}/out/noteout.txt`
 
+notesel z
+noteload `${fileroot}/ref/noteout.txt`
+
+if (a != z) { mes `a=${a}, z=${z}` : raise }
+
 //mes `+${a}+`
 //mes `+${b}+`
 
