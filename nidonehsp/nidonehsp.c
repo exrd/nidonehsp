@@ -3140,174 +3140,225 @@ N2_DEFINE_TSORTED_ARRAY(void*, void, void*, n2_ptrset, N2_API, n2i_ptrset_setupf
 
 static N2_INLINE float n2_float_saturate(float v)
 {
-	return (v < 0.f ? 0.f : v > 1.f ? 1.f : v);
+	return N2_CLAMP(v, 0, 1);
 }
 
-N2_API n2_fvec2_t n2_fvec2(float x, float y)
+static N2_INLINE double n2_double_saturate(double v)
 {
-	n2_fvec2_t res;
-	res.x_ = x; res.y_ = y;
-	return res;
+	return N2_CLAMP(v, 0, 1);
 }
 
-N2_API n2_fvec2_t n2_fvec2_add(const n2_fvec2_t lhs, const n2_fvec2_t rhs)
-{
-	return n2_fvec2(lhs.x_ + rhs.x_, lhs.y_ + rhs.y_);
-}
+#define N2_VEC2_DEFINE(prefix, lprefix, type) \
+	N2_API n2_##prefix##vec2_t n2_##prefix##vec2(type x, type y) \
+	{ \
+		n2_##prefix##vec2_t res; \
+		res.x_ = x; res.y_ = y; \
+		return res; \
+	} \
+	N2_API n2_##prefix##vec2_t n2_##prefix##vec2_add(const n2_##prefix##vec2_t lhs, const n2_##prefix##vec2_t rhs) \
+	{ \
+		return n2_##prefix##vec2(lhs.x_ + rhs.x_, lhs.y_ + rhs.y_); \
+	} \
+	N2_API n2_##prefix##vec2_t n2_##prefix##vec2_sub(const n2_##prefix##vec2_t lhs, const n2_##prefix##vec2_t rhs) \
+	{ \
+		return n2_##prefix##vec2(lhs.x_ - rhs.x_, lhs.y_ - rhs.y_); \
+	} \
+	N2_API n2_##prefix##vec2_t n2_##prefix##vec2_mul(const n2_##prefix##vec2_t lhs, const n2_##prefix##vec2_t rhs) \
+	{ \
+		return n2_##prefix##vec2(lhs.x_ * rhs.x_, lhs.y_ * rhs.y_); \
+	} \
+	N2_API n2_##prefix##vec2_t n2_##prefix##vec2_scale(const n2_##prefix##vec2_t lhs, type s) \
+	{ \
+		return n2_##prefix##vec2(lhs.x_ * s, lhs.y_ * s); \
+	} \
+	N2_API type n2_##prefix##vec2_dot(const n2_##prefix##vec2_t lhs, const n2_##prefix##vec2_t rhs) \
+	{ \
+		return lhs.x_ * rhs.x_ + lhs.y_ * rhs.y_; \
+	} \
+	N2_API type n2_##prefix##vec2_cross(const n2_##prefix##vec2_t lhs, const n2_##prefix##vec2_t rhs) \
+	{ \
+		return lhs.x_ * rhs.y_ - lhs.y_ * rhs.x_; \
+	} \
+	N2_API type n2_##prefix##vec2_normalize_to(n2_##prefix##vec2_t* lhs) \
+	{ \
+		type l = lhs->x_ * lhs->x_ + lhs->y_ * lhs->y_; \
+		if (l > 0.f) { l = N2_SQRT##lprefix(l); const type r = 1.f / l; lhs->x_ *= r; lhs->y_ *= r; } \
+		return l; \
+	} \
+	N2_API n2_##prefix##vec2_t n2_##prefix##vec2_min(const n2_##prefix##vec2_t lhs, const n2_##prefix##vec2_t rhs) \
+	{ \
+		return n2_##prefix##vec2(N2_MIN(lhs.x_, rhs.x_), N2_MIN(lhs.y_, rhs.y_)); \
+	} \
+	N2_API n2_##prefix##vec2_t n2_##prefix##vec2_max(const n2_##prefix##vec2_t lhs, const n2_##prefix##vec2_t rhs) \
+	{ \
+		return n2_##prefix##vec2(N2_MAX(lhs.x_, rhs.x_), N2_MAX(lhs.y_, rhs.y_)); \
+	} \
+	N2_API n2_##prefix##vec2_t n2_##prefix##vec2_clamp(const n2_##prefix##vec2_t lhs, type low, type high) \
+	{ \
+		return n2_##prefix##vec2(N2_CLAMP(lhs.x_, low, high), N2_CLAMP(lhs.y_, low, high)); \
+	} \
+	N2_API n2_##prefix##vec2_t n2_##prefix##vec2_cossin(type rad) \
+	{ \
+		return n2_##prefix##vec2(N2_COS##lprefix(rad), N2_SIN##lprefix(rad)); \
+	} \
 
-N2_API n2_fvec2_t n2_fvec2_sub(const n2_fvec2_t lhs, const n2_fvec2_t rhs)
-{
-	return n2_fvec2(lhs.x_ - rhs.x_, lhs.y_ - rhs.y_);
-}
+N2_VEC2_DEFINE(f, F, float);
+N2_VEC2_DEFINE(d, D, double);
+#undef N2_VEC2_DEFINE
 
-N2_API n2_fvec2_t n2_fvec2_mul(const n2_fvec2_t lhs, const n2_fvec2_t rhs)
-{
-	return n2_fvec2(lhs.x_ * rhs.x_, lhs.y_ * rhs.y_);
-}
+#define N2_VEC3_DEFINE(prefix, lprefix, type) \
+	N2_API n2_##prefix##vec3_t n2_##prefix##vec3(type x, type y, type z) \
+	{ \
+		n2_##prefix##vec3_t res; \
+		res.x_ = x; res.y_ = y; res.z_ = z; \
+		return res; \
+	} \
+	N2_API n2_##prefix##vec3_t n2_##prefix##vec3_add(const n2_##prefix##vec3_t lhs, const n2_##prefix##vec3_t rhs) \
+	{ \
+		return n2_##prefix##vec3(lhs.x_ + rhs.x_, lhs.y_ + rhs.y_, lhs.z_ + rhs.z_); \
+	} \
+	N2_API n2_##prefix##vec3_t n2_##prefix##vec3_sub(const n2_##prefix##vec3_t lhs, const n2_##prefix##vec3_t rhs) \
+	{ \
+		return n2_##prefix##vec3(lhs.x_ - rhs.x_, lhs.y_ - rhs.y_, lhs.z_ - rhs.z_); \
+	} \
+	N2_API n2_##prefix##vec3_t n2_##prefix##vec3_mul(const n2_##prefix##vec3_t lhs, const n2_##prefix##vec3_t rhs) \
+	{ \
+		return n2_##prefix##vec3(lhs.x_ * rhs.x_, lhs.y_ * rhs.y_, lhs.z_ * rhs.z_); \
+	} \
+	N2_API n2_##prefix##vec3_t n2_##prefix##vec3_scale(const n2_##prefix##vec3_t lhs, type s) \
+	{ \
+		return n2_##prefix##vec3(lhs.x_ * s, lhs.y_ * s, lhs.z_ * s); \
+	} \
+	N2_API type n2_##prefix##vec3_dot(const n2_##prefix##vec3_t lhs, const n2_##prefix##vec3_t rhs) \
+	{ \
+		return lhs.x_ * rhs.x_ + lhs.y_ * rhs.y_ + lhs.z_ * rhs.z_; \
+	} \
+	N2_API type n2_##prefix##vec3_normalize_to(n2_##prefix##vec3_t* lhs) \
+	{ \
+		type l = lhs->x_ * lhs->x_ + lhs->y_ * lhs->y_ + lhs->z_ * lhs->z_; \
+		if (l > 0.f) { l = N2_SCAST(type, N2_SQRT(l)); const type r = 1.f / l; lhs->x_ *= r; lhs->y_ *= r; lhs->z_ *= r; } \
+		return l; \
+	} \
+	N2_API n2_##prefix##vec3_t n2_##prefix##vec3_min(const n2_##prefix##vec3_t lhs, const n2_##prefix##vec3_t rhs) \
+	{ \
+		return n2_##prefix##vec3(N2_MIN(lhs.x_, rhs.x_), N2_MIN(lhs.y_, rhs.y_), N2_MIN(lhs.z_, rhs.z_)); \
+	} \
+	N2_API n2_##prefix##vec3_t n2_##prefix##vec3_max(const n2_##prefix##vec3_t lhs, const n2_##prefix##vec3_t rhs) \
+	{ \
+		return n2_##prefix##vec3(N2_MAX(lhs.x_, rhs.x_), N2_MAX(lhs.y_, rhs.y_), N2_MAX(lhs.z_, rhs.z_)); \
+	} \
+	N2_API n2_##prefix##vec3_t n2_##prefix##vec3_clamp(const n2_##prefix##vec3_t lhs, type low, type high) \
+	{ \
+		return n2_##prefix##vec3(N2_CLAMP(lhs.x_, low, high), N2_CLAMP(lhs.y_, low, high), N2_CLAMP(lhs.z_, low, high)); \
+	} \
+	N2_API n2_##prefix##vec3_t n2_##prefix##vec3_cossintan(type rad) \
+	{ \
+		return n2_##prefix##vec3(N2_COS##lprefix(rad), N2_SIN##lprefix(rad), N2_TAN##lprefix(rad)); \
+	} \
 
-N2_API n2_fvec2_t n2_fvec2_scale(const n2_fvec2_t lhs, float s)
-{
-	return n2_fvec2(lhs.x_ * s, lhs.y_ * s);
-}
+N2_VEC3_DEFINE(f, F, float);
+N2_VEC3_DEFINE(d, D, double);
+#undef N2_VEC3_DEFINE
 
-N2_API float n2_fvec2_cross(const n2_fvec2_t lhs, const n2_fvec2_t rhs)
-{
-	return lhs.x_ * rhs.y_ - lhs.y_ * rhs.x_;
-}
+#define N2_VEC4_DEFINE(prefix, lprefix, type) \
+	N2_API n2_##prefix##vec4_t n2_##prefix##vec4(type x, type y, type z, type w) \
+	{ \
+		n2_##prefix##vec4_t res; \
+		res.x_ = x; res.y_ = y; res.z_ = z; res.w_ = w; \
+		return res; \
+	} \
+	N2_API n2_##prefix##vec4_t n2_##prefix##vec4_add(const n2_##prefix##vec4_t lhs, const n2_##prefix##vec4_t rhs) \
+	{ \
+		return n2_##prefix##vec4(lhs.x_ + rhs.x_, lhs.y_ + rhs.y_, lhs.z_ + rhs.z_, lhs.w_ + rhs.w_); \
+	} \
+	N2_API n2_##prefix##vec4_t n2_##prefix##vec4_sub(const n2_##prefix##vec4_t lhs, const n2_##prefix##vec4_t rhs) \
+	{ \
+		return n2_##prefix##vec4(lhs.x_ - rhs.x_, lhs.y_ - rhs.y_, lhs.z_ - rhs.z_, lhs.w_ - rhs.w_); \
+	} \
+	N2_API n2_##prefix##vec4_t n2_##prefix##vec4_scale(const n2_##prefix##vec4_t lhs, type s) \
+	{ \
+		return n2_##prefix##vec4(lhs.x_ * s, lhs.y_ * s, lhs.z_ * s, lhs.w_ * s); \
+	} \
+	N2_API type n2_##prefix##vec4_dot(const n2_##prefix##vec4_t lhs, const n2_##prefix##vec4_t rhs) \
+	{ \
+		return lhs.x_ * rhs.x_ + lhs.y_ * rhs.y_ + lhs.z_ * rhs.z_ + lhs.w_ * rhs.w_; \
+	} \
+	N2_API n2_##prefix##vec4_t n2_##prefix##vec4_min(const n2_##prefix##vec4_t lhs, const n2_##prefix##vec4_t rhs) \
+	{ \
+		return n2_##prefix##vec4(N2_MIN(lhs.x_, rhs.x_), N2_MIN(lhs.y_, rhs.y_), N2_MIN(lhs.z_, rhs.z_), N2_MIN(lhs.w_, rhs.w_)); \
+	} \
+	N2_API n2_##prefix##vec4_t n2_##prefix##vec4_max(const n2_##prefix##vec4_t lhs, const n2_##prefix##vec4_t rhs) \
+	{ \
+		return n2_##prefix##vec4(N2_MAX(lhs.x_, rhs.x_), N2_MAX(lhs.y_, rhs.y_), N2_MAX(lhs.z_, rhs.z_), N2_MAX(lhs.w_, rhs.w_)); \
+	} \
+	N2_API n2_##prefix##vec4_t n2_##prefix##vec4_clamp(const n2_##prefix##vec4_t lhs, type low, type high) \
+	{ \
+		return n2_##prefix##vec4(N2_CLAMP(lhs.x_, low, high), N2_CLAMP(lhs.y_, low, high), N2_CLAMP(lhs.z_, low, high), N2_CLAMP(lhs.w_, low, high)); \
+	} \
 
-N2_API float n2_fvec2_normalize_to(n2_fvec2_t* lhs)
-{
-	float l = lhs->x_ * lhs->x_ + lhs->y_ * lhs->y_;
-	if (l > 0.f) { l = N2_SCAST(float, N2_SQRT(l)); const float r = 1.f / l; lhs->x_ *= r; lhs->y_ *= r; }
-	return l;
-}
+N2_VEC4_DEFINE(f, F, float);
+N2_VEC4_DEFINE(d, D, double);
+#undef N2_VEC4_DEFINE
 
-N2_API n2_fvec2_t n2_fvec2_min(const n2_fvec2_t lhs, const n2_fvec2_t rhs)
-{
-	return n2_fvec2(N2_MIN(lhs.x_, rhs.x_), N2_MIN(lhs.y_, rhs.y_));
-}
+#define N2_MAT4_DEFINE(prefix, lprefix, type) \
+	N2_API void n2_##prefix##mat4_zero_to(n2_##prefix##mat4_t* to) \
+	{ \
+		to->m_[0][0] = 0; to->m_[0][1] = 0; to->m_[0][2] = 0; to->m_[0][3] = 0; \
+		to->m_[1][0] = 0; to->m_[1][1] = 0; to->m_[1][2] = 0; to->m_[1][3] = 0; \
+		to->m_[2][0] = 0; to->m_[2][1] = 0; to->m_[2][2] = 0; to->m_[2][3] = 0; \
+		to->m_[3][0] = 0; to->m_[3][1] = 0; to->m_[3][2] = 0; to->m_[3][3] = 0; \
+	} \
+	N2_API void n2_##prefix##mat4_identity_to(n2_##prefix##mat4_t* to) \
+	{ \
+		to->m_[0][0] = 1; to->m_[0][1] = 0; to->m_[0][2] = 0; to->m_[0][3] = 0; \
+		to->m_[1][0] = 0; to->m_[1][1] = 1; to->m_[1][2] = 0; to->m_[1][3] = 0; \
+		to->m_[2][0] = 0; to->m_[2][1] = 0; to->m_[2][2] = 1; to->m_[2][3] = 0; \
+		to->m_[3][0] = 0; to->m_[3][1] = 0; to->m_[3][2] = 0; to->m_[3][3] = 1; \
+	} \
+	N2_API n2_##prefix##mat4_t n2_##prefix##mat4_identity() \
+	{ \
+		n2_##prefix##mat4_t res; \
+		n2_##prefix##mat4_identity_to(&res); \
+		return res; \
+	} \
+	N2_API void n2_##prefix##mat4_copy_to(n2_##prefix##mat4_t* to, const n2_##prefix##mat4_t* from) \
+	{ \
+		N2_MEMCPY(to, from, sizeof(n2_##prefix##mat4_t)); \
+	} \
+	N2_API void n2_##prefix##mat4_ortho2d_to(n2_##prefix##mat4_t* to, type left, type right, type top, type bottom, type z_near, type z_far) \
+	{ \
+		n2_##prefix##mat4_identity_to(to); \
+		to->m_[0][0] =  N2_SCAST(type, 2) / (right - left); \
+		to->m_[1][1] =  N2_SCAST(type, 2) / (top - bottom); \
+		to->m_[2][2] = -N2_SCAST(type, 2) / (z_far - z_near); \
+		to->m_[3][0] = -(right + left) / (right - left); \
+		to->m_[3][1] = -(top + bottom) / (top - bottom); \
+		to->m_[3][2] = -(z_far + z_near) / (z_far - z_near); \
+	} \
+	N2_API void n2_##prefix##mat4_ortho3d_to(n2_##prefix##mat4_t* to, type left, type right, type bottom, type top, type z_near, type z_far) \
+	{ \
+		n2_##prefix##mat4_identity_to(to); \
+		to->m_[0][0] =  N2_SCAST(type, 2) / (right - left); \
+		to->m_[1][1] =  N2_SCAST(type, 2) / (top - bottom); \
+		to->m_[2][2] = -N2_SCAST(type, 2) / (z_far - z_near); \
+		to->m_[3][0] = -(right + left) / (right - left); \
+		to->m_[3][1] = -(top   + bottom) / (top   - bottom); \
+		to->m_[3][2] = -(z_far + z_near) / (z_far - z_near); \
+	} \
+	N2_API void n2_##prefix##mat4_perspective_to(n2_##prefix##mat4_t* to, type fovy, type aspect, type z_near, type z_far) \
+	{ \
+		n2_##prefix##mat4_zero_to(to); \
+		const type tan_half_fovy = N2_TAN##lprefix(N2_SCAST(type, 0.5) * fovy); \
+		to->m_[0][0] = N2_SCAST(type, 1) / (aspect * tan_half_fovy); \
+		to->m_[1][1] = N2_SCAST(type, 1) / (tan_half_fovy); \
+		to->m_[2][2] = -(z_far + z_near) / (z_far - z_near); \
+		to->m_[2][3] = -N2_SCAST(type, 1); \
+		to->m_[3][2] = -N2_SCAST(type, 2) * z_far * z_near / (z_far - z_near); \
+	}
 
-N2_API n2_fvec2_t n2_fvec2_max(const n2_fvec2_t lhs, const n2_fvec2_t rhs)
-{
-	return n2_fvec2(N2_MAX(lhs.x_, rhs.x_), N2_MAX(lhs.y_, rhs.y_));
-}
-
-N2_API n2_fvec2_t n2_fvec2_cossin(float rad)
-{
-	return n2_fvec2(N2_COSF(rad), N2_SINF(rad));
-}
-
-N2_API n2_fvec3_t n2_fvec3(float x, float y, float z)
-{
-	n2_fvec3_t res;
-	res.x_ = x; res.y_ = y; res.z_ = z;
-	return res;
-}
-
-N2_API n2_fvec3_t n2_fvec3_add(const n2_fvec3_t lhs, const n2_fvec3_t rhs)
-{
-	return n2_fvec3(lhs.x_ + rhs.x_, lhs.y_ + rhs.y_, lhs.z_ + rhs.z_);
-}
-
-N2_API n2_fvec3_t n2_fvec3_sub(const n2_fvec3_t lhs, const n2_fvec3_t rhs)
-{
-	return n2_fvec3(lhs.x_ - rhs.x_, lhs.y_ - rhs.y_, lhs.z_ - rhs.z_);
-}
-
-N2_API n2_fvec3_t n2_fvec3_scale(const n2_fvec3_t lhs, float s)
-{
-	return n2_fvec3(lhs.x_ * s, lhs.y_ * s, lhs.z_ * s);
-}
-
-N2_API float n2_fvec3_normalize_to(n2_fvec3_t* lhs)
-{
-	float l = lhs->x_ * lhs->x_ + lhs->y_ * lhs->y_ + lhs->z_ * lhs->z_;
-	if (l > 0.f) { l = N2_SCAST(float, N2_SQRT(l)); const float r = 1.f / l; lhs->x_ *= r; lhs->y_ *= r; lhs->z_ *= r; }
-	return l;
-}
-
-N2_API n2_fvec4_t n2_fvec4(float x, float y, float z, float w)
-{
-	n2_fvec4_t res;
-	res.x_ = x; res.y_ = y; res.z_ = z; res.w_ = w;
-	return res;
-}
-
-N2_API n2_fvec4_t n2_fvec4_add(const n2_fvec4_t lhs, const n2_fvec4_t rhs)
-{
-	return n2_fvec4(lhs.x_ + rhs.x_, lhs.y_ + rhs.y_, lhs.z_ + rhs.z_, lhs.w_ + rhs.w_);
-}
-
-N2_API n2_fvec4_t n2_fvec4_sub(const n2_fvec4_t lhs, const n2_fvec4_t rhs)
-{
-	return n2_fvec4(lhs.x_ - rhs.x_, lhs.y_ - rhs.y_, lhs.z_ - rhs.z_, lhs.w_ - rhs.w_);
-}
-
-N2_API n2_fvec4_t n2_fvec4_scale(const n2_fvec4_t lhs, float s)
-{
-	return n2_fvec4(lhs.x_ * s, lhs.y_ * s, lhs.z_ * s, lhs.w_ * s);
-}
-
-N2_API void n2_fmat4_zero_to(n2_fmat4_t* to)
-{
-	to->m_[0][0] = 0; to->m_[0][1] = 0; to->m_[0][2] = 0; to->m_[0][3] = 0;
-	to->m_[1][0] = 0; to->m_[1][1] = 0; to->m_[1][2] = 0; to->m_[1][3] = 0;
-	to->m_[2][0] = 0; to->m_[2][1] = 0; to->m_[2][2] = 0; to->m_[2][3] = 0;
-	to->m_[3][0] = 0; to->m_[3][1] = 0; to->m_[3][2] = 0; to->m_[3][3] = 0;
-}
-
-N2_API void n2_fmat4_identity_to(n2_fmat4_t* to)
-{
-	to->m_[0][0] = 1; to->m_[0][1] = 0; to->m_[0][2] = 0; to->m_[0][3] = 0;
-	to->m_[1][0] = 0; to->m_[1][1] = 1; to->m_[1][2] = 0; to->m_[1][3] = 0;
-	to->m_[2][0] = 0; to->m_[2][1] = 0; to->m_[2][2] = 1; to->m_[2][3] = 0;
-	to->m_[3][0] = 0; to->m_[3][1] = 0; to->m_[3][2] = 0; to->m_[3][3] = 1;
-}
-
-N2_API n2_fmat4_t n2_fmat4_identity()
-{
-	n2_fmat4_t res;
-	n2_fmat4_identity_to(&res);
-	return res;
-}
-
-N2_API void n2_fmat4_copy_to(n2_fmat4_t* to, const n2_fmat4_t* from)
-{
-	N2_MEMCPY(to, from, sizeof(n2_fmat4_t));
-}
-
-N2_API void n2_fmat4_ortho2d_to(n2_fmat4_t* to, float left, float right, float top, float bottom, float z_near, float z_far)
-{
-	n2_fmat4_identity_to(to);
-	to->m_[0][0] =  2.f / (right - left);
-	to->m_[1][1] =  2.f / (top - bottom);
-	to->m_[2][2] = -2.f / (z_far - z_near);
-	to->m_[3][0] = -(right + left) / (right - left);
-	to->m_[3][1] = -(top + bottom) / (top - bottom);
-	to->m_[3][2] = -(z_far + z_near) / (z_far - z_near);
-}
-
-N2_API void n2_fmat4_ortho3d_to(n2_fmat4_t* to, float left, float right, float bottom, float top, float z_near, float z_far)
-{
-	n2_fmat4_identity_to(to);
-	to->m_[0][0] =  2.f / (right - left);
-	to->m_[1][1] =  2.f / (top - bottom);
-	to->m_[2][2] = -2.f / (z_far - z_near);
-	to->m_[3][0] = -(right + left) / (right - left);
-	to->m_[3][1] = -(top   + bottom) / (top   - bottom);
-	to->m_[3][2] = -(z_far + z_near) / (z_far - z_near);
-}
-
-N2_API void n2_fmat4_perspective_to(n2_fmat4_t* to, float fovy, float aspect, float z_near, float z_far)
-{
-	n2_fmat4_zero_to(to);
-	const float tan_half_fovy = N2_SCAST(float, N2_TAN(0.5f * fovy));
-	to->m_[0][0] = 1.f / (aspect * tan_half_fovy);
-	to->m_[1][1] = 1.f / (tan_half_fovy);
-	to->m_[2][2] = -(z_far + z_near) / (z_far - z_near);
-	to->m_[2][3] = -1.f;
-	to->m_[3][2] = -2.f*z_far*z_near / (z_far - z_near);
-}
+N2_MAT4_DEFINE(f, F, float);
+N2_MAT4_DEFINE(d, D, double);
+#undef N2_MAT4_DEFINE
 
 //=============================================================================
 // 内部ヘルパー
