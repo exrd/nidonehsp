@@ -171,7 +171,7 @@
 #define N2_CONFIG_USE_SDL_LIB					(0)
 #endif
 
-// picomsgpack.hを有効
+// lxmsgpack.hを有効
 #ifndef N2_CONFIG_USE_MSGPACK_LIB
 #define N2_CONFIG_USE_MSGPACK_LIB				(1)
 #endif

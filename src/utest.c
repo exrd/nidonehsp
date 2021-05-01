@@ -6,9 +6,9 @@
 #include <math.h>
 
 #include "embed/json.h"
-#define PMSGP_STATIC
-#define PMSGP_IMPLEMENTATION
-#include "embed/picomsgpack.h"
+#define LXMSGP_STATIC
+#define LXMSGP_IMPLEMENTATION
+#include "embed/lxmsgpack.h"
 #define CULZ_STATIC
 #define CULZ_IMPLEMENTATION
 #include "embed/culz.h"
@@ -370,22 +370,22 @@ int main(int argc, char* argv[])
 		SDL_DestroyWindow(window);
 	}
 #elif 0
-	// picomsgpackテスト
+	// lxmsgpackテスト
 	{
-		pmsgp_pack_t pack;
-		pmsgp_unpack_t unpack;
-		pmsgp_element_t element;
+		lxmsgp_pack_t pack;
+		lxmsgp_unpack_t unpack;
+		lxmsgp_element_t element;
 		char mem[1024];
 
-#define UTEST_PMSGP_RW(label, binpattern, pack_action, unpack_check) \
+#define UTEST_LXMSGP_RW(label, binpattern, pack_action, unpack_check) \
 		do { \
 			printf("[%s] ", label); \
-			pmsgp_pack_init_memory(&pack, NULL); \
+			lxmsgp_pack_init_memory(&pack, NULL); \
 			do { pack_action; } while (0); \
 			printf("pack_action, "); \
-			assert(pmsgp_pack_get_error(&pack) == PMSGP_ERROR_NONE); \
+			assert(lxmsgp_pack_get_error(&pack) == LXMSGP_ERROR_NONE); \
 			size_t serialized_size = 0; \
-			const void* serialized = pmsgp_pack_get_memory(&pack, &serialized_size); \
+			const void* serialized = lxmsgp_pack_get_memory(&pack, &serialized_size); \
 			printf("serialized[%p <= %zu], ", serialized, serialized_size); \
 			assert(serialized && serialized_size > 0); \
 			assert(sizeof(mem) * 3 > serialized_size); \
@@ -393,106 +393,106 @@ int main(int argc, char* argv[])
 			for (size_t i = 0; i < serialized_size; ++i) { if (i > 0) { sprintf(mem + w, " "); ++w; } sprintf(mem + w, "%02x", (unsigned int)(((const uint8_t*)(serialized))[i])); w += 2; } \
 			printf("pattern[%s <=> %s], ", mem, binpattern); \
 			assert(strcmp(mem, binpattern) == 0); \
-			pmsgp_unpack_init(&unpack, serialized, serialized_size); \
-			assert(pmsgp_unpack_get_element(&unpack, &element)); \
+			lxmsgp_unpack_init(&unpack, serialized, serialized_size); \
+			assert(lxmsgp_unpack_get_element(&unpack, &element)); \
 			do { unpack_check; } while (0); \
 			size_t element_num = 0; \
-			while (pmsgp_unpack_get_element(&unpack, NULL)) { pmsgp_unpack_next(&unpack); ++element_num; } \
+			while (lxmsgp_unpack_get_element(&unpack, NULL)) { lxmsgp_unpack_next(&unpack); ++element_num; } \
 			printf("elementnum[%zu], ", element_num); \
-			assert(pmsgp_unpack_eof(&unpack)); \
-			pmsgp_unpack_fin(&unpack); \
-			pmsgp_pack_fin(&pack); \
+			assert(lxmsgp_unpack_eof(&unpack)); \
+			lxmsgp_unpack_fin(&unpack); \
+			lxmsgp_pack_fin(&pack); \
 			printf("\n"); \
 		} while (0)
 
 		// nil
-		UTEST_PMSGP_RW("nil", "c0", (pmsgp_pack_put_nil(&pack)), (assert(element.type == PMSGP_TYPE_NIL)));
+		UTEST_LXMSGP_RW("nil", "c0", (lxmsgp_pack_put_nil(&pack)), (assert(element.type == LXMSGP_TYPE_NIL)));
 
 		// bool
-		UTEST_PMSGP_RW("true", "c3", (pmsgp_pack_put_bool(&pack, PMSGP_TRUE)), (assert(element.type == PMSGP_TYPE_BOOL), assert(element.content.boolval == PMSGP_TRUE)));
-		UTEST_PMSGP_RW("false", "c2", (pmsgp_pack_put_bool(&pack, PMSGP_FALSE)), (assert(element.type == PMSGP_TYPE_BOOL), assert(element.content.boolval == PMSGP_FALSE)));
+		UTEST_LXMSGP_RW("true", "c3", (lxmsgp_pack_put_bool(&pack, LXMSGP_TRUE)), (assert(element.type == LXMSGP_TYPE_BOOL), assert(element.content.boolval == LXMSGP_TRUE)));
+		UTEST_LXMSGP_RW("false", "c2", (lxmsgp_pack_put_bool(&pack, LXMSGP_FALSE)), (assert(element.type == LXMSGP_TYPE_BOOL), assert(element.content.boolval == LXMSGP_FALSE)));
 
 		// uint
-		UTEST_PMSGP_RW("0", "00", (pmsgp_pack_put_uint(&pack, 0)), (assert(element.type == PMSGP_TYPE_UINT), assert(element.content.uintval == 0)));
-		UTEST_PMSGP_RW("100", "64", (pmsgp_pack_put_uint(&pack, 100)), (assert(element.type == PMSGP_TYPE_UINT), assert(element.content.uintval == 100)));
-		UTEST_PMSGP_RW("200", "cc c8", (pmsgp_pack_put_uint(&pack, 200)), (assert(element.type == PMSGP_TYPE_UINT), assert(element.content.uintval == 200)));
-		UTEST_PMSGP_RW("300", "cd 01 2c", (pmsgp_pack_put_uint(&pack, 300)), (assert(element.type == PMSGP_TYPE_UINT), assert(element.content.uintval == 300)));
-		UTEST_PMSGP_RW("65550", "ce 00 01 00 0e", (pmsgp_pack_put_uint(&pack, 65550)), (assert(element.type == PMSGP_TYPE_UINT), assert(element.content.uintval == 65550)));
-		UTEST_PMSGP_RW("1829304858821", "cf 00 00 01 a9 eb 10 f8 c5", (pmsgp_pack_put_uint(&pack, 1829304858821ULL)), (assert(element.type == PMSGP_TYPE_UINT), assert(element.content.uintval == 1829304858821ULL)));
+		UTEST_LXMSGP_RW("0", "00", (lxmsgp_pack_put_uint(&pack, 0)), (assert(element.type == LXMSGP_TYPE_UINT), assert(element.content.uintval == 0)));
+		UTEST_LXMSGP_RW("100", "64", (lxmsgp_pack_put_uint(&pack, 100)), (assert(element.type == LXMSGP_TYPE_UINT), assert(element.content.uintval == 100)));
+		UTEST_LXMSGP_RW("200", "cc c8", (lxmsgp_pack_put_uint(&pack, 200)), (assert(element.type == LXMSGP_TYPE_UINT), assert(element.content.uintval == 200)));
+		UTEST_LXMSGP_RW("300", "cd 01 2c", (lxmsgp_pack_put_uint(&pack, 300)), (assert(element.type == LXMSGP_TYPE_UINT), assert(element.content.uintval == 300)));
+		UTEST_LXMSGP_RW("65550", "ce 00 01 00 0e", (lxmsgp_pack_put_uint(&pack, 65550)), (assert(element.type == LXMSGP_TYPE_UINT), assert(element.content.uintval == 65550)));
+		UTEST_LXMSGP_RW("1829304858821", "cf 00 00 01 a9 eb 10 f8 c5", (lxmsgp_pack_put_uint(&pack, 1829304858821ULL)), (assert(element.type == LXMSGP_TYPE_UINT), assert(element.content.uintval == 1829304858821ULL)));
 
 		// int
-		UTEST_PMSGP_RW("0", "d0 00", (pmsgp_pack_put_int(&pack, 0)), (assert(element.type == PMSGP_TYPE_INT), assert(element.content.intval == 0)));
-		UTEST_PMSGP_RW("100", "d0 64", (pmsgp_pack_put_int(&pack, 100)), (assert(element.type == PMSGP_TYPE_INT), assert(element.content.intval == 100)));
-		UTEST_PMSGP_RW("200", "d1 00 c8", (pmsgp_pack_put_int(&pack, 200)), (assert(element.type == PMSGP_TYPE_INT), assert(element.content.intval == 200)));
-		UTEST_PMSGP_RW("300", "d1 01 2c", (pmsgp_pack_put_int(&pack, 300)), (assert(element.type == PMSGP_TYPE_INT), assert(element.content.intval == 300)));
-		UTEST_PMSGP_RW("65550", "d2 00 01 00 0e", (pmsgp_pack_put_int(&pack, 65550)), (assert(element.type == PMSGP_TYPE_INT), assert(element.content.intval == 65550)));
-		UTEST_PMSGP_RW("1829304858821", "d3 00 00 01 a9 eb 10 f8 c5", (pmsgp_pack_put_int(&pack, 1829304858821LL)), (assert(element.type == PMSGP_TYPE_INT), assert(element.content.intval == 1829304858821LL)));
-		UTEST_PMSGP_RW("-100", "d0 9c", (pmsgp_pack_put_int(&pack, -100)), (assert(element.type == PMSGP_TYPE_INT), assert(element.content.intval == -100)));
-		UTEST_PMSGP_RW("-200", "d1 ff 38", (pmsgp_pack_put_int(&pack, -200)), (assert(element.type == PMSGP_TYPE_INT), assert(element.content.intval == -200)));
-		UTEST_PMSGP_RW("-300", "d1 fe d4", (pmsgp_pack_put_int(&pack, -300)), (assert(element.type == PMSGP_TYPE_INT), assert(element.content.intval == -300)));
-		UTEST_PMSGP_RW("-32768", "d1 80 00", (pmsgp_pack_put_int(&pack, -32768)), (assert(element.type == PMSGP_TYPE_INT), assert(element.content.intval == -32768)));
-		UTEST_PMSGP_RW("-65550", "d2 ff fe ff f2", (pmsgp_pack_put_int(&pack, -65550)), (assert(element.type == PMSGP_TYPE_INT), assert(element.content.intval == -65550)));
-		UTEST_PMSGP_RW("-1829304858821", "d3 ff ff fe 56 14 ef 07 3b", (pmsgp_pack_put_int(&pack, -1829304858821LL)), (assert(element.type == PMSGP_TYPE_INT), assert(element.content.intval == -1829304858821LL)));
+		UTEST_LXMSGP_RW("0", "d0 00", (lxmsgp_pack_put_int(&pack, 0)), (assert(element.type == LXMSGP_TYPE_INT), assert(element.content.intval == 0)));
+		UTEST_LXMSGP_RW("100", "d0 64", (lxmsgp_pack_put_int(&pack, 100)), (assert(element.type == LXMSGP_TYPE_INT), assert(element.content.intval == 100)));
+		UTEST_LXMSGP_RW("200", "d1 00 c8", (lxmsgp_pack_put_int(&pack, 200)), (assert(element.type == LXMSGP_TYPE_INT), assert(element.content.intval == 200)));
+		UTEST_LXMSGP_RW("300", "d1 01 2c", (lxmsgp_pack_put_int(&pack, 300)), (assert(element.type == LXMSGP_TYPE_INT), assert(element.content.intval == 300)));
+		UTEST_LXMSGP_RW("65550", "d2 00 01 00 0e", (lxmsgp_pack_put_int(&pack, 65550)), (assert(element.type == LXMSGP_TYPE_INT), assert(element.content.intval == 65550)));
+		UTEST_LXMSGP_RW("1829304858821", "d3 00 00 01 a9 eb 10 f8 c5", (lxmsgp_pack_put_int(&pack, 1829304858821LL)), (assert(element.type == LXMSGP_TYPE_INT), assert(element.content.intval == 1829304858821LL)));
+		UTEST_LXMSGP_RW("-100", "d0 9c", (lxmsgp_pack_put_int(&pack, -100)), (assert(element.type == LXMSGP_TYPE_INT), assert(element.content.intval == -100)));
+		UTEST_LXMSGP_RW("-200", "d1 ff 38", (lxmsgp_pack_put_int(&pack, -200)), (assert(element.type == LXMSGP_TYPE_INT), assert(element.content.intval == -200)));
+		UTEST_LXMSGP_RW("-300", "d1 fe d4", (lxmsgp_pack_put_int(&pack, -300)), (assert(element.type == LXMSGP_TYPE_INT), assert(element.content.intval == -300)));
+		UTEST_LXMSGP_RW("-32768", "d1 80 00", (lxmsgp_pack_put_int(&pack, -32768)), (assert(element.type == LXMSGP_TYPE_INT), assert(element.content.intval == -32768)));
+		UTEST_LXMSGP_RW("-65550", "d2 ff fe ff f2", (lxmsgp_pack_put_int(&pack, -65550)), (assert(element.type == LXMSGP_TYPE_INT), assert(element.content.intval == -65550)));
+		UTEST_LXMSGP_RW("-1829304858821", "d3 ff ff fe 56 14 ef 07 3b", (lxmsgp_pack_put_int(&pack, -1829304858821LL)), (assert(element.type == LXMSGP_TYPE_INT), assert(element.content.intval == -1829304858821LL)));
 
 		// double
 		{
 			const double epsilon = 0.00000000001;
-			UTEST_PMSGP_RW("0.2", "cb 3f c9 99 99 99 99 99 9a", (pmsgp_pack_put_double(&pack, 0.2)), (assert(element.type == PMSGP_TYPE_DOUBLE), assert(abs(element.content.doubleval - 0.2) < epsilon)));
-			UTEST_PMSGP_RW("100.2839476", "cb 40 59 12 2c 32 8d f1 c6", (pmsgp_pack_put_double(&pack, 100.2839476)), (assert(element.type == PMSGP_TYPE_DOUBLE), assert(fabs(element.content.doubleval - 100.2839476) < epsilon)));
-			UTEST_PMSGP_RW("123456789.123456789", "cb 41 9d 6f 34 54 7e 6b 75", (pmsgp_pack_put_double(&pack, 123456789.123456789)), (assert(element.type == PMSGP_TYPE_DOUBLE), assert(fabs(element.content.doubleval - 123456789.123456789) < epsilon)));
+			UTEST_LXMSGP_RW("0.2", "cb 3f c9 99 99 99 99 99 9a", (lxmsgp_pack_put_double(&pack, 0.2)), (assert(element.type == LXMSGP_TYPE_DOUBLE), assert(fabs(element.content.doubleval - 0.2) < epsilon)));
+			UTEST_LXMSGP_RW("100.2839476", "cb 40 59 12 2c 32 8d f1 c6", (lxmsgp_pack_put_double(&pack, 100.2839476)), (assert(element.type == LXMSGP_TYPE_DOUBLE), assert(fabs(element.content.doubleval - 100.2839476) < epsilon)));
+			UTEST_LXMSGP_RW("123456789.123456789", "cb 41 9d 6f 34 54 7e 6b 75", (lxmsgp_pack_put_double(&pack, 123456789.123456789)), (assert(element.type == LXMSGP_TYPE_DOUBLE), assert(fabs(element.content.doubleval - 123456789.123456789) < epsilon)));
 		}
 
 		// str
 		{
 			const char* s = "";
-			UTEST_PMSGP_RW("<none>", "a0", (pmsgp_pack_put_str(&pack, s, strlen(s))), (assert(element.type == PMSGP_TYPE_STRING), assert(strncmp(element.content.strval.str, s, strlen(s)) == 0 && element.content.strval.length == strlen(s))));
+			UTEST_LXMSGP_RW("<none>", "a0", (lxmsgp_pack_put_str(&pack, s, strlen(s))), (assert(element.type == LXMSGP_TYPE_STRING), assert(strncmp(element.content.strval.str, s, strlen(s)) == 0 && element.content.strval.length == strlen(s))));
 			s = "abc";
-			UTEST_PMSGP_RW(s, "a3 61 62 63", (pmsgp_pack_put_str(&pack, s, strlen(s))), (assert(element.type == PMSGP_TYPE_STRING), assert(strncmp(element.content.strval.str, s, strlen(s)) == 0 && element.content.strval.length == strlen(s))));
+			UTEST_LXMSGP_RW(s, "a3 61 62 63", (lxmsgp_pack_put_str(&pack, s, strlen(s))), (assert(element.type == LXMSGP_TYPE_STRING), assert(strncmp(element.content.strval.str, s, strlen(s)) == 0 && element.content.strval.length == strlen(s))));
 			s = "abcdefghijklmn";
-			UTEST_PMSGP_RW(s, "ae 61 62 63 64 65 66 67 68 69 6a 6b 6c 6d 6e", (pmsgp_pack_put_str(&pack, s, strlen(s))), (assert(element.type == PMSGP_TYPE_STRING), assert(strncmp(element.content.strval.str, s, strlen(s)) == 0 && element.content.strval.length == strlen(s))));
+			UTEST_LXMSGP_RW(s, "ae 61 62 63 64 65 66 67 68 69 6a 6b 6c 6d 6e", (lxmsgp_pack_put_str(&pack, s, strlen(s))), (assert(element.type == LXMSGP_TYPE_STRING), assert(strncmp(element.content.strval.str, s, strlen(s)) == 0 && element.content.strval.length == strlen(s))));
 			s = "abcdefghijklmnop";
-			UTEST_PMSGP_RW(s, "b0 61 62 63 64 65 66 67 68 69 6a 6b 6c 6d 6e 6f 70", (pmsgp_pack_put_str(&pack, s, strlen(s))), (assert(element.type == PMSGP_TYPE_STRING), assert(strncmp(element.content.strval.str, s, strlen(s)) == 0 && element.content.strval.length == strlen(s))));
+			UTEST_LXMSGP_RW(s, "b0 61 62 63 64 65 66 67 68 69 6a 6b 6c 6d 6e 6f 70", (lxmsgp_pack_put_str(&pack, s, strlen(s))), (assert(element.type == LXMSGP_TYPE_STRING), assert(strncmp(element.content.strval.str, s, strlen(s)) == 0 && element.content.strval.length == strlen(s))));
 			s = "abcdefghijklmnopqrstuvwxyz";
-			UTEST_PMSGP_RW(s, "ba 61 62 63 64 65 66 67 68 69 6a 6b 6c 6d 6e 6f 70 71 72 73 74 75 76 77 78 79 7a", (pmsgp_pack_put_str(&pack, s, strlen(s))), (assert(element.type == PMSGP_TYPE_STRING), assert(strncmp(element.content.strval.str, s, strlen(s)) == 0 && element.content.strval.length == strlen(s))));
+			UTEST_LXMSGP_RW(s, "ba 61 62 63 64 65 66 67 68 69 6a 6b 6c 6d 6e 6f 70 71 72 73 74 75 76 77 78 79 7a", (lxmsgp_pack_put_str(&pack, s, strlen(s))), (assert(element.type == LXMSGP_TYPE_STRING), assert(strncmp(element.content.strval.str, s, strlen(s)) == 0 && element.content.strval.length == strlen(s))));
 			s = "\xE6\xBC\xA2\xE5\xAD\x97";// u8"漢字"
-			UTEST_PMSGP_RW(s, "a6 e6 bc a2 e5 ad 97", (pmsgp_pack_put_str(&pack, s, strlen(s))), (assert(element.type == PMSGP_TYPE_STRING), assert(strncmp(element.content.strval.str, s, strlen(s)) == 0 && element.content.strval.length == strlen(s))));
+			UTEST_LXMSGP_RW(s, "a6 e6 bc a2 e5 ad 97", (lxmsgp_pack_put_str(&pack, s, strlen(s))), (assert(element.type == LXMSGP_TYPE_STRING), assert(strncmp(element.content.strval.str, s, strlen(s)) == 0 && element.content.strval.length == strlen(s))));
 		}
 
 		// bin
 		{
 			uint8_t data[64]; size_t data_size;
 			data_size = 0;
-			UTEST_PMSGP_RW("<none:data>", "c4 00", (pmsgp_pack_put_bin(&pack, data, data_size)), (assert(element.type == PMSGP_TYPE_BINARY), assert(memcmp(element.content.binval.bin, data, data_size) == 0 && element.content.binval.length == data_size)));
+			UTEST_LXMSGP_RW("<none:data>", "c4 00", (lxmsgp_pack_put_bin(&pack, data, data_size)), (assert(element.type == LXMSGP_TYPE_BINARY), assert(memcmp(element.content.binval.bin, data, data_size) == 0 && element.content.binval.length == data_size)));
 			data[0] = 1; data_size = 1;
-			UTEST_PMSGP_RW("<data:1>", "c4 01 01", (pmsgp_pack_put_bin(&pack, data, data_size)), (assert(element.type == PMSGP_TYPE_BINARY), assert(memcmp(element.content.binval.bin, data, data_size) == 0 && element.content.binval.length == data_size)));
+			UTEST_LXMSGP_RW("<data:1>", "c4 01 01", (lxmsgp_pack_put_bin(&pack, data, data_size)), (assert(element.type == LXMSGP_TYPE_BINARY), assert(memcmp(element.content.binval.bin, data, data_size) == 0 && element.content.binval.length == data_size)));
 			data[0] = 0x00; data[1] = 0xff; data_size = 2;
-			UTEST_PMSGP_RW("<data:2>", "c4 02 00 ff", (pmsgp_pack_put_bin(&pack, data, data_size)), (assert(element.type == PMSGP_TYPE_BINARY), assert(memcmp(element.content.binval.bin, data, data_size) == 0 && element.content.binval.length == data_size)));
+			UTEST_LXMSGP_RW("<data:2>", "c4 02 00 ff", (lxmsgp_pack_put_bin(&pack, data, data_size)), (assert(element.type == LXMSGP_TYPE_BINARY), assert(memcmp(element.content.binval.bin, data, data_size) == 0 && element.content.binval.length == data_size)));
 		}
 
 		// array
 		{
-			UTEST_PMSGP_RW("<none:array>", "90", (pmsgp_pack_put_array_size(&pack, 0)), (assert(element.type == PMSGP_TYPE_ARRAY), assert(element.content.arrayval.length == 0)));
-			UTEST_PMSGP_RW("<array:1>", "91", (pmsgp_pack_put_array_size(&pack, 1)), (assert(element.type == PMSGP_TYPE_ARRAY), assert(element.content.arrayval.length == 1)));
-			UTEST_PMSGP_RW("<array[1]>", "91 01", { pmsgp_pack_put_array_size(&pack, 1); pmsgp_pack_put_uint(&pack, 1); }, (assert(element.type == PMSGP_TYPE_ARRAY), assert(element.content.arrayval.length == 1)));
-			UTEST_PMSGP_RW("<array:200>", "dc 00 c8", (pmsgp_pack_put_array_size(&pack, 200)), (assert(element.type == PMSGP_TYPE_ARRAY), assert(element.content.arrayval.length == 200)));
-			UTEST_PMSGP_RW("<array:65550>", "dd 00 01 00 0e", (pmsgp_pack_put_array_size(&pack, 65550)), (assert(element.type == PMSGP_TYPE_ARRAY), assert(element.content.arrayval.length == 65550)));
+			UTEST_LXMSGP_RW("<none:array>", "90", (lxmsgp_pack_put_array_size(&pack, 0)), (assert(element.type == LXMSGP_TYPE_ARRAY), assert(element.content.arrayval.length == 0)));
+			UTEST_LXMSGP_RW("<array:1>", "91", (lxmsgp_pack_put_array_size(&pack, 1)), (assert(element.type == LXMSGP_TYPE_ARRAY), assert(element.content.arrayval.length == 1)));
+			UTEST_LXMSGP_RW("<array[1]>", "91 01", { lxmsgp_pack_put_array_size(&pack, 1); lxmsgp_pack_put_uint(&pack, 1); }, (assert(element.type == LXMSGP_TYPE_ARRAY), assert(element.content.arrayval.length == 1)));
+			UTEST_LXMSGP_RW("<array:200>", "dc 00 c8", (lxmsgp_pack_put_array_size(&pack, 200)), (assert(element.type == LXMSGP_TYPE_ARRAY), assert(element.content.arrayval.length == 200)));
+			UTEST_LXMSGP_RW("<array:65550>", "dd 00 01 00 0e", (lxmsgp_pack_put_array_size(&pack, 65550)), (assert(element.type == LXMSGP_TYPE_ARRAY), assert(element.content.arrayval.length == 65550)));
 		}
 
 		// map
 		{
-			UTEST_PMSGP_RW("<none:map>", "80", (pmsgp_pack_put_map_size(&pack, 0)), (assert(element.type == PMSGP_TYPE_MAP), assert(element.content.mapval.length == 0)));
-			UTEST_PMSGP_RW("<map:1>", "81", (pmsgp_pack_put_map_size(&pack, 1)), (assert(element.type == PMSGP_TYPE_MAP), assert(element.content.mapval.length == 1)));
-			UTEST_PMSGP_RW("<map{a:2}>", "81 a1 61 02", { pmsgp_pack_put_map_size(&pack, 1); pmsgp_pack_put_str(&pack, "a", 1); pmsgp_pack_put_uint(&pack, 2); }, (assert(element.type == PMSGP_TYPE_MAP), assert(element.content.mapval.length == 1)));
-			UTEST_PMSGP_RW("<map:200>", "de 00 c8", (pmsgp_pack_put_map_size(&pack, 200)), (assert(element.type == PMSGP_TYPE_MAP), assert(element.content.mapval.length == 200)));
-			UTEST_PMSGP_RW("<map:65550>", "df 00 01 00 0e", (pmsgp_pack_put_map_size(&pack, 65550)), (assert(element.type == PMSGP_TYPE_MAP), assert(element.content.mapval.length == 65550)));
-			UTEST_PMSGP_RW("<map{compact:true, schema:0}>", "82 a7 63 6f 6d 70 61 63 74 c3 a6 73 63 68 65 6d 61 00", { pmsgp_pack_put_map_size(&pack, 2); pmsgp_pack_put_str(&pack, "compact", 7); pmsgp_pack_put_bool(&pack, PMSGP_TRUE); pmsgp_pack_put_str(&pack, "schema", 6); pmsgp_pack_put_uint(&pack, 0); }, (assert(element.type == PMSGP_TYPE_MAP), assert(element.content.mapval.length == 2)));
+			UTEST_LXMSGP_RW("<none:map>", "80", (lxmsgp_pack_put_map_size(&pack, 0)), (assert(element.type == LXMSGP_TYPE_MAP), assert(element.content.mapval.length == 0)));
+			UTEST_LXMSGP_RW("<map:1>", "81", (lxmsgp_pack_put_map_size(&pack, 1)), (assert(element.type == LXMSGP_TYPE_MAP), assert(element.content.mapval.length == 1)));
+			UTEST_LXMSGP_RW("<map{a:2}>", "81 a1 61 02", { lxmsgp_pack_put_map_size(&pack, 1); lxmsgp_pack_put_str(&pack, "a", 1); lxmsgp_pack_put_uint(&pack, 2); }, (assert(element.type == LXMSGP_TYPE_MAP), assert(element.content.mapval.length == 1)));
+			UTEST_LXMSGP_RW("<map:200>", "de 00 c8", (lxmsgp_pack_put_map_size(&pack, 200)), (assert(element.type == LXMSGP_TYPE_MAP), assert(element.content.mapval.length == 200)));
+			UTEST_LXMSGP_RW("<map:65550>", "df 00 01 00 0e", (lxmsgp_pack_put_map_size(&pack, 65550)), (assert(element.type == LXMSGP_TYPE_MAP), assert(element.content.mapval.length == 65550)));
+			UTEST_LXMSGP_RW("<map{compact:true, schema:0}>", "82 a7 63 6f 6d 70 61 63 74 c3 a6 73 63 68 65 6d 61 00", { lxmsgp_pack_put_map_size(&pack, 2); lxmsgp_pack_put_str(&pack, "compact", 7); lxmsgp_pack_put_bool(&pack, LXMSGP_TRUE); lxmsgp_pack_put_str(&pack, "schema", 6); lxmsgp_pack_put_uint(&pack, 0); }, (assert(element.type == LXMSGP_TYPE_MAP), assert(element.content.mapval.length == 2)));
 		}
 
 		//timestamp
 		{
-			UTEST_PMSGP_RW("ts:0,0", "d6 ff 00 00 00 00", (pmsgp_pack_put_timestamp(&pack, 0, 0)), (assert(element.type == PMSGP_TYPE_TIMESTAMP), assert(element.content.tsval.seconds == 0), assert(element.content.tsval.nanoseconds == 0)));
-			UTEST_PMSGP_RW("ts:1,0", "d6 ff 00 00 00 01", (pmsgp_pack_put_timestamp(&pack, 1, 0)), (assert(element.type == PMSGP_TYPE_TIMESTAMP), assert(element.content.tsval.seconds == 1), assert(element.content.tsval.nanoseconds == 0)));
-			UTEST_PMSGP_RW("ts:0,1", "d7 ff 00 00 00 04 00 00 00 00", (pmsgp_pack_put_timestamp(&pack, 0, 1)), (assert(element.type == PMSGP_TYPE_TIMESTAMP), assert(element.content.tsval.seconds == 0), assert(element.content.tsval.nanoseconds == 1)));
+			UTEST_LXMSGP_RW("ts:0,0", "d6 ff 00 00 00 00", (lxmsgp_pack_put_timestamp(&pack, 0, 0)), (assert(element.type == LXMSGP_TYPE_TIMESTAMP), assert(element.content.tsval.seconds == 0), assert(element.content.tsval.nanoseconds == 0)));
+			UTEST_LXMSGP_RW("ts:1,0", "d6 ff 00 00 00 01", (lxmsgp_pack_put_timestamp(&pack, 1, 0)), (assert(element.type == LXMSGP_TYPE_TIMESTAMP), assert(element.content.tsval.seconds == 1), assert(element.content.tsval.nanoseconds == 0)));
+			UTEST_LXMSGP_RW("ts:0,1", "d7 ff 00 00 00 04 00 00 00 00", (lxmsgp_pack_put_timestamp(&pack, 0, 1)), (assert(element.type == LXMSGP_TYPE_TIMESTAMP), assert(element.content.tsval.seconds == 0), assert(element.content.tsval.nanoseconds == 1)));
 		}
 	}
 #elif 0

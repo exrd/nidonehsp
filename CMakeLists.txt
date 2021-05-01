@@ -146,7 +146,7 @@ set(NIDONEHSP_EMBED_HDR
 	${NIDONEHSP_COMMON_DIR}/embed/zed_net.h 
 	${NIDONEHSP_COMMON_DIR}/embed/gif.h 
 	${NIDONEHSP_COMMON_DIR}/embed/tre.h 
-	${NIDONEHSP_COMMON_DIR}/embed/picomsgpack.h 
+	${NIDONEHSP_COMMON_DIR}/embed/lxmsgpack.h 
 	${NIDONEHSP_COMMON_DIR}/embed/md5.h 
 	${NIDONEHSP_COMMON_DIR}/embed/aes.h 
 )

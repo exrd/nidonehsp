@@ -199,15 +199,15 @@
 #endif
 
 //=============================================================================
-// picomsgpack.h
+// lxmsgpack.h
 #if N2_CONFIG_USE_MSGPACK_LIB
-#define PMSGP_STATIC
-#define PMSGP_MALLOC(size, user)	n2_malloc(N2_RCAST(n2_state_t*, user), size)
-#define PMSGP_FREE(ptr, user)	n2_free(N2_RCAST(n2_state_t*, user), ptr)
-#define PMSGP_REALLOC_SIZED(oldptr, newsize, oldsize, user)	n2_realloc(N2_RCAST(n2_state_t*, user), newsize, oldptr, oldsize)
-#define PMSGP_NO_STDIO_FILE_API
-#define PMSGP_IMPLEMENTATION
-#include "embed/picomsgpack.h"
+#define LXMSGP_STATIC
+#define LXMSGP_MALLOC(size, user)	n2_malloc(N2_RCAST(n2_state_t*, user), size)
+#define LXMSGP_FREE(ptr, user)		n2_free(N2_RCAST(n2_state_t*, user), ptr)
+#define LXMSGP_REALLOC_SIZED(oldptr, newsize, oldsize, user)	n2_realloc(N2_RCAST(n2_state_t*, user), newsize, oldptr, oldsize)
+#define LXMSGP_NO_STDIO_FILE_API
+#define LXMSGP_IMPLEMENTATION
+#include "embed/lxmsgpack.h"
 #endif
 
 //=============================================================================
@@ -4142,23 +4142,23 @@ static void n2hi_msgpack_elementpairarray_freefunc(n2_state_t* state, n2_array_t
 }
 N2_DEFINE_TARRAY(n2h_msgpack_element_pair_t, n2h_msgpack_elementpairarray, N2_API, n2i_setupfunc_nothing, n2hi_msgpack_elementpairarray_freefunc);
 
-static n2_bool_t n2hi_msgpack_parse_to(n2_state_t* state, n2h_msgpack_element_t* nelement, pmsgp_unpack_t* unpack)
+static n2_bool_t n2hi_msgpack_parse_to(n2_state_t* state, n2h_msgpack_element_t* nelement, lxmsgp_unpack_t* unpack)
 {
-	pmsgp_element_t element;
-	if (!pmsgp_unpack_get_element(unpack, &element)) { return N2_FALSE; }
-	pmsgp_unpack_next(unpack);
+	lxmsgp_element_t element;
+	if (!lxmsgp_unpack_get_element(unpack, &element)) { return N2_FALSE; }
+	lxmsgp_unpack_next(unpack);
 
 	switch (element.type)
 	{
-	case PMSGP_TYPE_NIL:	nelement->type_ = N2H_MSGPACK_TYPE_NIL; break;
-	case PMSGP_TYPE_BOOL:	nelement->type_ = N2H_MSGPACK_TYPE_BOOL; nelement->content_.boolval_ = element.content.boolval ? N2_TRUE : N2_FALSE; break;
-	case PMSGP_TYPE_UINT:	nelement->type_ = N2H_MSGPACK_TYPE_UINT; nelement->content_.uintval_ = element.content.uintval; break;
-	case PMSGP_TYPE_INT:	nelement->type_ = N2H_MSGPACK_TYPE_INT; nelement->content_.intval_ = element.content.intval; break;
-	case PMSGP_TYPE_FLOAT:	nelement->type_ = N2H_MSGPACK_TYPE_FLOAT; nelement->content_.floatval_ = element.content.floatval; break;
-	case PMSGP_TYPE_DOUBLE:	nelement->type_ = N2H_MSGPACK_TYPE_DOUBLE; nelement->content_.doubleval_ = element.content.doubleval; break;
-	case PMSGP_TYPE_STRING:	nelement->type_ = N2H_MSGPACK_TYPE_STRING; nelement->content_.strval_.str_ = element.content.strval.str; nelement->content_.strval_.length_ = element.content.strval.length; break;
-	case PMSGP_TYPE_BINARY:	nelement->type_ = N2H_MSGPACK_TYPE_BINARY; nelement->content_.binval_.bin_ = element.content.binval.bin; nelement->content_.binval_.length_ = element.content.binval.length; break;
-	case PMSGP_TYPE_ARRAY:
+	case LXMSGP_TYPE_NIL:		nelement->type_ = N2H_MSGPACK_TYPE_NIL; break;
+	case LXMSGP_TYPE_BOOL:		nelement->type_ = N2H_MSGPACK_TYPE_BOOL; nelement->content_.boolval_ = element.content.boolval ? N2_TRUE : N2_FALSE; break;
+	case LXMSGP_TYPE_UINT:		nelement->type_ = N2H_MSGPACK_TYPE_UINT; nelement->content_.uintval_ = element.content.uintval; break;
+	case LXMSGP_TYPE_INT:		nelement->type_ = N2H_MSGPACK_TYPE_INT; nelement->content_.intval_ = element.content.intval; break;
+	case LXMSGP_TYPE_FLOAT:		nelement->type_ = N2H_MSGPACK_TYPE_FLOAT; nelement->content_.floatval_ = element.content.floatval; break;
+	case LXMSGP_TYPE_DOUBLE:	nelement->type_ = N2H_MSGPACK_TYPE_DOUBLE; nelement->content_.doubleval_ = element.content.doubleval; break;
+	case LXMSGP_TYPE_STRING:	nelement->type_ = N2H_MSGPACK_TYPE_STRING; nelement->content_.strval_.str_ = element.content.strval.str; nelement->content_.strval_.length_ = element.content.strval.length; break;
+	case LXMSGP_TYPE_BINARY:	nelement->type_ = N2H_MSGPACK_TYPE_BINARY; nelement->content_.binval_.bin_ = element.content.binval.bin; nelement->content_.binval_.length_ = element.content.binval.length; break;
+	case LXMSGP_TYPE_ARRAY:
 		{
 			nelement->type_ = N2H_MSGPACK_TYPE_ARRAY;
 			const size_t length = element.content.arrayval.length;
@@ -4170,7 +4170,7 @@ static n2_bool_t n2hi_msgpack_parse_to(n2_state_t* state, n2h_msgpack_element_t*
 			}
 		}
 		break;
-	case PMSGP_TYPE_MAP:
+	case LXMSGP_TYPE_MAP:
 		{
 			nelement->type_ = N2H_MSGPACK_TYPE_MAP;
 			const size_t length = element.content.mapval.length;
@@ -4187,13 +4187,13 @@ static n2_bool_t n2hi_msgpack_parse_to(n2_state_t* state, n2h_msgpack_element_t*
 			n2h_msgpack_elementpairarray_sort(nelement->content_.mapval_.pairarray_, n2hi_msgpack_elementpairarray_cmpfunc, NULL);
 		}
 		break;
-	case PMSGP_TYPE_EXTENSION:	nelement->type_ = N2H_MSGPACK_TYPE_EXTENSION; nelement->content_.extval_.subtype_ = element.content.extval.subtype; nelement->content_.extval_.data_ = element.content.extval.data; nelement->content_.extval_.length_ = element.content.extval.length; break;
+	case LXMSGP_TYPE_EXTENSION:	nelement->type_ = N2H_MSGPACK_TYPE_EXTENSION; nelement->content_.extval_.subtype_ = element.content.extval.subtype; nelement->content_.extval_.data_ = element.content.extval.data; nelement->content_.extval_.length_ = element.content.extval.length; break;
 	default:				return N2_FALSE;
 	}
 	return N2_TRUE;;
 }
 
-static n2h_msgpack_element_t* n2hi_msgpack_parse(n2_state_t* state, pmsgp_unpack_t* unpack)
+static n2h_msgpack_element_t* n2hi_msgpack_parse(n2_state_t* state, lxmsgp_unpack_t* unpack)
 {
 	n2h_msgpack_element_t* nelement = N2_TMALLOC(n2h_msgpack_element_t, state);
 	if (!n2hi_msgpack_parse_to(state, nelement, unpack)) { goto fail_exit; }
@@ -4257,10 +4257,10 @@ N2_API int n2h_msgpack_element_cmp(const n2h_msgpack_element_t* lhs, const n2h_m
 N2_API n2h_msgpack_element_t* n2h_msgpack_parse(n2_state_t* state, const void* msgpack, size_t msgpack_size)
 {
 	if (!msgpack || msgpack_size <= 0) { return NULL; }
-	pmsgp_unpack_t unpack;
-	pmsgp_unpack_init(&unpack, msgpack, msgpack_size);
+	lxmsgp_unpack_t unpack;
+	lxmsgp_unpack_init(&unpack, msgpack, msgpack_size);
 	n2h_msgpack_element_t* element = n2hi_msgpack_parse(state, &unpack);
-	pmsgp_unpack_fin(&unpack);
+	lxmsgp_unpack_fin(&unpack);
 	return element;
 }
 
@@ -4789,22 +4789,22 @@ N2_API n2_bool_t n2h_datatree_erase_bystr(n2_state_t* state, n2h_datatree_t* dat
 }
 
 #if N2_CONFIG_USE_MSGPACK_LIB
-static n2h_datatree_t* n2hi_datatree_msgpack_import(n2_state_t* state, pmsgp_unpack_t* unpack)
+static n2h_datatree_t* n2hi_datatree_msgpack_import(n2_state_t* state, lxmsgp_unpack_t* unpack)
 {
 	n2h_datatree_t* tree = NULL;
-	pmsgp_element_t element;
-	if (!pmsgp_unpack_get_element(unpack, &element)) { goto fail_exit; }
+	lxmsgp_element_t element;
+	if (!lxmsgp_unpack_get_element(unpack, &element)) { goto fail_exit; }
 	switch (element.type)
 	{
-	case PMSGP_TYPE_NIL:	tree = n2h_datatree_allocnull(state); break;
-	case PMSGP_TYPE_BOOL:	tree = n2h_datatree_allocb(state, element.content.boolval ? N2_TRUE : N2_FALSE); break;
-	case PMSGP_TYPE_UINT:	tree = n2h_datatree_alloci(state, N2_BCAST(int64_t, element.content.uintval)); break;
-	case PMSGP_TYPE_INT:	tree = n2h_datatree_alloci(state, N2_SCAST(int64_t, element.content.intval)); break;
-	case PMSGP_TYPE_FLOAT:	tree = n2h_datatree_allocf(state, N2_SCAST(double, element.content.floatval)); break;
-	case PMSGP_TYPE_DOUBLE:	tree = n2h_datatree_allocf(state, N2_SCAST(double, element.content.doubleval)); break;
-	case PMSGP_TYPE_STRING:	tree = n2h_datatree_allocstr(state, element.content.strval.str, element.content.strval.length); break;
-	case PMSGP_TYPE_BINARY:	tree = n2h_datatree_allocbin(state, element.content.binval.bin, element.content.binval.length); break;
-	case PMSGP_TYPE_ARRAY:
+	case LXMSGP_TYPE_NIL:	tree = n2h_datatree_allocnull(state); break;
+	case LXMSGP_TYPE_BOOL:	tree = n2h_datatree_allocb(state, element.content.boolval ? N2_TRUE : N2_FALSE); break;
+	case LXMSGP_TYPE_UINT:	tree = n2h_datatree_alloci(state, N2_BCAST(int64_t, element.content.uintval)); break;
+	case LXMSGP_TYPE_INT:	tree = n2h_datatree_alloci(state, N2_SCAST(int64_t, element.content.intval)); break;
+	case LXMSGP_TYPE_FLOAT:	tree = n2h_datatree_allocf(state, N2_SCAST(double, element.content.floatval)); break;
+	case LXMSGP_TYPE_DOUBLE:	tree = n2h_datatree_allocf(state, N2_SCAST(double, element.content.doubleval)); break;
+	case LXMSGP_TYPE_STRING:	tree = n2h_datatree_allocstr(state, element.content.strval.str, element.content.strval.length); break;
+	case LXMSGP_TYPE_BINARY:	tree = n2h_datatree_allocbin(state, element.content.binval.bin, element.content.binval.length); break;
+	case LXMSGP_TYPE_ARRAY:
 		{
 			tree = n2h_datatree_allocarray(state);
 			const size_t length = element.content.arrayval.length;
@@ -4819,7 +4819,7 @@ static n2h_datatree_t* n2hi_datatree_msgpack_import(n2_state_t* state, pmsgp_unp
 			}
 		}
 		break;
-	case PMSGP_TYPE_MAP:
+	case LXMSGP_TYPE_MAP:
 		{
 			tree = n2h_datatree_allocmap(state);
 			const size_t length = element.content.mapval.length;
@@ -4837,7 +4837,7 @@ static n2h_datatree_t* n2hi_datatree_msgpack_import(n2_state_t* state, pmsgp_unp
 			}
 		}
 		break;
-	case PMSGP_TYPE_EXTENSION:	tree = n2h_datatree_allocbin(state, element.content.extval.data, element.content.extval.length); break;
+	case LXMSGP_TYPE_EXTENSION:	tree = n2h_datatree_allocbin(state, element.content.extval.data, element.content.extval.length); break;
 	default:				goto fail_exit;
 	}
 	return tree;
@@ -4854,27 +4854,27 @@ struct n2hi_datatree_msgpack_context_t
 	n2_buffer_t* dst_;
 };
 
-static pmsgp_bool_t n2hi_datatree_msgpack_write_func(void* user, const void* data, size_t length)
+static lxmsgp_bool_t n2hi_datatree_msgpack_write_func(void* user, const void* data, size_t length)
 {
 	n2hi_datatree_msgpack_context_t* context = N2_RCAST(n2hi_datatree_msgpack_context_t*, user);
 	n2_buffer_append(context->state_, context->dst_, data, length);
-	return PMSGP_TRUE;
+	return LXMSGP_TRUE;
 }
 
-static n2_bool_t n2hi_datatree_msgpack_export(n2_state_t* state, pmsgp_pack_t* pack, const n2h_datatree_t* tree)
+static n2_bool_t n2hi_datatree_msgpack_export(n2_state_t* state, lxmsgp_pack_t* pack, const n2h_datatree_t* tree)
 {
 	switch (tree->type_)
 	{
-	case N2H_DATATREE_NULL:		if (!pmsgp_pack_put_nil(pack)) { return N2_FALSE; } break;
-	case N2H_DATATREE_BOOL:		if (!pmsgp_pack_put_bool(pack, tree->field_.bvalue_ ? PMSGP_TRUE : PMSGP_FALSE)) { return N2_FALSE; } break;
-	case N2H_DATATREE_INT:		if (!pmsgp_pack_put_int(pack, tree->field_.ivalue_)) { return N2_FALSE; } break;
-	case N2H_DATATREE_FLOAT:	if (!pmsgp_pack_put_double(pack, tree->field_.fvalue_)) { return N2_FALSE; } break;
-	case N2H_DATATREE_STRING:	if (!pmsgp_pack_put_str(pack, tree->field_.strvalue_.str_, (uint32_t)(tree->field_.strvalue_.size_))) { return N2_FALSE; } break;
-	case N2H_DATATREE_BINARY:	if (!pmsgp_pack_put_bin(pack, tree->field_.binvalue_.data_, (uint32_t)(tree->field_.binvalue_.size_))) { return N2_FALSE; } break;
+	case N2H_DATATREE_NULL:		if (!lxmsgp_pack_put_nil(pack)) { return N2_FALSE; } break;
+	case N2H_DATATREE_BOOL:		if (!lxmsgp_pack_put_bool(pack, tree->field_.bvalue_ ? LXMSGP_TRUE : LXMSGP_FALSE)) { return N2_FALSE; } break;
+	case N2H_DATATREE_INT:		if (!lxmsgp_pack_put_int(pack, tree->field_.ivalue_)) { return N2_FALSE; } break;
+	case N2H_DATATREE_FLOAT:	if (!lxmsgp_pack_put_double(pack, tree->field_.fvalue_)) { return N2_FALSE; } break;
+	case N2H_DATATREE_STRING:	if (!lxmsgp_pack_put_str(pack, tree->field_.strvalue_.str_, (uint32_t)(tree->field_.strvalue_.size_))) { return N2_FALSE; } break;
+	case N2H_DATATREE_BINARY:	if (!lxmsgp_pack_put_bin(pack, tree->field_.binvalue_.data_, (uint32_t)(tree->field_.binvalue_.size_))) { return N2_FALSE; } break;
 	case N2H_DATATREE_ARRAY:
 		{
 			const size_t length = n2h_datatree_array_size(tree->field_.arrayvalue_);
-			if (!pmsgp_pack_put_array_size(pack, (uint32_t)length)) { return N2_FALSE; }
+			if (!lxmsgp_pack_put_array_size(pack, (uint32_t)length)) { return N2_FALSE; }
 			for (size_t i = 0; i < length; ++i)
 			{
 				const n2h_datatree_arrayelement_t* ae = n2h_datatree_array_peek(tree->field_.arrayvalue_, N2_SCAST(int, i));
@@ -4885,7 +4885,7 @@ static n2_bool_t n2hi_datatree_msgpack_export(n2_state_t* state, pmsgp_pack_t* p
 	case N2H_DATATREE_MAP:
 		{
 			const size_t length = n2h_datatree_map_size(tree->field_.mapvalue_);
-			if (!pmsgp_pack_put_map_size(pack, (uint32_t)length)) { return N2_FALSE; }
+			if (!lxmsgp_pack_put_map_size(pack, (uint32_t)length)) { return N2_FALSE; }
 			for (size_t i = 0; i < length; ++i)
 			{
 				const n2h_datatree_mapelement_t* me = n2h_datatree_map_peek(tree->field_.mapvalue_, N2_SCAST(int, i));
@@ -4902,10 +4902,10 @@ static n2_bool_t n2hi_datatree_msgpack_export(n2_state_t* state, pmsgp_pack_t* p
 N2_API n2h_datatree_t* n2h_datatree_read_from_msgpack(n2_state_t* state, const void* msgpack, size_t msgpack_size)
 {
 	if (!msgpack || msgpack_size <= 0) { return NULL; }
-	pmsgp_unpack_t unpack;
-	pmsgp_unpack_init(&unpack, msgpack, msgpack_size);
+	lxmsgp_unpack_t unpack;
+	lxmsgp_unpack_init(&unpack, msgpack, msgpack_size);
 	n2h_datatree_t* tree = n2hi_datatree_msgpack_import(state, &unpack);
-	pmsgp_unpack_fin(&unpack);
+	lxmsgp_unpack_fin(&unpack);
 	return tree;
 }
 
@@ -4916,12 +4916,12 @@ N2_API n2_bool_t n2h_datatree_write_as_msgpack_to(n2_state_t* state, n2_buffer_t
 	n2hi_datatree_msgpack_context_t context;
 	context.state_ = state;
 	context.dst_ = write_to;
-	pmsgp_pack_t pack;
-	pmsgp_pack_init(&pack, &n2hi_datatree_msgpack_write_func, NULL, &context);
+	lxmsgp_pack_t pack;
+	lxmsgp_pack_init(&pack, &n2hi_datatree_msgpack_write_func, NULL, &context);
 	n2_bool_t res = N2_TRUE;
 	if (!n2hi_datatree_msgpack_export(state, &pack, tree)) { res = N2_FALSE; }
-	if (pmsgp_pack_get_error(&pack) != PMSGP_ERROR_NONE) { res = N2_FALSE; }
-	pmsgp_pack_fin(&pack);
+	if (lxmsgp_pack_get_error(&pack) != LXMSGP_ERROR_NONE) { res = N2_FALSE; }
+	lxmsgp_pack_fin(&pack);
 	return res;
 }
 #endif
