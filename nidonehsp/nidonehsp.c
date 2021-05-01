@@ -3138,14 +3138,22 @@ N2_DEFINE_TSORTED_ARRAY(void*, void, void*, n2_ptrset, N2_API, n2i_ptrset_setupf
 //=============================================================================
 // ベクトル
 
-static N2_INLINE float n2_float_saturate(float v)
+static N2_INLINE float n2_fsaturate(float v)
+{
+	return N2_CLAMP(v, 0, 1);
+}
+static N2_INLINE double n2_dsaturate(double v)
 {
 	return N2_CLAMP(v, 0, 1);
 }
 
-static N2_INLINE double n2_double_saturate(double v)
+static N2_INLINE float n2_flerp(float lhs, float rhs, float t)
 {
-	return N2_CLAMP(v, 0, 1);
+	return lhs * (1 - t) + rhs * t;
+}
+static N2_INLINE double n2_dlerp(double lhs, double rhs, double t)
+{
+	return lhs * (1 - t) + rhs * t;
 }
 
 #define N2_VEC2_DEFINE(prefix, lprefix, type) \
@@ -3171,6 +3179,10 @@ static N2_INLINE double n2_double_saturate(double v)
 	{ \
 		return n2_##prefix##vec2(lhs.x_ * s, lhs.y_ * s); \
 	} \
+	N2_API n2_##prefix##vec2_t n2_##prefix##vec2_lerp(const n2_##prefix##vec2_t lhs, const n2_##prefix##vec2_t rhs, type t) \
+	{ \
+		return n2_##prefix##vec2(n2_##prefix##lerp(lhs.x_, rhs.x_, t), n2_##prefix##lerp(lhs.y_, rhs.y_, t)); \
+	} \
 	N2_API type n2_##prefix##vec2_dot(const n2_##prefix##vec2_t lhs, const n2_##prefix##vec2_t rhs) \
 	{ \
 		return lhs.x_ * rhs.x_ + lhs.y_ * rhs.y_; \
@@ -3179,11 +3191,23 @@ static N2_INLINE double n2_double_saturate(double v)
 	{ \
 		return lhs.x_ * rhs.y_ - lhs.y_ * rhs.x_; \
 	} \
-	N2_API type n2_##prefix##vec2_normalize_to(n2_##prefix##vec2_t* lhs) \
+	N2_API type n2_##prefix##vec2_length2(n2_##prefix##vec2_t lhs) \
 	{ \
-		type l = lhs->x_ * lhs->x_ + lhs->y_ * lhs->y_; \
-		if (l > 0.f) { l = N2_SQRT##lprefix(l); const type r = 1.f / l; lhs->x_ *= r; lhs->y_ *= r; } \
+		return lhs.x_ * lhs.x_ + lhs.y_ * lhs.y_; \
+	} \
+	N2_API type n2_##prefix##vec2_length(n2_##prefix##vec2_t lhs) \
+	{ \
+		return N2_SQRT##lprefix(n2_##prefix##vec2_length2(lhs)); \
+	} \
+	N2_API type n2_##prefix##vec2_normalize_to(n2_##prefix##vec2_t* to, n2_##prefix##vec2_t from) \
+	{ \
+		type l = n2_##prefix##vec2_length2(from); \
+		if (l > 0) { l = N2_SQRT##lprefix(l); const type r = 1 / l; to->x_ = from.x_ * r; to->y_ = from.y_ * r; } \
 		return l; \
+	} \
+	N2_API type n2_##prefix##vec2_normalize(n2_##prefix##vec2_t* tofrom) \
+	{ \
+		return n2_##prefix##vec2_normalize_to(tofrom, *tofrom); \
 	} \
 	N2_API n2_##prefix##vec2_t n2_##prefix##vec2_min(const n2_##prefix##vec2_t lhs, const n2_##prefix##vec2_t rhs) \
 	{ \
@@ -3229,15 +3253,31 @@ N2_VEC2_DEFINE(d, D, double);
 	{ \
 		return n2_##prefix##vec3(lhs.x_ * s, lhs.y_ * s, lhs.z_ * s); \
 	} \
+	N2_API n2_##prefix##vec3_t n2_##prefix##vec3_lerp(const n2_##prefix##vec3_t lhs, const n2_##prefix##vec3_t rhs, type t) \
+	{ \
+		return n2_##prefix##vec3(n2_##prefix##lerp(lhs.x_, rhs.x_, t), n2_##prefix##lerp(lhs.y_, rhs.y_, t), n2_##prefix##lerp(lhs.z_, rhs.z_, t)); \
+	} \
 	N2_API type n2_##prefix##vec3_dot(const n2_##prefix##vec3_t lhs, const n2_##prefix##vec3_t rhs) \
 	{ \
 		return lhs.x_ * rhs.x_ + lhs.y_ * rhs.y_ + lhs.z_ * rhs.z_; \
 	} \
-	N2_API type n2_##prefix##vec3_normalize_to(n2_##prefix##vec3_t* lhs) \
+	N2_API type n2_##prefix##vec3_length2(n2_##prefix##vec3_t lhs) \
 	{ \
-		type l = lhs->x_ * lhs->x_ + lhs->y_ * lhs->y_ + lhs->z_ * lhs->z_; \
-		if (l > 0.f) { l = N2_SCAST(type, N2_SQRT(l)); const type r = 1.f / l; lhs->x_ *= r; lhs->y_ *= r; lhs->z_ *= r; } \
+		return lhs.x_ * lhs.x_ + lhs.y_ * lhs.y_ + lhs.z_ * lhs.z_; \
+	} \
+	N2_API type n2_##prefix##vec3_length(n2_##prefix##vec3_t lhs) \
+	{ \
+		return N2_SQRT##lprefix(n2_##prefix##vec3_length2(lhs)); \
+	} \
+	N2_API type n2_##prefix##vec3_normalize_to(n2_##prefix##vec3_t* to, n2_##prefix##vec3_t from) \
+	{ \
+		type l = n2_##prefix##vec3_length2(from); \
+		if (l > 0) { l = N2_SQRT##lprefix(l); const type r = 1 / l; to->x_ = from.x_ * r; to->y_ = from.y_ * r; to->z_ = from.z_ * r; } \
 		return l; \
+	} \
+	N2_API type n2_##prefix##vec3_normalize(n2_##prefix##vec3_t* tofrom) \
+	{ \
+		return n2_##prefix##vec3_normalize_to(tofrom, *tofrom); \
 	} \
 	N2_API n2_##prefix##vec3_t n2_##prefix##vec3_min(const n2_##prefix##vec3_t lhs, const n2_##prefix##vec3_t rhs) \
 	{ \
@@ -3279,9 +3319,31 @@ N2_VEC3_DEFINE(d, D, double);
 	{ \
 		return n2_##prefix##vec4(lhs.x_ * s, lhs.y_ * s, lhs.z_ * s, lhs.w_ * s); \
 	} \
+	N2_API n2_##prefix##vec4_t n2_##prefix##vec4_lerp(const n2_##prefix##vec4_t lhs, const n2_##prefix##vec4_t rhs, type t) \
+	{ \
+		return n2_##prefix##vec4(n2_##prefix##lerp(lhs.x_, rhs.x_, t), n2_##prefix##lerp(lhs.y_, rhs.y_, t), n2_##prefix##lerp(lhs.z_, rhs.z_, t), n2_##prefix##lerp(lhs.w_, rhs.w_, t)); \
+	} \
 	N2_API type n2_##prefix##vec4_dot(const n2_##prefix##vec4_t lhs, const n2_##prefix##vec4_t rhs) \
 	{ \
 		return lhs.x_ * rhs.x_ + lhs.y_ * rhs.y_ + lhs.z_ * rhs.z_ + lhs.w_ * rhs.w_; \
+	} \
+	N2_API type n2_##prefix##vec4_length2(n2_##prefix##vec4_t lhs) \
+	{ \
+		return lhs.x_ * lhs.x_ + lhs.y_ * lhs.y_ + lhs.z_ * lhs.z_ + lhs.w_ * lhs.w_; \
+	} \
+	N2_API type n2_##prefix##vec4_length(n2_##prefix##vec4_t lhs) \
+	{ \
+		return N2_SQRT##lprefix(n2_##prefix##vec4_length2(lhs)); \
+	} \
+	N2_API type n2_##prefix##vec4_normalize_to(n2_##prefix##vec4_t* to, n2_##prefix##vec4_t from) \
+	{ \
+		type l = n2_##prefix##vec4_length2(from); \
+		if (l > 0) { l = N2_SQRT##lprefix(l); const type r = 1 / l; to->x_ = from.x_ * r; to->y_ = from.y_ * r; to->z_ = from.z_ * r; to->w_ = from.w_ * r; } \
+		return l; \
+	} \
+	N2_API type n2_##prefix##vec4_normalize(n2_##prefix##vec4_t* tofrom) \
+	{ \
+		return n2_##prefix##vec4_normalize_to(tofrom, *tofrom); \
 	} \
 	N2_API n2_##prefix##vec4_t n2_##prefix##vec4_min(const n2_##prefix##vec4_t lhs, const n2_##prefix##vec4_t rhs) \
 	{ \
@@ -3299,6 +3361,109 @@ N2_VEC3_DEFINE(d, D, double);
 N2_VEC4_DEFINE(f, F, float);
 N2_VEC4_DEFINE(d, D, double);
 #undef N2_VEC4_DEFINE
+
+#define N2_QUAT4_DEFINE(prefix, lprefix, type) \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4(type x, type y, type z, type w) \
+	{ \
+		n2_##prefix##quat4_t res; \
+		res.x_ = x; res.y_ = y; res.z_ = z; res.w_ = w; \
+		return res; \
+	} \
+	N2_API void n2_##prefix##quat4_identity_to(n2_##prefix##quat4_t* to) \
+	{ \
+		to->x_ = 0; to->y_ = 0; to->z_ = 0; to->w_ = 1; \
+	} \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_identity() \
+	{ \
+		n2_##prefix##quat4_t q; \
+		n2_##prefix##quat4_identity_to(&q); \
+		return q; \
+	} \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_conjugate(n2_##prefix##quat4_t q) \
+	{ \
+		return n2_##prefix##quat4(-q.x_, -q.y_, -q.z_, q.w_); \
+	} \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_inverse(n2_##prefix##quat4_t q) \
+	{ \
+		const type l2 = n2_##prefix##vec4_length2(q.xyzw_); \
+		if (!l2) { return n2_##prefix##quat4_identity(); } \
+		return n2_##prefix##quat4_scale(n2_##prefix##quat4_conjugate(q), 1 / l2); \
+	} \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_add(n2_##prefix##quat4_t lhs, n2_##prefix##quat4_t rhs) \
+	{ \
+		return n2_##prefix##quat4(lhs.x_ + rhs.x_, lhs.y_ + rhs.y_, lhs.z_ + rhs.z_, lhs.w_ + rhs.w_); \
+	} \
+	N2_API void n2_##prefix##quat4_mul_to(n2_##prefix##quat4_t* to, n2_##prefix##quat4_t lhs, n2_##prefix##quat4_t rhs) \
+	{ \
+		to->x_ = lhs.w_ * rhs.x_ + lhs.x_ * rhs.w_ + lhs.y_ * rhs.z_ - lhs.z_ * rhs.y_; \
+		to->y_ = lhs.w_ * rhs.y_ - lhs.x_ * rhs.z_ + lhs.y_ * rhs.w_ + lhs.z_ * rhs.x_; \
+		to->z_ = lhs.w_ * rhs.z_ + lhs.x_ * rhs.y_ - lhs.y_ * rhs.x_ + lhs.z_ * rhs.w_; \
+		to->w_ = lhs.w_ * rhs.w_ - lhs.x_ * rhs.x_ - lhs.y_ * rhs.y_ - lhs.z_ * rhs.z_; \
+	} \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_mul(n2_##prefix##quat4_t lhs, n2_##prefix##quat4_t rhs) \
+	{ \
+		n2_##prefix##quat4_t q; \
+		n2_##prefix##quat4_mul_to(&q, lhs, rhs); \
+		return q; \
+	} \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_scale(n2_##prefix##quat4_t lhs, type s) \
+	{ \
+		return n2_##prefix##quat4(lhs.x_ * s, lhs.y_ * s, lhs.z_ * s, lhs.w_ * s); \
+	} \
+	N2_API type n2_##prefix##quat4_dot(const n2_##prefix##quat4_t lhs, const n2_##prefix##quat4_t rhs) \
+	{ \
+		return n2_##prefix##vec4_dot(lhs.xyzw_, rhs.xyzw_); \
+	} \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_arotation(n2_##prefix##vec3_t axis, type rad) \
+	{ \
+		n2_##prefix##quat4_t q; \
+		n2_##prefix##vec3_normalize(&axis); \
+		const n2_##prefix##vec2_t cs = n2_##prefix##vec2_cossin(rad * N2_SCAST(type, 0.5)); \
+		q.xyz_ = n2_##prefix##vec3_scale(axis, cs.y_); \
+		q.w_ = cs.x_; \
+		return q; \
+	} \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_erotation(n2_##prefix##vec3_t rot_rads) \
+	{ \
+		return n2_##prefix##quat4_erotation_zyx(rot_rads); \
+	} \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_erotation_zyx(n2_##prefix##vec3_t rot_rads) \
+	{ \
+		const n2_##prefix##quat4_t x = n2_##prefix##quat4_arotation(n2_##prefix##vec3(1, 0, 0), rot_rads.x_); \
+		const n2_##prefix##quat4_t y = n2_##prefix##quat4_arotation(n2_##prefix##vec3(0, 1, 0), rot_rads.y_); \
+		const n2_##prefix##quat4_t z = n2_##prefix##quat4_arotation(n2_##prefix##vec3(0, 0, 1), rot_rads.z_); \
+		return n2_##prefix##quat4_mul(z, n2_##prefix##quat4_mul(y, x)); \
+	} \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_erotation_xyz(n2_##prefix##vec3_t rot_rads) \
+	{ \
+		const n2_##prefix##quat4_t x = n2_##prefix##quat4_arotation(n2_##prefix##vec3(1, 0, 0), rot_rads.x_); \
+		const n2_##prefix##quat4_t y = n2_##prefix##quat4_arotation(n2_##prefix##vec3(0, 1, 0), rot_rads.y_); \
+		const n2_##prefix##quat4_t z = n2_##prefix##quat4_arotation(n2_##prefix##vec3(0, 0, 1), rot_rads.z_); \
+		return n2_##prefix##quat4_mul(x, n2_##prefix##quat4_mul(y, z)); \
+	} \
+	N2_API type n2_##prefix##quat4_decompose(n2_##prefix##vec3_t* axis, n2_##prefix##quat4_t q) \
+	{ \
+		n2_##prefix##vec3_t t; \
+		if (!axis) { axis = &t; } \
+		const type l = n2_##prefix##vec3_normalize_to(axis, q.xyz_); \
+		if (!l) { axis->x_ = 0; axis->y_ = 0; axis->z_ = 1; } \
+		return N2_ATAN2##lprefix(l, q.w_) * 2; \
+	} \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_slerp(n2_##prefix##quat4_t lhs, n2_##prefix##quat4_t rhs, type t) \
+	{ \
+		type c = n2_##prefix##quat4_dot(lhs, rhs); \
+		if (c < 0) { c = -c; rhs = n2_##prefix##quat4_scale(rhs, -1); } \
+		const type rad = N2_ACOS##lprefix(N2_CLAMP(c, -1, 1)); \
+		const type s = N2_SIN##lprefix(rad); \
+		if (!s) { return lhs; } \
+		const type st = N2_SIN##lprefix(rad * t); \
+		const type srt = N2_SIN##lprefix(rad * (1 - t)); \
+		return n2_##prefix##quat4_add(n2_##prefix##quat4_scale(lhs, srt / s), n2_##prefix##quat4_scale(rhs, st / s)); \
+	} \
+
+N2_QUAT4_DEFINE(f, F, float);
+N2_QUAT4_DEFINE(d, D, double);
+#undef N2_QUAT4_DEFINE
 
 #define N2_MAT4_DEFINE(prefix, lprefix, type) \
 	N2_API void n2_##prefix##mat4_zero_to(n2_##prefix##mat4_t* to) \
@@ -3324,6 +3489,175 @@ N2_VEC4_DEFINE(d, D, double);
 	N2_API void n2_##prefix##mat4_copy_to(n2_##prefix##mat4_t* to, const n2_##prefix##mat4_t* from) \
 	{ \
 		N2_MEMCPY(to, from, sizeof(n2_##prefix##mat4_t)); \
+	} \
+	N2_API n2_##prefix##mat4_t n2_##prefix##mat4_clone(const n2_##prefix##mat4_t* from) \
+	{ \
+		n2_##prefix##mat4_t to; \
+		n2_##prefix##mat4_copy_to(&to, from); \
+		return to; \
+	} \
+	N2_API void n2_##prefix##mat4_transpose_to(n2_##prefix##mat4_t* to, const n2_##prefix##mat4_t* from) \
+	{ \
+		to->m_[0][0] = from->m_[0][0]; to->m_[0][1] = from->m_[1][0]; to->m_[0][2] = from->m_[2][0]; to->m_[0][3] = from->m_[3][0]; \
+		to->m_[1][0] = from->m_[0][1]; to->m_[1][1] = from->m_[1][1]; to->m_[1][2] = from->m_[2][1]; to->m_[1][3] = from->m_[3][1]; \
+		to->m_[2][0] = from->m_[0][2]; to->m_[2][1] = from->m_[1][2]; to->m_[2][2] = from->m_[2][2]; to->m_[2][3] = from->m_[3][2]; \
+		to->m_[3][0] = from->m_[0][3]; to->m_[3][1] = from->m_[1][3]; to->m_[3][2] = from->m_[2][3]; to->m_[3][3] = from->m_[3][3]; \
+	} \
+	N2_API n2_##prefix##mat4_t n2_##prefix##mat4_transposed(n2_##prefix##mat4_t from) \
+	{ \
+		n2_##prefix##mat4_t to; \
+		n2_##prefix##mat4_transpose_to(&to, &from); \
+		return to; \
+	} \
+	N2_API type n2_##prefix##mat4_determinant(const n2_##prefix##mat4_t* from) \
+	{ \
+		return \
+			from->m_[0][0] * (from->m_[1][1] * from->m_[2][2] * from->m_[3][3] + from->m_[3][1] * from->m_[1][2] * from->m_[2][3] + from->m_[2][1] * from->m_[3][2] * from->m_[1][3] - from->m_[1][1] * from->m_[3][2] * from->m_[2][3] - from->m_[2][1] * from->m_[1][2] * from->m_[3][3] - from->m_[3][1] * from->m_[2][2] * from->m_[1][3]) + \
+			from->m_[0][1] * (from->m_[1][2] * from->m_[3][3] * from->m_[2][0] + from->m_[2][2] * from->m_[1][3] * from->m_[3][0] + from->m_[3][2] * from->m_[2][3] * from->m_[1][0] - from->m_[1][2] * from->m_[2][3] * from->m_[3][0] - from->m_[3][2] * from->m_[1][3] * from->m_[2][0] - from->m_[2][2] * from->m_[3][3] * from->m_[1][0]) + \
+			from->m_[0][2] * (from->m_[1][3] * from->m_[2][0] * from->m_[3][1] + from->m_[3][3] * from->m_[1][0] * from->m_[2][1] + from->m_[2][3] * from->m_[3][0] * from->m_[1][1] - from->m_[1][3] * from->m_[3][0] * from->m_[2][1] - from->m_[2][3] * from->m_[1][0] * from->m_[3][1] - from->m_[3][3] * from->m_[2][0] * from->m_[1][1]) + \
+			from->m_[0][3] * (from->m_[1][0] * from->m_[3][1] * from->m_[2][2] + from->m_[2][0] * from->m_[1][1] * from->m_[3][2] + from->m_[3][0] * from->m_[2][1] * from->m_[1][2] - from->m_[1][0] * from->m_[2][1] * from->m_[3][2] - from->m_[3][0] * from->m_[1][1] * from->m_[2][2] - from->m_[2][0] * from->m_[3][1] * from->m_[1][2]); \
+	} \
+	N2_API type n2_##prefix##mat4_trace(const n2_##prefix##mat4_t* from) \
+	{ \
+		return from->m_[0][0] + from->m_[1][1] + from->m_[2][2] + from->m_[3][3]; \
+	} \
+	N2_API void n2_##prefix##mat4_adjugate_to(n2_##prefix##mat4_t* to, const n2_##prefix##mat4_t* from) \
+	{ \
+		n2_##prefix##mat4_t t; \
+		if (to == from) { n2_##prefix##mat4_copy_to(&t, from); from = &t; } \
+		to->m_[0][0] = from->m_[1][1] * from->m_[2][2] * from->m_[3][3] + from->m_[3][1] * from->m_[1][2] * from->m_[2][3] + from->m_[2][1] * from->m_[3][2] * from->m_[1][3] - from->m_[1][1] * from->m_[3][2] * from->m_[2][3] - from->m_[2][1] * from->m_[1][2] * from->m_[3][3] - from->m_[3][1] * from->m_[2][2] * from->m_[1][3]; \
+		to->m_[0][1] = from->m_[0][1] * from->m_[3][2] * from->m_[2][3] + from->m_[2][1] * from->m_[0][2] * from->m_[3][3] + from->m_[3][1] * from->m_[2][2] * from->m_[0][3] - from->m_[3][1] * from->m_[0][2] * from->m_[2][3] - from->m_[2][1] * from->m_[3][2] * from->m_[0][3] - from->m_[0][1] * from->m_[2][2] * from->m_[3][3]; \
+		to->m_[0][2] = from->m_[0][1] * from->m_[1][2] * from->m_[3][3] + from->m_[3][1] * from->m_[0][2] * from->m_[1][3] + from->m_[1][1] * from->m_[3][2] * from->m_[0][3] - from->m_[0][1] * from->m_[3][2] * from->m_[1][3] - from->m_[1][1] * from->m_[0][2] * from->m_[3][3] - from->m_[3][1] * from->m_[1][2] * from->m_[0][3]; \
+		to->m_[0][3] = from->m_[0][1] * from->m_[2][2] * from->m_[1][3] + from->m_[1][1] * from->m_[0][2] * from->m_[2][3] + from->m_[2][1] * from->m_[1][2] * from->m_[0][3] - from->m_[0][1] * from->m_[1][2] * from->m_[2][3] - from->m_[2][1] * from->m_[0][2] * from->m_[1][3] - from->m_[1][1] * from->m_[2][2] * from->m_[0][3]; \
+		to->m_[1][0] = from->m_[1][2] * from->m_[3][3] * from->m_[2][0] + from->m_[2][2] * from->m_[1][3] * from->m_[3][0] + from->m_[3][2] * from->m_[2][3] * from->m_[1][0] - from->m_[1][2] * from->m_[2][3] * from->m_[3][0] - from->m_[3][2] * from->m_[1][3] * from->m_[2][0] - from->m_[2][2] * from->m_[3][3] * from->m_[1][0]; \
+		to->m_[1][1] = from->m_[0][2] * from->m_[2][3] * from->m_[3][0] + from->m_[3][2] * from->m_[0][3] * from->m_[2][0] + from->m_[2][2] * from->m_[3][3] * from->m_[0][0] - from->m_[0][2] * from->m_[3][3] * from->m_[2][0] - from->m_[2][2] * from->m_[0][3] * from->m_[3][0] - from->m_[3][2] * from->m_[2][3] * from->m_[0][0]; \
+		to->m_[1][2] = from->m_[0][2] * from->m_[3][3] * from->m_[1][0] + from->m_[1][2] * from->m_[0][3] * from->m_[3][0] + from->m_[3][2] * from->m_[1][3] * from->m_[0][0] - from->m_[0][2] * from->m_[1][3] * from->m_[3][0] - from->m_[3][2] * from->m_[0][3] * from->m_[1][0] - from->m_[1][2] * from->m_[3][3] * from->m_[0][0]; \
+		to->m_[1][3] = from->m_[0][2] * from->m_[1][3] * from->m_[2][0] + from->m_[2][2] * from->m_[0][3] * from->m_[1][0] + from->m_[1][2] * from->m_[2][3] * from->m_[0][0] - from->m_[0][2] * from->m_[2][3] * from->m_[1][0] - from->m_[1][2] * from->m_[0][3] * from->m_[2][0] - from->m_[2][2] * from->m_[1][3] * from->m_[0][0]; \
+		to->m_[2][0] = from->m_[1][3] * from->m_[2][0] * from->m_[3][1] + from->m_[3][3] * from->m_[1][0] * from->m_[2][1] + from->m_[2][3] * from->m_[3][0] * from->m_[1][1] - from->m_[1][3] * from->m_[3][0] * from->m_[2][1] - from->m_[2][3] * from->m_[1][0] * from->m_[3][1] - from->m_[3][3] * from->m_[2][0] * from->m_[1][1]; \
+		to->m_[2][1] = from->m_[0][3] * from->m_[3][0] * from->m_[2][1] + from->m_[2][3] * from->m_[0][0] * from->m_[3][1] + from->m_[3][3] * from->m_[2][0] * from->m_[0][1] - from->m_[0][3] * from->m_[2][0] * from->m_[3][1] - from->m_[3][3] * from->m_[0][0] * from->m_[2][1] - from->m_[2][3] * from->m_[3][0] * from->m_[0][1]; \
+		to->m_[2][2] = from->m_[0][3] * from->m_[1][0] * from->m_[3][1] + from->m_[3][3] * from->m_[0][0] * from->m_[1][1] + from->m_[1][3] * from->m_[3][0] * from->m_[0][1] - from->m_[0][3] * from->m_[3][0] * from->m_[1][1] - from->m_[1][3] * from->m_[0][0] * from->m_[3][1] - from->m_[3][3] * from->m_[1][0] * from->m_[0][1]; \
+		to->m_[2][3] = from->m_[0][3] * from->m_[2][0] * from->m_[1][1] + from->m_[1][3] * from->m_[0][0] * from->m_[2][1] + from->m_[2][3] * from->m_[1][0] * from->m_[0][1] - from->m_[0][3] * from->m_[1][0] * from->m_[2][1] - from->m_[2][3] * from->m_[0][0] * from->m_[1][1] - from->m_[1][3] * from->m_[2][0] * from->m_[0][1]; \
+		to->m_[3][0] = from->m_[1][0] * from->m_[3][1] * from->m_[2][2] + from->m_[2][0] * from->m_[1][1] * from->m_[3][2] + from->m_[3][0] * from->m_[2][1] * from->m_[1][2] - from->m_[1][0] * from->m_[2][1] * from->m_[3][2] - from->m_[3][0] * from->m_[1][1] * from->m_[2][2] - from->m_[2][0] * from->m_[3][1] * from->m_[1][2]; \
+		to->m_[3][1] = from->m_[0][0] * from->m_[2][1] * from->m_[3][2] + from->m_[3][0] * from->m_[0][1] * from->m_[2][2] + from->m_[2][0] * from->m_[3][1] * from->m_[0][2] - from->m_[0][0] * from->m_[3][1] * from->m_[2][2] - from->m_[2][0] * from->m_[0][1] * from->m_[3][2] - from->m_[3][0] * from->m_[2][1] * from->m_[0][2]; \
+		to->m_[3][2] = from->m_[0][0] * from->m_[3][1] * from->m_[1][2] + from->m_[1][0] * from->m_[0][1] * from->m_[3][2] + from->m_[3][0] * from->m_[1][1] * from->m_[0][2] - from->m_[0][0] * from->m_[1][1] * from->m_[3][2] - from->m_[3][0] * from->m_[0][1] * from->m_[1][2] - from->m_[1][0] * from->m_[3][1] * from->m_[0][2]; \
+		to->m_[3][3] = from->m_[0][0] * from->m_[1][1] * from->m_[2][2] + from->m_[2][0] * from->m_[0][1] * from->m_[1][2] + from->m_[1][0] * from->m_[2][1] * from->m_[0][2] - from->m_[0][0] * from->m_[2][1] * from->m_[1][2] - from->m_[1][0] * from->m_[0][1] * from->m_[2][2] - from->m_[2][0] * from->m_[1][1] * from->m_[0][2]; \
+	} \
+	N2_API type n2_##prefix##mat4_inverse_to(n2_##prefix##mat4_t* to, const n2_##prefix##mat4_t* from) \
+	{ \
+		const type det = n2_##prefix##mat4_determinant(from); \
+		if (det != 0) \
+		{ \
+			n2_##prefix##mat4_adjugate_to(to, from); \
+			const type idet = 1 / det; \
+			for (int i = 0; i < 16; ++i) { to->e_[i] *= idet; } \
+		} \
+		return det; \
+	} \
+	N2_API void n2_##prefix##mat4_fastmul_to(n2_##prefix##mat4_t* dst, const n2_##prefix##mat4_t* lhs, const n2_##prefix##mat4_t* rhs) \
+	{ \
+		N2_ASSERT(dst != lhs); \
+		N2_ASSERT(dst != rhs); \
+		for (int j = 0; j < 4; ++j) for (int i = 0; i < 4; ++i) \
+		{ \
+			dst->m_[j][i] = lhs->m_[0][i] * rhs->m_[j][0] + lhs->m_[1][i] * rhs->m_[j][1] + lhs->m_[2][i] * rhs->m_[j][2] + lhs->m_[3][i] * rhs->m_[j][3]; \
+		} \
+	} \
+	N2_API void n2_##prefix##mat4_mul_to(n2_##prefix##mat4_t* dst, const n2_##prefix##mat4_t* lhs, const n2_##prefix##mat4_t* rhs) \
+	{ \
+		n2_##prefix##mat4_t lhst, rhst; \
+		if (dst == lhs) { n2_##prefix##mat4_copy_to(&lhst, lhs); lhs = &lhst; } \
+		if (dst == rhs) { n2_##prefix##mat4_copy_to(&rhst, rhs); rhs = &rhst; } \
+		n2_##prefix##mat4_fastmul_to(dst, lhs, rhs); \
+	} \
+	N2_API n2_##prefix##mat4_t n2_##prefix##mat4_mul(n2_##prefix##mat4_t lhs, n2_##prefix##mat4_t rhs) \
+	{ \
+		n2_##prefix##mat4_t m; \
+		n2_##prefix##mat4_fastmul_to(&m, &lhs, &rhs); \
+		return m; \
+	} \
+	N2_API void n2_##prefix##mat4_mul_vec_to(n2_##prefix##vec4_t* dst, const n2_##prefix##mat4_t* lhs, n2_##prefix##vec4_t rhs) \
+	{ \
+		dst->x_ = lhs->m_[0][0] * rhs.x_ + lhs->m_[1][0] * rhs.y_ + lhs->m_[2][0] * rhs.z_ + lhs->m_[3][0] * rhs.w_; \
+		dst->y_ = lhs->m_[0][1] * rhs.x_ + lhs->m_[1][1] * rhs.y_ + lhs->m_[2][1] * rhs.z_ + lhs->m_[3][1] * rhs.w_; \
+		dst->z_ = lhs->m_[0][2] * rhs.x_ + lhs->m_[1][2] * rhs.y_ + lhs->m_[2][2] * rhs.z_ + lhs->m_[3][2] * rhs.w_; \
+		dst->w_ = lhs->m_[0][3] * rhs.x_ + lhs->m_[1][3] * rhs.y_ + lhs->m_[2][3] * rhs.z_ + lhs->m_[3][3] * rhs.w_; \
+	} \
+	N2_API n2_##prefix##vec4_t n2_##prefix##mat4_mul_vec(const n2_##prefix##mat4_t* lhs, n2_##prefix##vec4_t rhs) \
+	{ \
+		n2_##prefix##vec4_t t; \
+		n2_##prefix##mat4_mul_vec_to(&t, lhs, rhs); \
+		return t; \
+	} \
+	N2_API void n2_##prefix##mat4_translation_to(n2_##prefix##mat4_t* to, n2_##prefix##vec3_t trans) \
+	{ \
+		n2_##prefix##mat4_identity_to(to); \
+		to->m_[3][0] = trans.x_; \
+		to->m_[3][1] = trans.y_; \
+		to->m_[3][2] = trans.z_; \
+	} \
+	N2_API void n2_##prefix##mat4_arotation_to(n2_##prefix##mat4_t* to, n2_##prefix##vec3_t axis, type rad) \
+	{ \
+		const n2_##prefix##vec2_t cs = n2_##prefix##vec2_cossin(rad); \
+		n2_##prefix##vec3_normalize(&axis); \
+		const n2_##prefix##vec3_t ica = n2_##prefix##vec3_scale(axis, 1 - cs.x_); \
+		to->m_[0][0] = cs.x_            + axis.x_ * ica.x_; to->m_[1][0] = axis.x_ * ica.y_ - axis.z_ * cs.y_;  to->m_[2][0] = axis.x_ * ica.z_ + axis.y_ * cs.y_;  to->m_[3][0] = 0; \
+		to->m_[0][1] = axis.y_ * ica.x_ + axis.z_ * cs.y_;  to->m_[1][1] = cs.x_            + axis.y_ * ica.y_; to->m_[2][1] = axis.y_ * ica.z_ - axis.x_ * cs.y_;  to->m_[3][1] = 0; \
+		to->m_[0][2] = axis.z_ * ica.x_ - axis.y_ * cs.y_;  to->m_[1][2] = axis.z_ * ica.y_ + axis.x_ * cs.y_;  to->m_[2][2] = cs.x_            + axis.z_ * ica.z_; to->m_[3][2] = 0; \
+		to->m_[0][3] = 0;                                   to->m_[1][3] = 0;                                   to->m_[2][3] = 0;                                   to->m_[3][3] = 1; \
+	} \
+	N2_API void n2_##prefix##mat4_erotation_to(n2_##prefix##mat4_t* to, n2_##prefix##vec3_t rot_rads) \
+	{ \
+		n2_##prefix##mat4_erotation_zyx_to(to, rot_rads); \
+	} \
+	N2_API void n2_##prefix##mat4_erotation_zyx_to(n2_##prefix##mat4_t* to, n2_##prefix##vec3_t rot_rads) \
+	{ \
+		const n2_##prefix##vec2_t x = n2_##prefix##vec2_cossin(rot_rads.x_); \
+		const n2_##prefix##vec2_t y = n2_##prefix##vec2_cossin(rot_rads.y_); \
+		const n2_##prefix##vec2_t z = n2_##prefix##vec2_cossin(rot_rads.z_); \
+		to->m_[0][0] = z.x_ * y.x_; to->m_[1][0] = z.x_ * y.y_ * x.y_ - z.y_ * x.x_; to->m_[2][0] = z.x_ * y.y_ * x.x_ + z.y_ * x.y_; to->m_[3][0] = 0; \
+		to->m_[0][1] = z.y_ * y.x_; to->m_[1][1] = z.y_ * y.y_ * x.y_ + z.x_ * x.x_; to->m_[2][1] = z.y_ * y.y_ * x.x_ - z.x_ * x.y_; to->m_[3][1] = 0; \
+		to->m_[0][2] = -y.y_;       to->m_[1][2] = y.x_ * x.y_;                      to->m_[2][2] = y.x_ * x.x_;                      to->m_[3][2] = 0; \
+		to->m_[0][3] = 0;           to->m_[1][3] = 0;                                to->m_[2][3] = 0;                                to->m_[3][3] = 1; \
+	} \
+	N2_API void n2_##prefix##mat4_qrotation_to(n2_##prefix##mat4_t* to, n2_##prefix##quat4_t q) \
+	{ \
+		to->m_[0][0] = q.w_ * q.w_ + q.x_ * q.x_ - q.y_ * q.y_ - q.z_ * q.z_; to->m_[1][0] = (q.x_ * q.y_ - q.z_ * q.w_) * 2;                       to->m_[2][0] = (q.z_ * q.x_ + q.y_ * q.w_) * 2;                       to->m_[3][0] = 0; \
+		to->m_[0][1] = (q.x_ * q.y_ + q.z_ * q.w_) * 2;                       to->m_[1][1] = q.w_ * q.w_ - q.x_ * q.x_ + q.y_ * q.y_ - q.z_ * q.z_; to->m_[2][1] = (q.y_ * q.z_ - q.x_ * q.w_) * 2;                       to->m_[3][1] = 0; \
+		to->m_[0][2] = (q.z_ * q.x_ - q.y_ * q.w_) * 2;                       to->m_[1][2] = (q.y_ * q.z_ + q.x_ * q.w_) * 2;                       to->m_[2][2] = q.w_ * q.w_ - q.x_ * q.x_ - q.y_ * q.y_ + q.z_ * q.z_; to->m_[3][2] = 0; \
+		to->m_[0][3] = 0;                                                     to->m_[1][3] = 0;                                                     to->m_[2][3] = 0;                                                     to->m_[3][3] = 1; \
+	} \
+	N2_API void n2_##prefix##mat4_scaling_to(n2_##prefix##mat4_t* to, n2_##prefix##vec3_t scale) \
+	{ \
+		n2_##prefix##mat4_identity_to(to); \
+		to->m_[0][0] = scale.x_; \
+		to->m_[1][1] = scale.y_; \
+		to->m_[2][2] = scale.z_; \
+	} \
+	N2_API void n2_##prefix##mat4_trs_to(n2_##prefix##mat4_t* to, n2_##prefix##vec3_t trans, n2_##prefix##vec3_t rot_rads, n2_##prefix##vec3_t scale) \
+	{ \
+		/*rotation*/ \
+		n2_##prefix##mat4_erotation_to(to, rot_rads); \
+		/*scale(from right)*/ \
+		to->m_[0][0] *= scale.x_; to->m_[1][0] *= scale.y_; to->m_[2][0] *= scale.z_; \
+		to->m_[0][1] *= scale.x_; to->m_[1][1] *= scale.y_; to->m_[2][1] *= scale.z_; \
+		to->m_[0][2] *= scale.x_; to->m_[1][2] *= scale.y_; to->m_[2][2] *= scale.z_; \
+		/*trans*/ \
+		to->m_[3][0] = trans.x_; \
+		to->m_[3][1] = trans.y_; \
+		to->m_[3][2] = trans.z_; \
+	} \
+	N2_API void n2_##prefix##mat4_tqs_to(n2_##prefix##mat4_t* to, n2_##prefix##vec3_t trans, n2_##prefix##quat4_t q, n2_##prefix##vec3_t scale) \
+	{ \
+		/*rotation*/ \
+		n2_##prefix##mat4_qrotation_to(to, q); \
+		/*scale(from right)*/ \
+		to->m_[0][0] *= scale.x_; to->m_[1][0] *= scale.y_; to->m_[2][0] *= scale.z_; \
+		to->m_[0][1] *= scale.x_; to->m_[1][1] *= scale.y_; to->m_[2][1] *= scale.z_; \
+		to->m_[0][2] *= scale.x_; to->m_[1][2] *= scale.y_; to->m_[2][2] *= scale.z_; \
+		/*trans*/ \
+		to->m_[3][0] = trans.x_; \
+		to->m_[3][1] = trans.y_; \
+		to->m_[3][2] = trans.z_; \
 	} \
 	N2_API void n2_##prefix##mat4_ortho2d_to(n2_##prefix##mat4_t* to, type left, type right, type top, type bottom, type z_near, type z_far) \
 	{ \
@@ -15537,7 +15871,7 @@ N2_API n2s_fcolor_t n2s_fcolor(float r, float g, float b, float a)
 
 static N2_INLINE float n2si_fchannel_clamp(float v)
 {
-	return n2_float_saturate(v);
+	return n2_fsaturate(v);
 }
 
 N2_API n2s_fcolor_t n2s_fcolor_clamp(float r, float g, float b, float a)
@@ -15567,9 +15901,9 @@ N2_API n2s_fcolor_t n2s_u8color_to_fcolor(n2s_u8color_t u8color)
 
 N2_API n2s_fcolor_t n2s_hsv_to_fcolor(n2_fvec3_t hsv, float a)
 {
-	const float h = n2_float_saturate(hsv.x_);
-	const float s = n2_float_saturate(hsv.y_);
-	const float v = n2_float_saturate(hsv.z_);
+	const float h = n2_fsaturate(hsv.x_);
+	const float s = n2_fsaturate(hsv.y_);
+	const float v = n2_fsaturate(hsv.z_);
 
 	const float h6 = h * 6;
 	const int h6i = N2_SCAST(int, h6);
@@ -15592,9 +15926,9 @@ N2_API n2s_fcolor_t n2s_hsv_to_fcolor(n2_fvec3_t hsv, float a)
 
 N2_API n2_fvec3_t n2s_fcolor_to_hsv(n2s_fcolor_t fcolor)
 {
-	const float r = n2_float_saturate(fcolor.r_);
-	const float g = n2_float_saturate(fcolor.g_);
-	const float b = n2_float_saturate(fcolor.b_);
+	const float r = n2_fsaturate(fcolor.r_);
+	const float g = n2_fsaturate(fcolor.g_);
+	const float b = n2_fsaturate(fcolor.b_);
 	const float cmax = r > g ? (r > b ? r : b) : (g > b ? g : b);
 	const float cmin = r < g ? (r < b ? r : b) : (g < b ? g : b);
 	const float d = cmax - cmin;
@@ -17126,7 +17460,7 @@ N2_API void n2s_commandbuffer_line(n2_state_t* state, n2s_commandbuffer_t* cb, n
 	start = n2_fvec3_sub(start, n2_fvec3(-0.5f, -0.5f, -0.5f));
 	end = n2_fvec3_sub(end, n2_fvec3(-0.5f, -0.5f, -0.5f));
 	n2_fvec3_t diff = n2_fvec3_sub(end, start);
-	if (n2_fvec3_normalize_to(&diff) <= 0.f) { diff.x_ = 1.f; diff.y_ = 0.f; diff.z_ = 0.f; }
+	if (n2_fvec3_normalize(&diff) <= 0) { diff.x_ = 1; diff.y_ = 0; diff.z_ = 0; }
 	const n2_fvec3_t hd = n2_fvec3_scale(diff, thickness * 0.5f);
 	n2s_vertex_to(v + 0, n2_fvec3_add(start, n2_fvec3( hd.y_, -hd.x_, -hd.z_)), n2_fvec2(0, 0), color);
 	n2s_vertex_to(v + 1, n2_fvec3_add(end, n2_fvec3( hd.y_, -hd.x_,  hd.z_)), n2_fvec2(0, 0), color);
@@ -26692,9 +27026,9 @@ static int n2si_bifunc_hsvcolor(const n2_funcarg_t* arg)
 	const n2_value_t* hval = n2e_funcarg_getarg(arg, 0);
 	const float h = N2_SCAST(float, N2_FMOD(N2_SCAST(double, hval ? n2e_funcarg_eval_int(arg, hval) : 0) / 192, 1));
 	const n2_value_t* sval = n2e_funcarg_getarg(arg, 1);
-	const float s = n2_float_saturate(N2_SCAST(float, sval ? n2e_funcarg_eval_int(arg, sval) : 0) / 255);
+	const float s = n2_fsaturate(N2_SCAST(float, sval ? n2e_funcarg_eval_int(arg, sval) : 0) / 255);
 	const n2_value_t* vval = n2e_funcarg_getarg(arg, 2);
-	const float v = n2_float_saturate(N2_SCAST(float, vval ? n2e_funcarg_eval_int(arg, vval) : 0) / 255);
+	const float v = n2_fsaturate(N2_SCAST(float, vval ? n2e_funcarg_eval_int(arg, vval) : 0) / 255);
 	const n2s_u8color_t rgb = n2s_fcolor_to_u8color(n2s_hsv_to_fcolor(n2_fvec3(h, s, v), 0));
 	nw->ginfo_r_ = rgb.r_;
 	nw->ginfo_g_ = rgb.g_;

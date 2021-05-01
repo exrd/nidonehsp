@@ -340,8 +340,8 @@
 #define N2_SIN(x)			sin(x)
 #define N2_COS(x)			cos(x)
 #define N2_TAN(x)			tan(x)
-#define N2_ASIN(x)			sin(x)
-#define N2_ACOS(x)			cos(x)
+#define N2_ASIN(x)			asin(x)
+#define N2_ACOS(x)			acos(x)
 #define N2_ATAN2(y, x)		atan2(y, x)
 #define N2_SQRT(x)			sqrt(x)
 #define N2_POW(x, y)		pow(x, y)
@@ -354,8 +354,8 @@
 #define N2_SINF(x)			sinf(x)
 #define N2_COSF(x)			cosf(x)
 #define N2_TANF(x)			tanf(x)
-#define N2_ASINF(x)			sin(x)
-#define N2_ACOSF(x)			cos(x)
+#define N2_ASINF(x)			asinf(x)
+#define N2_ACOSF(x)			acosf(x)
 #define N2_ATAN2F(y, x)		atan2f(y, x)
 #define N2_SQRTF(x)			sqrtf(x)
 #define N2_POWF(x, y)		powf(x, y)
@@ -404,7 +404,7 @@
 #define N2_ROUNDD			N2_ROUND
 #endif
 #ifndef N2_FLOORD
-#define N2_FLOORD			n2_FLOOR
+#define N2_FLOORD			N2_FLOOR
 #endif
 #ifndef N2_CEILD
 #define N2_CEILD			N2_CEIL
@@ -1492,9 +1492,13 @@ typedef n2_bool_t (*n2_filewrite_func_t)(void* file_user, const n2_filewrite_par
 	N2_API n2_##prefix##vec2_t n2_##prefix##vec2_sub(const n2_##prefix##vec2_t lhs, const n2_##prefix##vec2_t rhs); \
 	N2_API n2_##prefix##vec2_t n2_##prefix##vec2_mul(const n2_##prefix##vec2_t lhs, const n2_##prefix##vec2_t rhs); \
 	N2_API n2_##prefix##vec2_t n2_##prefix##vec2_scale(const n2_##prefix##vec2_t lhs, type s); \
+	N2_API n2_##prefix##vec2_t n2_##prefix##vec2_lerp(const n2_##prefix##vec2_t lhs, const n2_##prefix##vec2_t rhs, type t); \
 	N2_API type n2_##prefix##vec2_dot(const n2_##prefix##vec2_t lhs, const n2_##prefix##vec2_t rhs); \
 	N2_API type n2_##prefix##vec2_cross(const n2_##prefix##vec2_t lhs, const n2_##prefix##vec2_t rhs); \
-	N2_API type n2_##prefix##vec2_normalize_to(n2_##prefix##vec2_t* lhs); \
+	N2_API type n2_##prefix##vec2_length2(n2_##prefix##vec2_t lhs); \
+	N2_API type n2_##prefix##vec2_length(n2_##prefix##vec2_t lhs); \
+	N2_API type n2_##prefix##vec2_normalize_to(n2_##prefix##vec2_t* to, n2_##prefix##vec2_t from); \
+	N2_API type n2_##prefix##vec2_normalize(n2_##prefix##vec2_t* tofrom); \
 	N2_API n2_##prefix##vec2_t n2_##prefix##vec2_min(const n2_##prefix##vec2_t lhs, const n2_##prefix##vec2_t rhs); \
 	N2_API n2_##prefix##vec2_t n2_##prefix##vec2_max(const n2_##prefix##vec2_t lhs, const n2_##prefix##vec2_t rhs); \
 	N2_API n2_##prefix##vec2_t n2_##prefix##vec2_clamp(const n2_##prefix##vec2_t lhs, type low, type high); \
@@ -1520,8 +1524,12 @@ N2_VEC2_DECLARE(d, double);
 	N2_API n2_##prefix##vec3_t n2_##prefix##vec3_sub(const n2_##prefix##vec3_t lhs, const n2_##prefix##vec3_t rhs); \
 	N2_API n2_##prefix##vec3_t n2_##prefix##vec3_mul(const n2_##prefix##vec3_t lhs, const n2_##prefix##vec3_t rhs); \
 	N2_API n2_##prefix##vec3_t n2_##prefix##vec3_scale(const n2_##prefix##vec3_t lhs, type s); \
+	N2_API n2_##prefix##vec3_t n2_##prefix##vec3_lerp(const n2_##prefix##vec3_t lhs, const n2_##prefix##vec3_t rhs, type t); \
 	N2_API type n2_##prefix##vec3_dot(const n2_##prefix##vec3_t lhs, const n2_##prefix##vec3_t rhs); \
-	N2_API type n2_##prefix##vec3_normalize_to(n2_##prefix##vec3_t* lhs); \
+	N2_API type n2_##prefix##vec3_length2(n2_##prefix##vec3_t lhs); \
+	N2_API type n2_##prefix##vec3_length(n2_##prefix##vec3_t lhs); \
+	N2_API type n2_##prefix##vec3_normalize_to(n2_##prefix##vec3_t* to, n2_##prefix##vec3_t from); \
+	N2_API type n2_##prefix##vec3_normalize(n2_##prefix##vec3_t* tofrom); \
 	N2_API n2_##prefix##vec3_t n2_##prefix##vec3_min(const n2_##prefix##vec3_t lhs, const n2_##prefix##vec3_t rhs); \
 	N2_API n2_##prefix##vec3_t n2_##prefix##vec3_max(const n2_##prefix##vec3_t lhs, const n2_##prefix##vec3_t rhs); \
 	N2_API n2_##prefix##vec3_t n2_##prefix##vec3_clamp(const n2_##prefix##vec3_t lhs, type low, type high); \
@@ -1548,7 +1556,12 @@ N2_VEC3_DECLARE(d, double);
 	N2_API n2_##prefix##vec4_t n2_##prefix##vec4_sub(const n2_##prefix##vec4_t lhs, const n2_##prefix##vec4_t rhs); \
 	N2_API n2_##prefix##vec4_t n2_##prefix##vec4_mul(const n2_##prefix##vec4_t lhs, const n2_##prefix##vec4_t rhs); \
 	N2_API n2_##prefix##vec4_t n2_##prefix##vec4_scale(const n2_##prefix##vec4_t lhs, type s); \
+	N2_API n2_##prefix##vec4_t n2_##prefix##vec4_lerp(const n2_##prefix##vec4_t lhs, const n2_##prefix##vec4_t rhs, type t); \
 	N2_API type n2_##prefix##vec4_dot(const n2_##prefix##vec4_t lhs, const n2_##prefix##vec4_t rhs); \
+	N2_API type n2_##prefix##vec4_length2(n2_##prefix##vec4_t lhs); \
+	N2_API type n2_##prefix##vec4_length(n2_##prefix##vec4_t lhs); \
+	N2_API type n2_##prefix##vec4_normalize_to(n2_##prefix##vec4_t* to, n2_##prefix##vec4_t from); \
+	N2_API type n2_##prefix##vec4_normalize(n2_##prefix##vec4_t* tofrom); \
 	N2_API n2_##prefix##vec4_t n2_##prefix##vec4_min(const n2_##prefix##vec4_t lhs, const n2_##prefix##vec4_t rhs); \
 	N2_API n2_##prefix##vec4_t n2_##prefix##vec4_max(const n2_##prefix##vec4_t lhs, const n2_##prefix##vec4_t rhs); \
 	N2_API n2_##prefix##vec4_t n2_##prefix##vec4_clamp(const n2_##prefix##vec4_t lhs, type low, type high); \
@@ -1557,6 +1570,39 @@ N2_VEC4_DECLARE(f, float);
 N2_VEC4_DECLARE(d, double);
 #undef N2_VEC4_DECLARE
 
+#define N2_QUAT4_DECLARE(prefix, type) \
+	typedef union n2_##prefix##quat4_t n2_##prefix##quat4_t; \
+	union n2_##prefix##quat4_t \
+	{ \
+		struct { type x_, y_, z_, w_; }; \
+		struct { type r_, g_, b_, a_; }; \
+		n2_##prefix##vec3_t xyz_; \
+		n2_##prefix##vec4_t xyzw_; \
+		type e_[4]; \
+	}; \
+	 \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4(type x, type y, type z, type w); \
+	N2_API void n2_##prefix##quat4_identity_to(n2_##prefix##quat4_t* to); \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_identity(); \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_conjugate(n2_##prefix##quat4_t q); \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_inverse(n2_##prefix##quat4_t q); \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_add(n2_##prefix##quat4_t lhs, n2_##prefix##quat4_t rhs); \
+	N2_API void n2_##prefix##quat4_mul_to(n2_##prefix##quat4_t* to, n2_##prefix##quat4_t lhs, n2_##prefix##quat4_t rhs); \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_mul(n2_##prefix##quat4_t lhs, n2_##prefix##quat4_t rhs); \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_scale(n2_##prefix##quat4_t lhs, type s); \
+	N2_API type n2_##prefix##quat4_dot(const n2_##prefix##quat4_t lhs, const n2_##prefix##quat4_t rhs); \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_arotation(n2_##prefix##vec3_t axis, type rad); \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_erotation(n2_##prefix##vec3_t rot_rads); \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_erotation_zyx(n2_##prefix##vec3_t rot_rads); \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_erotation_xyz(n2_##prefix##vec3_t rot_rads); \
+	N2_API type n2_##prefix##quat4_decompose(n2_##prefix##vec3_t* axis, n2_##prefix##quat4_t q); \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_slerp(n2_##prefix##quat4_t lhs, n2_##prefix##quat4_t rhs, type t); \
+
+N2_QUAT4_DECLARE(f, float);
+N2_QUAT4_DECLARE(d, double);
+#undef N2_QUAT4_DECLARE
+
+// column major
 #define N2_MAT4_DECLARE(prefix, type) \
 	typedef union n2_##prefix##mat4_t n2_##prefix##mat4_t; \
 	union n2_##prefix##mat4_t \
@@ -1571,6 +1617,26 @@ N2_VEC4_DECLARE(d, double);
 	N2_API void n2_##prefix##mat4_identity_to(n2_##prefix##mat4_t* to); \
 	N2_API n2_##prefix##mat4_t n2_##prefix##mat4_identity(); \
 	N2_API void n2_##prefix##mat4_copy_to(n2_##prefix##mat4_t* to, const n2_##prefix##mat4_t* from); \
+	N2_API n2_##prefix##mat4_t n2_##prefix##mat4_clone(const n2_##prefix##mat4_t* from); \
+	N2_API void n2_##prefix##mat4_transpose_to(n2_##prefix##mat4_t* to, const n2_##prefix##mat4_t* from); \
+	N2_API n2_##prefix##mat4_t n2_##prefix##mat4_transposed(n2_##prefix##mat4_t from); \
+	N2_API type n2_##prefix##mat4_determinant(const n2_##prefix##mat4_t* from); \
+	N2_API type n2_##prefix##mat4_trace(const n2_##prefix##mat4_t* from); \
+	N2_API void n2_##prefix##mat4_adjugate_to(n2_##prefix##mat4_t* to, const n2_##prefix##mat4_t* from); \
+	N2_API type n2_##prefix##mat4_inverse_to(n2_##prefix##mat4_t* to, const n2_##prefix##mat4_t* from); \
+	N2_API void n2_##prefix##mat4_fastmul_to(n2_##prefix##mat4_t* dst, const n2_##prefix##mat4_t* lhs, const n2_##prefix##mat4_t* rhs); \
+	N2_API void n2_##prefix##mat4_mul_to(n2_##prefix##mat4_t* dst, const n2_##prefix##mat4_t* lhs, const n2_##prefix##mat4_t* rhs); \
+	N2_API n2_##prefix##mat4_t n2_##prefix##mat4_mul(n2_##prefix##mat4_t lhs, n2_##prefix##mat4_t rhs); \
+	N2_API void n2_##prefix##mat4_mul_vec_to(n2_##prefix##vec4_t* dst, const n2_##prefix##mat4_t* lhs, n2_##prefix##vec4_t rhs); \
+	N2_API n2_##prefix##vec4_t n2_##prefix##mat4_mul_vec(const n2_##prefix##mat4_t* lhs, n2_##prefix##vec4_t rhs); \
+	N2_API void n2_##prefix##mat4_translation_to(n2_##prefix##mat4_t* to, n2_##prefix##vec3_t trans); \
+	N2_API void n2_##prefix##mat4_arotation_to(n2_##prefix##mat4_t* to, n2_##prefix##vec3_t axis, type rad); \
+	N2_API void n2_##prefix##mat4_erotation_to(n2_##prefix##mat4_t* to, n2_##prefix##vec3_t rot_rads); \
+	N2_API void n2_##prefix##mat4_erotation_zyx_to(n2_##prefix##mat4_t* to, n2_##prefix##vec3_t rot_rads); \
+	N2_API void n2_##prefix##mat4_qrotation_to(n2_##prefix##mat4_t* to, n2_##prefix##quat4_t q); \
+	N2_API void n2_##prefix##mat4_scaling_to(n2_##prefix##mat4_t* to, n2_##prefix##vec3_t scale); \
+	N2_API void n2_##prefix##mat4_trs_to(n2_##prefix##mat4_t* to, n2_##prefix##vec3_t trans, n2_##prefix##vec3_t rot_rads, n2_##prefix##vec3_t scale); \
+	N2_API void n2_##prefix##mat4_tqs_to(n2_##prefix##mat4_t* to, n2_##prefix##vec3_t trans, n2_##prefix##quat4_t q, n2_##prefix##vec3_t scale); \
 	N2_API void n2_##prefix##mat4_ortho2d_to(n2_##prefix##mat4_t* to, type left, type right, type top, type bottom, type z_near, type z_far); \
 	N2_API void n2_##prefix##mat4_ortho3d_to(n2_##prefix##mat4_t* to, type left, type right, type bottom, type top, type z_near, type z_far); \
 	N2_API void n2_##prefix##mat4_perspective_to(n2_##prefix##mat4_t* to, type fovy, type aspect, type z_near, type z_far); \

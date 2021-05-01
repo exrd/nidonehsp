@@ -609,6 +609,137 @@ int main(int argc, char* argv[])
 		}
 		printf("miniz test end\n");
 	}
+#elif 0
+	// vector/matrixテスト
+	{
+#define N2U_TEST_MAT44_TH(lhs, rhs, eth, ath, exp) \
+	do { \
+		float ad = 0; \
+		for (int j = 0; j < 4; ++j) for (int i = 0;  i < 4; ++i) \
+		{ \
+			const float d = fabsf((lhs)->m_[j][i] - (rhs)->m_[j][i]); \
+			N2_ASSERT(d < eth && "d < eth"); \
+			ad += d; \
+		} \
+		N2_ASSERT(ad < ath && "ad < ath"); \
+		exp; \
+	} while (0)
+
+		n2h_random_t rd;
+		n2h_random_init(&rd, 0x12345678ULL);
+
+		if (1)
+		{
+			printf("ROTATION(EULER ANGLE X->Y->Z)\n");
+			for (int test = 0; test < 1024; ++test)
+			{
+				n2_fvec3_t rot = n2_fvec3(N2_SCAST(float, n2h_random_next_float(&rd) * M_PI), N2_SCAST(float, n2h_random_next_float(&rd) * M_PI), N2_SCAST(float, n2h_random_next_float(&rd) + M_PI));
+
+				n2_fmat4_t m;
+				n2_fmat4_erotation_to(&m, rot);
+
+				n2_fmat4_t mx, my, mz;
+				n2_fmat4_arotation_to(&mx, n2_fvec3(1, 0, 0), rot.x_);
+				n2_fmat4_arotation_to(&my, n2_fvec3(0, 1, 0), rot.y_);
+				n2_fmat4_arotation_to(&mz, n2_fvec3(0, 0, 1), rot.z_);
+
+				n2_fmat4_t mm = n2_fmat4_mul(mz, n2_fmat4_mul(my, mx));
+
+				float tad = 0;
+				N2U_TEST_MAT44_TH(&m, &mm, 0.001f, 0.01f, tad = ad);
+
+				//printf("  [%d] ad=%+.8f\n", test, tad);
+			}
+		}
+		if (1)
+		{
+			printf("ROTATION(QUAT<=>MATRIX)\n");
+			for (int test = 0; test < 1024; ++test)
+			{
+				n2_fvec3_t rota = n2_fvec3(N2_SCAST(float, n2h_random_next_float(&rd)), N2_SCAST(float, n2h_random_next_float(&rd)), N2_SCAST(float, n2h_random_next_float(&rd)));
+				float rot = N2_SCAST(float, n2h_random_next_float(&rd) * M_PI);
+
+				n2_fmat4_t m;
+				n2_fmat4_arotation_to(&m, rota, rot);
+
+				n2_fquat4_t q = n2_fquat4_arotation(rota, rot);
+
+				n2_fmat4_t mm;
+				n2_fmat4_qrotation_to(&mm, q);
+
+				float tad = 0;
+				N2U_TEST_MAT44_TH(&m, &mm, 0.001f, 0.01f, tad = ad);
+				//printf("  [%d] ad=%+.8f\n", test, tad);
+			}
+		}
+		if (1)
+		{
+			printf("ROTATION(QUAT OP)\n");
+			for (int test = 0; test < 1024; ++test)
+			{
+				n2_fvec3_t rota = n2_fvec3(N2_SCAST(float, n2h_random_next_float(&rd)), N2_SCAST(float, n2h_random_next_float(&rd)), N2_SCAST(float, n2h_random_next_float(&rd)));
+				float rot = N2_SCAST(float, n2h_random_next_float(&rd) * M_PI);
+				n2_fvec3_t nrota;
+				n2_fvec3_normalize_to(&nrota, rota);
+
+				n2_fmat4_t m;
+				n2_fmat4_arotation_to(&m, rota, rot * 2);
+
+				n2_fquat4_t q = n2_fquat4_arotation(rota, rot);
+				q = n2_fquat4_mul(q, q);
+
+				n2_fmat4_t mm;
+				n2_fmat4_qrotation_to(&mm, q);
+
+				float tad = 0;
+				N2U_TEST_MAT44_TH(&m, &mm, 0.001f, 0.01f, tad = ad);
+				//printf("  [%d] ad=%+.8f\n", test, tad);
+
+				{
+					// decompose
+					n2_fvec3_t axis;
+					const float r = n2_fquat4_decompose(&axis, q);
+					N2_ASSERT(fabsf(r - rot * 2) < 0.001f);
+					n2_fvec3_t drota = n2_fvec3_sub(axis, nrota);
+					N2_ASSERT(n2_fvec3_length(drota) < 0.001f);
+				}
+				{
+					// inverse
+					n2_fquat4_t iq = n2_fquat4_inverse(q);
+					n2_fquat4_t zq = n2_fquat4_mul(iq, q);
+					n2_fvec3_t axis;
+					const float r = n2_fquat4_decompose(&axis, zq);
+					N2_ASSERT(fabsf(r) < 0.001f);
+				}
+			}
+		}
+		if (1)
+		{
+			printf("INVERSE\n");
+			for (int test = 0; test < 1024; ++test)
+			{
+				n2_fmat4_t m = n2_fmat4_identity();
+				for (int i = 0; i < 16; ++i)
+				{
+					m.e_[i] = N2_SCAST(float, n2h_random_next_float(&rd) * 10);
+				}
+
+				n2_fmat4_t im;
+				const float det = n2_fmat4_inverse_to(&im, &m);
+				N2_UNUSE(det);
+
+				n2_fmat4_t mm;
+				n2_fmat4_fastmul_to(&mm, &im, &m);
+
+				n2_fmat4_t ident = n2_fmat4_identity();
+
+				float tad = 0;
+				N2U_TEST_MAT44_TH(&mm, &ident, 0.001f, 0.01f, tad = ad);
+
+				//printf("  [%d] det=%+.8f, ad=%+.8f\n", test, det, tad);
+			}
+		}
+	}
 #elif 1
 	// nidonehsp ユニットテスト
 	{
