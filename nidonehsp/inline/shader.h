@@ -28,14 +28,14 @@
 #define N2I_GL_SHADER_UB_DRAWENV() \
 	"#define N2_DECLARE_UB_DRAWENV() \\\n" \
 	"	layout(std140) uniform ubDrawEnv { \\\n" \
-	"		mat4 uVMtx; \\\n" \
-	"		mat4 uPMtx; \\\n" \
-	"		mat4 uPVMtx; \\\n" \
+	"		mat4 uViewMatrix; \\\n" \
+	"		mat4 uProjMatrix; \\\n" \
+	"		mat4 uProjViewMatrix; \\\n" \
 	"		vec4 uScreenParam; \\\n" \
 	"	}\n" \
-	"#define N2_VMTX (uVMtx)\n" \
-	"#define N2_PMTX (uPMtx)\n" \
-	"#define N2_PVMTX (uPVMtx)\n" \
+	"#define N2_VMTX (uViewMatrix)\n" \
+	"#define N2_PMTX (uProjMatrix)\n" \
+	"#define N2_PVMTX (uProjViewMatrix)\n" \
 	"#define N2_SCREEN_WIDTH (uScreenParam.x)\n" \
 	"#define N2_SCREEN_HEIGHT (uScreenParam.y)\n" \
 	"#define N2_SCREEN_WIDTH_INV (uScreenParam.z)\n" \
@@ -44,6 +44,19 @@
 #define N2I_GL_SHADER_DEF_UB_DRAWENV() \
 	N2I_GL_SHADER_UB_DRAWENV() \
 	"N2_DECLARE_UB_DRAWENV();\n"
+
+#define N2I_GL_SHADER_UB_D3MODEL() \
+	"#define N2_DECLARE_UB_D3MODEL() \\\n" \
+	"	layout(std140) uniform ubD3Model{ \\\n" \
+	"		mat4 uWorldMatrix; \\\n" \
+	"		vec4 uModelColor; \\\n" \
+	"	}\n" \
+	"#define N2_WMTX (uWorldMatrix)\n" \
+	"#define N2_MODEL_COLOR (uModelColor)\n" \
+
+#define N2I_GL_SHADER_DEF_UB_D3MODEL() \
+	N2I_GL_SHADER_UB_D3MODEL() \
+	"N2_DECLARE_UB_D3MODEL();\n"
 
 #define N2I_GL_SHADER_ATTR_POSITION() \
 	"#define N2_DECLARE_ATTR_POSITION() \\\n" \

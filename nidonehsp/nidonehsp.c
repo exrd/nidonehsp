@@ -190,9 +190,12 @@
 #if N2_CONFIG_USE_SDL_LIB
 #include <SDL.h>
 #include <SDL_syswm.h>
+
+#if N2_CONFIG_USE_GLES
 #include <SDL_opengles2_khrplatform.h>
 #include "embed/glad_gles3.h"
 #include "embed/glad_gles3.c"
+#endif
 
 // shader
 #include "inline/shader.h"
@@ -3261,6 +3264,18 @@ N2_VEC2_DEFINE(d, D, double);
 	{ \
 		return lhs.x_ * rhs.x_ + lhs.y_ * rhs.y_ + lhs.z_ * rhs.z_; \
 	} \
+	N2_API void n2_##prefix##vec3_cross_to(n2_##prefix##vec3_t* to, const n2_##prefix##vec3_t lhs, const n2_##prefix##vec3_t rhs) \
+	{ \
+		to->x_ = lhs.y_ * rhs.z_ - lhs.z_ * rhs.y_; \
+		to->y_ = lhs.z_ * rhs.x_ - lhs.x_ * rhs.z_; \
+		to->z_ = lhs.x_ * rhs.y_ - lhs.y_ * rhs.x_; \
+	} \
+	N2_API n2_##prefix##vec3_t n2_##prefix##vec3_cross(const n2_##prefix##vec3_t lhs, const n2_##prefix##vec3_t rhs) \
+	{ \
+		n2_##prefix##vec3_t r; \
+		n2_##prefix##vec3_cross_to(&r, lhs, rhs); \
+		return r; \
+	} \
 	N2_API type n2_##prefix##vec3_length2(n2_##prefix##vec3_t lhs) \
 	{ \
 		return lhs.x_ * lhs.x_ + lhs.y_ * lhs.y_ + lhs.z_ * lhs.z_; \
@@ -3448,6 +3463,13 @@ N2_VEC4_DEFINE(d, D, double);
 		const type l = n2_##prefix##vec3_normalize_to(axis, q.xyz_); \
 		if (!l) { axis->x_ = 0; axis->y_ = 0; axis->z_ = 1; } \
 		return N2_ATAN2##lprefix(l, q.w_) * 2; \
+	} \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_nlerp(n2_##prefix##quat4_t lhs, n2_##prefix##quat4_t rhs, type t) \
+	{ \
+		n2_##prefix##quat4_t r; \
+		r.xyzw_ = n2_##prefix##vec4_lerp(lhs.xyzw_, rhs.xyzw_, t); \
+		n2_##prefix##vec4_normalize(&r.xyzw_); \
+		return r; \
 	} \
 	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_slerp(n2_##prefix##quat4_t lhs, n2_##prefix##quat4_t rhs, type t) \
 	{ \
@@ -3658,6 +3680,20 @@ N2_QUAT4_DEFINE(d, D, double);
 		to->m_[3][0] = trans.x_; \
 		to->m_[3][1] = trans.y_; \
 		to->m_[3][2] = trans.z_; \
+	} \
+	N2_API void n2_##prefix##mat4_lookat_to(n2_##prefix##mat4_t* to, n2_##prefix##vec3_t eye, n2_##prefix##vec3_t at, n2_##prefix##vec3_t yup, n2_bool_t view_matrix) \
+	{ \
+		n2_##prefix##vec3_t z, y, x; \
+		if (n2_##prefix##vec3_normalize_to(&z, n2_##prefix##vec3_sub(eye, at)) <= 0) { z = n2_##prefix##vec3(0, 0, 1); } \
+		n2_##prefix##vec3_cross_to(&x, yup, z); \
+		if (n2_##prefix##vec3_normalize(&x) <= 0) { x = n2_##prefix##vec3(1, 0, 0); } \
+		n2_##prefix##vec3_cross_to(&y, x, z); \
+		if (n2_##prefix##vec3_normalize(&y) <= 0) { x = n2_##prefix##vec3(0, 1, 0); } \
+		if (view_matrix) { z = n2_##prefix##vec3_scale(z, -1); } \
+		to->m_[0][0] = x.x_; to->m_[1][0] = x.y_; to->m_[2][0] = x.z_; to->m_[3][0] = -n2_##prefix##vec3_dot(x, eye); \
+		to->m_[0][1] = y.x_; to->m_[1][1] = y.y_; to->m_[2][1] = y.z_; to->m_[3][1] = -n2_##prefix##vec3_dot(y, eye); \
+		to->m_[0][2] = z.x_; to->m_[1][2] = z.y_; to->m_[2][2] = z.z_; to->m_[3][2] = -n2_##prefix##vec3_dot(z, eye); \
+		to->m_[0][3] = 0;    to->m_[1][3] = 0;    to->m_[2][3] = 0;    to->m_[3][3] = 1; \
 	} \
 	N2_API void n2_##prefix##mat4_ortho2d_to(n2_##prefix##mat4_t* to, type left, type right, type top, type bottom, type z_near, type z_far) \
 	{ \
@@ -15841,9 +15877,40 @@ static n2_bool_t n2si_glerror_clear(n2_state_t* state)
 	n2si_glerror_clear(state)
 #endif
 
-static n2s_u8color_t N2S_COLOR_WHITE = {{255, 255, 255, 255}};
-static n2s_u8color_t N2S_COLOR_BLACK = {{0, 0, 0, 255}};
-//static n2s_u8color_t N2S_COLOR_ZERO = {{0, 0, 0, 0}};
+static const struct
+{
+	n2s_ginterface_e ginterface_;
+	const char* name_;
+	size_t name_length_;
+} n2si_ginterface_table[] =
+{
+	{N2S_GINTERFACE_GLES,		"gles",		4},
+	{N2S_GINTERFACE_VULKAN,		"vulkan",	6},
+};
+
+N2_API n2s_ginterface_e n2s_ginterface_find(const char* name, size_t length)
+{
+	if (length == SIZE_MAX) { length = N2_STRLEN(name); }
+
+	for (size_t i = 0, l = N2_ARRAYDIM(n2si_ginterface_table); i < l; ++i)
+	{
+		if (n2si_ginterface_table[i].name_length_ == length && N2_STRNCMP(name, n2si_ginterface_table[i].name_, length) == 0) { return n2si_ginterface_table[i].ginterface_; }
+	}
+	return N2S_GINTERFACE_UNKNOWN;
+}
+
+N2_API const char* n2s_ginterface_name(n2s_ginterface_e gi, const char* on_failed)
+{
+	for (size_t i = 0, l = N2_ARRAYDIM(n2si_ginterface_table); i < l; ++i)
+	{
+		if (n2si_ginterface_table[i].ginterface_ == gi) { return n2si_ginterface_table[i].name_; }
+	}
+	return on_failed;
+}
+
+static n2s_u8color_t N2S_U8COLOR_WHITE = {{255, 255, 255, 255}};
+static n2s_u8color_t N2S_U8COLOR_BLACK = {{0, 0, 0, 255}};
+//static n2s_u8color_t N2S_U8COLOR_ZERO = {{0, 0, 0, 0}};
 
 N2_API n2s_u8color_t n2s_u8color(uint8_t r, uint8_t g, uint8_t b, uint8_t a)
 {
@@ -15957,7 +16024,9 @@ N2_API n2_bool_t n2s_uv_clamp_pixel(n2_fvec2_t* uv0, n2_fvec2_t* uv1, size_t w, 
 	return N2_TRUE;
 }
 
-N2_API void n2s_vertex_uv_clamp_to(n2s_vertex_t* dst, n2_fvec3_t position, n2_fvec2_t uv, n2s_u8color_t color, n2_fvec2_t uvc0, n2_fvec2_t uvc1)
+N2_DEFINE_TARRAY(n2s_index_t, n2s_indexarray, N2_API, n2i_setupfunc_nothing, n2i_freefunc_nothing);
+
+N2_API void n2s_vertex_uv_clamp_to(n2s_d2vertex_t* dst, n2_fvec3_t position, n2_fvec2_t uv, n2s_u8color_t color, n2_fvec2_t uvc0, n2_fvec2_t uvc1)
 {
 	dst->position_ = position;
 	dst->uv_ = uv;
@@ -15965,33 +16034,31 @@ N2_API void n2s_vertex_uv_clamp_to(n2s_vertex_t* dst, n2_fvec3_t position, n2_fv
 	dst->uv_clamp_ = n2_fvec4(uvc0.x_, uvc0.y_, uvc1.x_, uvc1.y_);
 }
 
-N2_API void n2s_vertex_to(n2s_vertex_t* dst, n2_fvec3_t position, n2_fvec2_t uv, n2s_u8color_t color)
+N2_API void n2s_d2vertex_to(n2s_d2vertex_t* dst, n2_fvec3_t position, n2_fvec2_t uv, n2s_u8color_t color)
 {
 	n2s_vertex_uv_clamp_to(dst, position, uv, color, n2_fvec2(0, 0), n2_fvec2(1, 1));
 }
 
-N2_API n2s_vertex_t n2s_vertex(n2_fvec3_t position, n2_fvec2_t uv, n2s_u8color_t color)
+N2_API n2s_d2vertex_t n2s_d2vertex(n2_fvec3_t position, n2_fvec2_t uv, n2s_u8color_t color)
 {
-	n2s_vertex_t res;
-	n2s_vertex_to(&res, position, uv, color);
-	return res;
+	n2s_d2vertex_t r;
+	n2s_d2vertex_to(&r, position, uv, color);
+	return r;
 }
 
-N2_API void n2s_vertex_set_uv_clamp_direct_to(n2s_vertex_t* dst, n2_fvec2_t uv0, n2_fvec2_t uv1)
+N2_API void n2s_vertex_set_uv_clamp_direct_to(n2s_d2vertex_t* dst, n2_fvec2_t uv0, n2_fvec2_t uv1)
 {
 	dst->uv_clamp_.xy_ = uv0;
 	dst->uv_clamp_.zw_ = uv1;
 }
 
-N2_API void n2s_vertex_set_uv_clamp_pixel(n2s_vertex_t* dst, n2_fvec2_t uv0, n2_fvec2_t uv1, size_t w, size_t h)
+N2_API void n2s_vertex_set_uv_clamp_pixel(n2s_d2vertex_t* dst, n2_fvec2_t uv0, n2_fvec2_t uv1, size_t w, size_t h)
 {
 	n2s_uv_clamp_pixel(&uv0, &uv1, w, h);
 	n2s_vertex_set_uv_clamp_direct_to(dst, uv0, uv1);
 }
 
-N2_DEFINE_TARRAY(n2s_vertex_t, n2s_vertexarray, N2_API, n2i_setupfunc_nothing, n2i_freefunc_nothing);
-
-N2_DEFINE_TARRAY(n2s_index_t, n2s_indexarray, N2_API, n2i_setupfunc_nothing, n2i_freefunc_nothing);
+N2_DEFINE_TARRAY(n2s_d2vertex_t, n2s_d2vertexarray, N2_API, n2i_setupfunc_nothing, n2i_freefunc_nothing);
 
 #if N2_CONFIG_USE_GUI_LIB
 static void* n2si_nk_plugin_alloc(nk_handle user, void* old, nk_size size)
@@ -16931,6 +16998,23 @@ static void n2si_fontset_freefunc(n2_state_t* state, n2_array_t* a, void* elemen
 
 N2_DEFINE_TSORTED_ARRAY(n2s_font_t*, void, char, n2s_fontset, N2_API, n2si_fontset_setupfunc, n2si_fontset_freefunc);
 
+N2_API void n2s_gprogram_uniform_entry_init(n2s_gprogram_uniform_entry_t* ue)
+{
+	ue->givalid_ = 0;
+	n2_str_init(&ue->name_);
+#if N2_CONFIG_USE_SDL_LIB
+#if N2_CONFIG_USE_GLES
+	ue->gl_location_ = -1;
+#endif
+#endif
+}
+
+N2_API void n2s_gprogram_uniform_entry_teardown(n2_state_t* state, n2s_gprogram_uniform_entry_t* ue)
+{
+	n2_str_teardown(state, &ue->name_);
+	n2s_gprogram_uniform_entry_init(ue);
+}
+
 static const struct
 {
 	n2s_gprogram_uniform_e uniform_;
@@ -16969,6 +17053,23 @@ N2_API void n2s_gprogram_uniform_data_init(n2s_gprogram_uniform_data_t* uniform_
 	uniform_data->data_ = NULL;
 }
 
+N2_API void n2s_gprogram_uniform_block_entry_init(n2s_gprogram_uniform_block_entry_t* ube)
+{
+	ube->givalid_ = 0;
+	n2_str_init(&ube->name_);
+#if N2_CONFIG_USE_SDL_LIB
+#if N2_CONFIG_USE_GLES
+	ube->gl_location_ = -1;
+#endif
+#endif
+}
+
+N2_API void n2s_gprogram_uniform_block_entry_teardown(n2_state_t* state, n2s_gprogram_uniform_block_entry_t* ube)
+{
+	n2_str_teardown(state, &ube->name_);
+	n2s_gprogram_uniform_block_entry_init(ube);
+}
+
 static const struct
 {
 	n2s_gprogram_uniform_block_e uniform_block_;
@@ -16977,7 +17078,8 @@ static const struct
 } n2si_gprogram_uniform_block_table[] =
 {
 	{N2S_GPROGRAM_UNIFORM_BLOCK_DRAWENV,		"ubDrawEnv",		9},
-	{N2S_GPROGRAM_UNIFORM_BLOCK_D3ENV,			"ubD3Env",			7},
+	{N2S_GPROGRAM_UNIFORM_BLOCK_G3ENV,			"ubG3Env",			7},
+	{N2S_GPROGRAM_UNIFORM_BLOCK_D3MODEL,		"ubD3Model",		9},
 };
 
 N2_API n2s_gprogram_uniform_block_e n2s_gprogram_uniform_block_find(const char* name, size_t length)
@@ -17002,15 +17104,38 @@ N2_API const char* n2s_gprogram_uniform_block_name(n2s_gprogram_uniform_block_e 
 
 N2_API void n2s_guniform_block_drawenv_init(n2s_guniform_block_drawenv_t* drawenv)
 {
-	n2_fmat4_identity_to(&drawenv->v_mtx_);
-	n2_fmat4_identity_to(&drawenv->p_mtx_);
-	n2_fmat4_identity_to(&drawenv->pv_mtx_);
+	n2_fmat4_identity_to(&drawenv->view_matrix_);
+	n2_fmat4_identity_to(&drawenv->proj_matrix_);
+	n2_fmat4_identity_to(&drawenv->proj_veiw_matrix_);
 	drawenv->screen_param_ = n2_fvec4(0, 0, 0, 0);
 }
 
 N2_API void n2s_guniform_block_drawenv_set_screen_param(n2s_guniform_block_drawenv_t* drawenv, size_t width, size_t height)
 {
 	drawenv->screen_param_ = n2_fvec4(N2_SCAST(float, width), N2_SCAST(float, height), width <= 0 ? 0 : 1.f / N2_SCAST(float, width), height <= 0 ? 0 : 1.f / N2_SCAST(float, height));
+}
+
+N2_API void n2s_guniform_block_d3model_init(n2s_guniform_block_d3model_t* d3model)
+{
+	n2_fmat4_identity_to(&d3model->world_matrix_);
+	d3model->color_ = n2s_fcolor(1, 1, 1, 1);
+}
+
+N2_API void n2s_gprogram_attribute_entry_init(n2s_gprogram_attribute_entry_t* ae)
+{
+	ae->givalid_ = 0;
+	n2_str_init(&ae->name_);
+#if N2_CONFIG_USE_SDL_LIB
+#if N2_CONFIG_USE_GLES
+	ae->gl_location_ = -1;
+#endif
+#endif
+}
+
+N2_API void n2s_gprogram_attribute_entry_teardown(n2_state_t* state, n2s_gprogram_attribute_entry_t* ae)
+{
+	n2_str_teardown(state, &ae->name_);
+	n2s_gprogram_attribute_entry_init(ae);
 }
 
 static const struct
@@ -17068,13 +17193,16 @@ N2_API void n2s_gprogram_init(n2s_gprogram_t* program)
 {
 	n2_str_init(&program->name_);
 	n2_str_init(&program->last_error_);
+	program->givalid_ = 0;
 #if N2_CONFIG_USE_SDL_LIB
+	for (size_t i = 0; i < N2S_MAX_GPROGRAM_UNIFORM; ++i) { n2s_gprogram_uniform_entry_init(&program->uniforms_[i]); }
+	for (size_t i = 0; i < N2S_MAX_GPROGRAM_UNIFORM_BLOCK; ++i) { n2s_gprogram_uniform_block_entry_init(&program->uniform_blocks_[i]); }
+	for (size_t i = 0; i < N2S_MAX_GPROGRAM_ATTRIBUTE; ++i) { n2s_gprogram_attribute_entry_init(&program->attributes_[i]); }
+#if N2_CONFIG_USE_GLES
 	program->gl_vsh_ = 0;
 	program->gl_fsh_ = 0;
 	program->gl_program_ = 0;
-	for (size_t i = 0; i < N2S_MAX_GPROGRAM_UNIFORM; ++i) { program->gl_ulocation_[i] = -1; }
-	for (size_t i = 0; i < N2S_MAX_GPROGRAM_UNIFORM_BLOCK; ++i) { program->gl_ublocation_[i] = -1; }
-	for (size_t i = 0; i < N2S_MAX_GPROGRAM_ATTRIBUTE; ++i) { program->gl_alocation_[i] = -1; }
+#endif
 #endif
 }
 
@@ -17088,6 +17216,10 @@ N2_API void n2s_gprogram_teardown(n2_state_t* state, n2s_gprogram_t* program)
 N2_API void n2s_gprogram_clear(n2_state_t* state, n2s_gprogram_t* program)
 {
 #if N2_CONFIG_USE_SDL_LIB
+	for (size_t i = 0; i < N2S_MAX_GPROGRAM_UNIFORM; ++i) { n2s_gprogram_uniform_entry_teardown(state, &program->uniforms_[i]); }
+	for (size_t i = 0; i < N2S_MAX_GPROGRAM_UNIFORM_BLOCK; ++i) { n2s_gprogram_uniform_block_entry_teardown(state, &program->uniform_blocks_[i]); }
+	for (size_t i = 0; i < N2S_MAX_GPROGRAM_ATTRIBUTE; ++i) { n2s_gprogram_attribute_entry_teardown(state, &program->attributes_[i]); }
+#if N2_CONFIG_USE_GLES
 	if (program->gl_program_)
 	{
 		N2SI_ASSERT_GL(state);
@@ -17099,9 +17231,7 @@ N2_API void n2s_gprogram_clear(n2_state_t* state, n2s_gprogram_t* program)
 	}
 	if (program->gl_vsh_) { glDeleteShader(program->gl_vsh_); program->gl_vsh_ = 0; }
 	if (program->gl_fsh_) { glDeleteShader(program->gl_fsh_); program->gl_fsh_ = 0; }
-	for (size_t i = 0; i < N2S_MAX_GPROGRAM_UNIFORM; ++i) { program->gl_ulocation_[i] = -1; }
-	for (size_t i = 0; i < N2S_MAX_GPROGRAM_UNIFORM_BLOCK; ++i) { program->gl_ublocation_[i] = -1; }
-	for (size_t i = 0; i < N2S_MAX_GPROGRAM_ATTRIBUTE; ++i) { program->gl_alocation_[i] = -1; }
+#endif
 	N2SI_ASSERT_GL(state);
 #endif
 }
@@ -17109,7 +17239,9 @@ N2_API void n2s_gprogram_clear(n2_state_t* state, n2s_gprogram_t* program)
 N2_API n2_bool_t n2s_gprogram_load_to(n2_state_t* state, n2s_gprogram_t* program, const char* vsh_src, const char* fsh_src)
 {
 	n2s_gprogram_teardown(state, program);
+
 #if N2_CONFIG_USE_SDL_LIB
+#if N2_CONFIG_USE_GLES
 	program->gl_vsh_ = glCreateShader(GL_VERTEX_SHADER);
 	program->gl_fsh_ = glCreateShader(GL_FRAGMENT_SHADER);
 	program->gl_program_ = glCreateProgram();
@@ -17146,21 +17278,33 @@ N2_API n2_bool_t n2s_gprogram_load_to(n2_state_t* state, n2s_gprogram_t* program
 
 	for (size_t i = 0; i < N2S_MAX_GPROGRAM_UNIFORM; ++i)
 	{
-		program->gl_ulocation_[i] = glGetUniformLocation(program->gl_program_, n2s_gprogram_uniform_name(N2_SCAST(n2s_gprogram_uniform_e, i), NULL));
+		const char* name = n2s_gprogram_uniform_name(N2_SCAST(n2s_gprogram_uniform_e, i), NULL);
+		if (!name) { continue; }
+		n2s_gprogram_uniform_entry_t* ue = &program->uniforms_[i];
+		n2_str_set(state, &ue->name_, name, SIZE_MAX);
+		ue->gl_location_ = glGetUniformLocation(program->gl_program_, name);
 	}
 	for (size_t i = 0; i < N2S_MAX_GPROGRAM_UNIFORM_BLOCK; ++i)
 	{
-		const GLuint ub_index = glGetUniformBlockIndex(program->gl_program_, n2s_gprogram_uniform_block_name(N2_SCAST(n2s_gprogram_uniform_block_e, i), NULL));
+		const char* name = n2s_gprogram_uniform_block_name(N2_SCAST(n2s_gprogram_uniform_block_e, i), NULL);
+		if (!name) { continue; }
+		n2s_gprogram_uniform_block_entry_t* ube = &program->uniform_blocks_[i];
+		n2_str_set(state, &ube->name_, name, SIZE_MAX);
+		const GLuint ub_index = glGetUniformBlockIndex(program->gl_program_, name);
 		if (ub_index != GL_INVALID_INDEX)
 		{
-			program->gl_ublocation_[i] = N2_SCAST(GLint, ub_index);
+			ube->gl_location_ = N2_SCAST(GLint, ub_index);
 			glUniformBlockBinding(program->gl_program_, ub_index, N2_SCAST(GLuint, i));
 			N2SI_ASSERT_GL(state);
 		}
 	}
 	for (size_t i = 0; i < N2S_MAX_GPROGRAM_ATTRIBUTE; ++i)
 	{
-		program->gl_alocation_[i] = glGetAttribLocation(program->gl_program_, n2s_gprogram_attribute_name(N2_SCAST(n2s_gprogram_attribute_e, i), NULL));;
+		const char* name = n2s_gprogram_attribute_name(N2_SCAST(n2s_gprogram_attribute_e, i), NULL);
+		if (!name) { continue; }
+		n2s_gprogram_attribute_entry_t* ae = &program->attributes_[i];
+		n2_str_set(state, &ae->name_, name, SIZE_MAX);
+		ae->gl_location_ = glGetAttribLocation(program->gl_program_, name);
 	}
 	N2SI_ASSERT_GL(state);
 
@@ -17171,6 +17315,10 @@ fail_exit:
 	n2s_gprogram_clear(state, program);
 	return N2_FALSE;
 #else
+#error
+#endif
+#else
+	// fallback
 	N2_UNUSE(vsh_src);
 	N2_UNUSE(fsh_src);
 	return N2_FALSE;
@@ -17190,8 +17338,8 @@ N2_API n2_bool_t n2s_gprogram_is_loaded(const n2s_gprogram_t* program)
 
 N2_API void n2s_gprogram_draw_cache_reset(n2s_gprogram_draw_cache_t* pdc)
 {
-	pdc->u_cached_ = (1 << N2S_MAX_GPROGRAM_UNIFORM) - 1;
-	pdc->ub_cached_ = (1 << N2S_MAX_GPROGRAM_UNIFORM_BLOCK) - 1;
+	pdc->u_staled_ = (1 << N2S_MAX_GPROGRAM_UNIFORM) - 1;
+	pdc->ub_staled_ = (1 << N2S_MAX_GPROGRAM_UNIFORM_BLOCK) - 1;
 }
 
 N2_API const char* n2s_sysreq_get_name(n2s_sysreq_e sysreq, const char* on_failed)
@@ -17242,13 +17390,13 @@ N2_API void n2s_commandbuffer_staging_state_reset(n2s_commandbuffer_staging_stat
 	cbss->program_ = -1;
 	cbss->renderstate_ = -1;
 	cbss->samplerfilter_ = -1;
-	cbss->transcolor_ = N2S_COLOR_BLACK;
+	cbss->transcolor_ = N2S_U8COLOR_BLACK;
 }
 
-N2_API n2s_commandbuffer_t* n2s_commandbuffer_alloc(n2_state_t* state, size_t max_command_num, size_t max_vertex_num, size_t max_index_num, size_t max_data_num)
+N2_API n2s_commandbuffer_t* n2s_commandbuffer_alloc(n2_state_t* state, size_t max_command_num, size_t max_d2vertex_num, size_t max_index_num, size_t max_data_num)
 {
 	n2s_commandbuffer_t* cb = N2_TMALLOC(n2s_commandbuffer_t, state);
-	cb->vertexarray_ = n2s_vertexarray_alloc(state, max_vertex_num, 256);
+	cb->d2vertexarray_ = n2s_d2vertexarray_alloc(state, max_d2vertex_num, 256);
 	cb->indexarray_ = n2s_indexarray_alloc(state, max_index_num, 256);
 	cb->commandarray_ = n2s_commandarray_alloc(state, max_command_num, 128);
 	cb->commanddataarray_ = n2_u32array_alloc(state, max_data_num, 256);
@@ -17259,7 +17407,7 @@ N2_API n2s_commandbuffer_t* n2s_commandbuffer_alloc(n2_state_t* state, size_t ma
 N2_API void n2s_commandbuffer_free(n2_state_t* state, n2s_commandbuffer_t* cb)
 {
 	n2s_commandbuffer_clear(state, cb);
-	n2s_vertexarray_free(state, cb->vertexarray_);
+	n2s_d2vertexarray_free(state, cb->d2vertexarray_);
 	n2s_indexarray_free(state, cb->indexarray_);
 	n2s_commandarray_free(state, cb->commandarray_);
 	n2_u32array_free(state, cb->commanddataarray_);
@@ -17268,7 +17416,7 @@ N2_API void n2s_commandbuffer_free(n2_state_t* state, n2s_commandbuffer_t* cb)
 
 N2_API void n2s_commandbuffer_clear(n2_state_t* state, n2s_commandbuffer_t* cb)
 {
-	n2s_vertexarray_clear(state, cb->vertexarray_);
+	n2s_d2vertexarray_clear(state, cb->d2vertexarray_);
 	n2s_indexarray_clear(state, cb->indexarray_);
 	n2s_commandarray_clear(state, cb->commandarray_);
 	n2_u32array_clear(state, cb->commanddataarray_);
@@ -17280,9 +17428,9 @@ N2_API size_t n2s_commandbuffer_command_size(const n2s_commandbuffer_t* cb)
 	return n2s_commandarray_size(cb->commandarray_);
 }
 
-N2_API size_t n2s_commandbuffer_vertex_size(const n2s_commandbuffer_t* cb)
+N2_API size_t n2s_commandbuffer_d2vertex_size(const n2s_commandbuffer_t* cb)
 {
-	return n2s_vertexarray_size(cb->vertexarray_);
+	return n2s_d2vertexarray_size(cb->d2vertexarray_);
 }
 
 N2_API size_t n2s_commandbuffer_index_size(const n2s_commandbuffer_t* cb)
@@ -17344,28 +17492,28 @@ N2_API n2_bool_t n2s_commandbuffer_add_command_renderstate(n2_state_t* state, n2
 	return N2_TRUE;
 }
 
-N2_API n2s_vertex_t* n2s_commandbuffer_alloc_vertex(n2_state_t* state, n2s_commandbuffer_t* cb, size_t num)
+N2_API n2s_d2vertex_t* n2s_commandbuffer_alloc_d2vertex(n2_state_t* state, n2s_commandbuffer_t* cb, size_t num)
 {
-	n2s_vertexarray_reserve(state, cb->vertexarray_, cb->vertexarray_->size_ + num);
-	n2s_vertex_t* res = N2_RCAST(n2s_vertex_t*, cb->vertexarray_->elements_) + cb->vertexarray_->size_;
-	cb->vertexarray_->size_ += num;
-	return res;
+	n2s_d2vertexarray_reserve(state, cb->d2vertexarray_, cb->d2vertexarray_->size_ + num);
+	n2s_d2vertex_t* r = N2_RCAST(n2s_d2vertex_t*, cb->d2vertexarray_->elements_) + cb->d2vertexarray_->size_;
+	cb->d2vertexarray_->size_ += num;
+	return r;
 }
 
 N2_API n2s_index_t* n2s_commandbuffer_alloc_index(n2_state_t* state, n2s_commandbuffer_t* cb, size_t num)
 {
 	n2s_indexarray_reserve(state, cb->indexarray_, cb->indexarray_->size_ + num);
-	n2s_index_t* res = N2_RCAST(n2s_index_t*, cb->indexarray_->elements_) + cb->indexarray_->size_;
+	n2s_index_t* r = N2_RCAST(n2s_index_t*, cb->indexarray_->elements_) + cb->indexarray_->size_;
 	cb->indexarray_->size_ += num;
-	return res;
+	return r;
 }
 
 N2_API uint32_t* n2s_commandbuffer_alloc_commanddata(n2_state_t* state, n2s_commandbuffer_t* cb, size_t num)
 {
 	n2_u32array_reserve(state, cb->commanddataarray_, cb->commanddataarray_->size_ + num);
-	uint32_t* res = N2_RCAST(uint32_t*, cb->commanddataarray_->elements_) + cb->commanddataarray_->size_;
+	uint32_t* r = N2_RCAST(uint32_t*, cb->commanddataarray_->elements_) + cb->commanddataarray_->size_;
 	cb->commanddataarray_->size_ += num;
-	return res;
+	return r;
 }
 
 N2_API size_t n2s_commandbuffer_add_commanddata(n2_state_t* state, n2s_commandbuffer_t* cb, const void* data, size_t bytesize)
@@ -17421,72 +17569,72 @@ N2_API n2_bool_t n2s_commandbuffer_set_transcolor(n2_state_t* state, n2s_command
 	return N2_TRUE;
 }
 
-N2_API void n2s_commandbuffer_triangle_textured_colored(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t v0, n2_fvec3_t v1, n2_fvec3_t v2, const n2s_texture_t* texture, n2_fvec2_t uv0, n2_fvec2_t uv1, n2_fvec2_t uv2, n2s_u8color_t c0, n2s_u8color_t c1, n2s_u8color_t c2)
+N2_API void n2s_commandbuffer_d2triangle_textured_colored(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t v0, n2_fvec3_t v1, n2_fvec3_t v2, const n2s_texture_t* texture, n2_fvec2_t uv0, n2_fvec2_t uv1, n2_fvec2_t uv2, n2s_u8color_t c0, n2s_u8color_t c1, n2s_u8color_t c2)
 {
-	const n2s_index_t top_index = N2_SCAST(n2s_index_t, n2s_commandbuffer_vertex_size(cb));
+	const n2s_index_t top_index = N2_SCAST(n2s_index_t, n2s_commandbuffer_d2vertex_size(cb));
 	n2s_commandbuffer_set_texture(state, cb, texture);
 	n2s_commandbuffer_add_command_draw(state, cb, 3, 3);
-	n2s_vertex_t* v = n2s_commandbuffer_alloc_vertex(state, cb, 3);
+	n2s_d2vertex_t* v = n2s_commandbuffer_alloc_d2vertex(state, cb, 3);
 	n2s_index_t* i = n2s_commandbuffer_alloc_index(state, cb, 3);
 	//if (n2_fvec2_cross(v0.xy_, v1.xy_) < 0.f) { const n2_fvec3_t t = v0; v0 = v1; v1 = t; }
-	n2s_vertex_to(v + 0, v0, uv0, c0);
-	n2s_vertex_to(v + 1, v1, uv1, c1);
-	n2s_vertex_to(v + 2, v2, uv2, c2);
+	n2s_d2vertex_to(v + 0, v0, uv0, c0);
+	n2s_d2vertex_to(v + 1, v1, uv1, c1);
+	n2s_d2vertex_to(v + 2, v2, uv2, c2);
 	i[0] = top_index + 0; i[1] = top_index + 2; i[2] = top_index + 1;
 }
 
-N2_API void n2s_commandbuffer_triangle_textured(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t v0, n2_fvec3_t v1, n2_fvec3_t v2, const n2s_texture_t* texture, n2_fvec2_t uv0, n2_fvec2_t uv1, n2_fvec2_t uv2, n2s_u8color_t color)
+N2_API void n2s_commandbuffer_d2triangle_textured(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t v0, n2_fvec3_t v1, n2_fvec3_t v2, const n2s_texture_t* texture, n2_fvec2_t uv0, n2_fvec2_t uv1, n2_fvec2_t uv2, n2s_u8color_t color)
 {
-	n2s_commandbuffer_triangle_textured_colored(state, cb, v0, v1, v2, texture, uv0, uv1, uv2, color, color, color);
+	n2s_commandbuffer_d2triangle_textured_colored(state, cb, v0, v1, v2, texture, uv0, uv1, uv2, color, color, color);
 }
 
-N2_API void n2s_commandbuffer_triangle_colored(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t v0, n2_fvec3_t v1, n2_fvec3_t v2, n2s_u8color_t c0, n2s_u8color_t c1, n2s_u8color_t c2)
+N2_API void n2s_commandbuffer_d2triangle_colored(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t v0, n2_fvec3_t v1, n2_fvec3_t v2, n2s_u8color_t c0, n2s_u8color_t c1, n2s_u8color_t c2)
 {
-	n2s_commandbuffer_triangle_textured_colored(state, cb, v0, v1, v2, NULL, n2_fvec2(0, 0), n2_fvec2(0, 0), n2_fvec2(0, 0), c0, c1, c2);
+	n2s_commandbuffer_d2triangle_textured_colored(state, cb, v0, v1, v2, NULL, n2_fvec2(0, 0), n2_fvec2(0, 0), n2_fvec2(0, 0), c0, c1, c2);
 }
 
-N2_API void n2s_commandbuffer_triangle(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t v0, n2_fvec3_t v1, n2_fvec3_t v2, n2s_u8color_t color)
+N2_API void n2s_commandbuffer_d2triangle(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t v0, n2_fvec3_t v1, n2_fvec3_t v2, n2s_u8color_t color)
 {
-	n2s_commandbuffer_triangle_textured_colored(state, cb, v0, v1, v2, NULL, n2_fvec2(0, 0), n2_fvec2(0, 0), n2_fvec2(0, 0), color, color, color);
+	n2s_commandbuffer_d2triangle_textured_colored(state, cb, v0, v1, v2, NULL, n2_fvec2(0, 0), n2_fvec2(0, 0), n2_fvec2(0, 0), color, color, color);
 }
 
-N2_API void n2s_commandbuffer_line(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t start, n2_fvec3_t end, n2s_u8color_t color, float thickness)
+N2_API void n2s_commandbuffer_d2line(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t start, n2_fvec3_t end, n2s_u8color_t color, float thickness)
 {
-	const n2s_index_t top_index = N2_SCAST(n2s_index_t, n2s_commandbuffer_vertex_size(cb));
+	const n2s_index_t top_index = N2_SCAST(n2s_index_t, n2s_commandbuffer_d2vertex_size(cb));
 	n2s_commandbuffer_set_texture(state, cb, NULL);
 	n2s_commandbuffer_add_command_draw(state, cb, 4, 6);
-	n2s_vertex_t* v = n2s_commandbuffer_alloc_vertex(state, cb, 4);
+	n2s_d2vertex_t* v = n2s_commandbuffer_alloc_d2vertex(state, cb, 4);
 	n2s_index_t* i = n2s_commandbuffer_alloc_index(state, cb, 6);
 	start = n2_fvec3_sub(start, n2_fvec3(-0.5f, -0.5f, -0.5f));
 	end = n2_fvec3_sub(end, n2_fvec3(-0.5f, -0.5f, -0.5f));
 	n2_fvec3_t diff = n2_fvec3_sub(end, start);
 	if (n2_fvec3_normalize(&diff) <= 0) { diff.x_ = 1; diff.y_ = 0; diff.z_ = 0; }
 	const n2_fvec3_t hd = n2_fvec3_scale(diff, thickness * 0.5f);
-	n2s_vertex_to(v + 0, n2_fvec3_add(start, n2_fvec3( hd.y_, -hd.x_, -hd.z_)), n2_fvec2(0, 0), color);
-	n2s_vertex_to(v + 1, n2_fvec3_add(end, n2_fvec3( hd.y_, -hd.x_,  hd.z_)), n2_fvec2(0, 0), color);
-	n2s_vertex_to(v + 2, n2_fvec3_add(end, n2_fvec3(-hd.y_,  hd.x_,  hd.z_)), n2_fvec2(0, 0), color);
-	n2s_vertex_to(v + 3, n2_fvec3_add(start, n2_fvec3(-hd.y_,  hd.x_, -hd.z_)), n2_fvec2(0, 0), color);
+	n2s_d2vertex_to(v + 0, n2_fvec3_add(start, n2_fvec3( hd.y_, -hd.x_, -hd.z_)), n2_fvec2(0, 0), color);
+	n2s_d2vertex_to(v + 1, n2_fvec3_add(end, n2_fvec3( hd.y_, -hd.x_,  hd.z_)), n2_fvec2(0, 0), color);
+	n2s_d2vertex_to(v + 2, n2_fvec3_add(end, n2_fvec3(-hd.y_,  hd.x_,  hd.z_)), n2_fvec2(0, 0), color);
+	n2s_d2vertex_to(v + 3, n2_fvec3_add(start, n2_fvec3(-hd.y_,  hd.x_, -hd.z_)), n2_fvec2(0, 0), color);
 	i[0] = top_index + 0; i[1] = top_index + 2; i[2] = top_index + 1; i[3] = top_index + 0; i[4] = top_index + 3; i[5] = top_index + 2;
 }
 
-N2_API void n2s_commandbuffer_rect(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t left_top, n2_fvec3_t right_bottom, n2s_u8color_t color)
+N2_API void n2s_commandbuffer_d2rect(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t left_top, n2_fvec3_t right_bottom, n2s_u8color_t color)
 {
-	const n2s_index_t top_index = N2_SCAST(n2s_index_t, n2s_commandbuffer_vertex_size(cb));
+	const n2s_index_t top_index = N2_SCAST(n2s_index_t, n2s_commandbuffer_d2vertex_size(cb));
 	n2s_commandbuffer_set_texture(state, cb, NULL);
 	n2s_commandbuffer_add_command_draw(state, cb, 4, 6);
-	n2s_vertex_t* v = n2s_commandbuffer_alloc_vertex(state, cb, 4);
+	n2s_d2vertex_t* v = n2s_commandbuffer_alloc_d2vertex(state, cb, 4);
 	n2s_index_t* i = n2s_commandbuffer_alloc_index(state, cb, 6);
-	n2s_vertex_to(v + 0, left_top, n2_fvec2(0, 0), color);
-	n2s_vertex_to(v + 1, n2_fvec3(right_bottom.x_, left_top.y_, (left_top.z_ + right_bottom.z_) * 0.5f), n2_fvec2(0, 0), color);
-	n2s_vertex_to(v + 2, right_bottom, n2_fvec2(0, 0), color);
-	n2s_vertex_to(v + 3, n2_fvec3(left_top.x_, right_bottom.y_, (left_top.z_ + right_bottom.z_) * 0.5f), n2_fvec2(0, 0), color);
+	n2s_d2vertex_to(v + 0, left_top, n2_fvec2(0, 0), color);
+	n2s_d2vertex_to(v + 1, n2_fvec3(right_bottom.x_, left_top.y_, (left_top.z_ + right_bottom.z_) * 0.5f), n2_fvec2(0, 0), color);
+	n2s_d2vertex_to(v + 2, right_bottom, n2_fvec2(0, 0), color);
+	n2s_d2vertex_to(v + 3, n2_fvec3(left_top.x_, right_bottom.y_, (left_top.z_ + right_bottom.z_) * 0.5f), n2_fvec2(0, 0), color);
 	i[0] = top_index + 0; i[1] = top_index + 2; i[2] = top_index + 1; i[3] = top_index + 0; i[4] = top_index + 3; i[5] = top_index + 2;
 }
 
 #if 0
 N2_API void n2s_commandbuffer_roundrect_ex(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t position, n2_fvec2_t pivot, n2_fvec2_t scale, n2s_u8color_t color, float rad, float rounding, size_t rounding_corners, size_t rounding_division)
 {
-	const n2s_index_t top_index = N2_SCAST(n2s_index_t, n2s_commandbuffer_vertex_size(cb));
+	const n2s_index_t top_index = N2_SCAST(n2s_index_t, n2s_commandbuffer_d2vertex_size(cb));
 	n2s_commandbuffer_set_texture(state, cb, NULL);
 	n2s_commandbuffer_add_command_draw(state, cb, 4, 6);
 	if (rounding > scale.x_ * 0.5f) { rounding = scale.x_ * 0.5f; }
@@ -17497,7 +17645,7 @@ N2_API void n2s_commandbuffer_roundrect_ex(n2_state_t* state, n2s_commandbuffer_
 	for (size_t i = 0; i < 4; ++i) { if (rounding_corners & (1 << i)) { ++rounding_corner_num; } }
 	const size_t vnum = rounding_division * rounding_corner_num + 1 * (4 - rounding_corner_num) + 1;// + center
 	const size_t inum = (vnum - 1) * 3;
-	n2s_vertex_t* v = n2s_commandbuffer_alloc_vertex(state, cb, vnum);
+	n2s_d2vertex_t* v = n2s_commandbuffer_alloc_d2vertex(state, cb, vnum);
 	n2s_index_t* i = n2s_commandbuffer_alloc_index(state, cb, inum);
 	const n2_fvec2_t pivot_diff = n2_fvec2_mul(scale, n2_fvec2_sub(n2_fvec2(0.5f, 0.5f), pivot));
 	const n2_fvec3_t center = n2_fvec3_add(position, n2_fvec3(pivot_diff.x_, pivot_diff.y_, 0));
@@ -17511,28 +17659,28 @@ N2_API void n2s_commandbuffer_roundrect_ex(n2_state_t* state, n2s_commandbuffer_
 	}
 	else
 	{
-		n2s_vertex_to(vi++, n2_fvec3_add(center, n2_fvec3(-diff.x_, -diff.y_, 0)), n2_fvec2(0, 0), color);
+		n2s_d2vertex_to(vi++, n2_fvec3_add(center, n2_fvec3(-diff.x_, -diff.y_, 0)), n2_fvec2(0, 0), color);
 	}
 	if (rounding_corners & 2)
 	{
 	}
 	else
 	{
-		n2s_vertex_to(vi++, n2_fvec3_add(center, n2_fvec3( diff.x_, -diff.y_, 0)), n2_fvec2(0, 0), color);
+		n2s_d2vertex_to(vi++, n2_fvec3_add(center, n2_fvec3( diff.x_, -diff.y_, 0)), n2_fvec2(0, 0), color);
 	}
 	if (rounding_corners & 4)
 	{
 	}
 	else
 	{
-		n2s_vertex_to(vi++, n2_fvec3_add(center, n2_fvec3( diff.x_,  diff.y_, 0)), n2_fvec2(0, 0), color);
+		n2s_d2vertex_to(vi++, n2_fvec3_add(center, n2_fvec3( diff.x_,  diff.y_, 0)), n2_fvec2(0, 0), color);
 	}
 	if (rounding_corners & 8)
 	{
 	}
 	else
 	{
-		n2s_vertex_to(vi++, n2_fvec3_add(center, n2_fvec3(-diff.x_,  diff.y_, 0)), n2_fvec2(0, 0), color);
+		n2s_d2vertex_to(vi++, n2_fvec3_add(center, n2_fvec3(-diff.x_,  diff.y_, 0)), n2_fvec2(0, 0), color);
 	}
 	for (size_t j = 0; j < vnum - 1; ++j)
 	{
@@ -17543,17 +17691,17 @@ N2_API void n2s_commandbuffer_roundrect_ex(n2_state_t* state, n2s_commandbuffer_
 }
 #endif
 
-N2_API void n2s_commandbuffer_rect_textured_rot(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t position, n2_fvec2_t pivot, n2_fvec2_t scale, n2s_u8color_t color, const n2s_texture_t* texture, n2_fvec2_t left_top_uv, n2_fvec2_t right_bottom_uv, float rad, size_t w, size_t h)
+N2_API void n2s_commandbuffer_d2rect_textured_rot(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t position, n2_fvec2_t pivot, n2_fvec2_t scale, n2s_u8color_t color, const n2s_texture_t* texture, n2_fvec2_t left_top_uv, n2_fvec2_t right_bottom_uv, float rad, size_t w, size_t h)
 {
-	n2s_commandbuffer_rect_textured_rotskew(state, cb, position, pivot, scale, color, texture, left_top_uv, right_bottom_uv, rad, n2_fvec2(0, 0), n2_fvec2(0, 0), w, h);
+	n2s_commandbuffer_d2rect_textured_rotskew(state, cb, position, pivot, scale, color, texture, left_top_uv, right_bottom_uv, rad, n2_fvec2(0, 0), n2_fvec2(0, 0), w, h);
 }
 
-N2_API void n2s_commandbuffer_rect_textured_rotskew(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t position, n2_fvec2_t pivot, n2_fvec2_t scale, n2s_u8color_t color, const n2s_texture_t* texture, n2_fvec2_t left_top_uv, n2_fvec2_t right_bottom_uv, float rad, n2_fvec2_t topskew, n2_fvec2_t bottomskew, size_t w, size_t h)
+N2_API void n2s_commandbuffer_d2rect_textured_rotskew(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t position, n2_fvec2_t pivot, n2_fvec2_t scale, n2s_u8color_t color, const n2s_texture_t* texture, n2_fvec2_t left_top_uv, n2_fvec2_t right_bottom_uv, float rad, n2_fvec2_t topskew, n2_fvec2_t bottomskew, size_t w, size_t h)
 {
-	const n2s_index_t top_index = N2_SCAST(n2s_index_t, n2s_commandbuffer_vertex_size(cb));
+	const n2s_index_t top_index = N2_SCAST(n2s_index_t, n2s_commandbuffer_d2vertex_size(cb));
 	n2s_commandbuffer_set_texture(state, cb, texture);
 	n2s_commandbuffer_add_command_draw(state, cb, 4, 6);
-	n2s_vertex_t* v = n2s_commandbuffer_alloc_vertex(state, cb, 4);
+	n2s_d2vertex_t* v = n2s_commandbuffer_alloc_d2vertex(state, cb, 4);
 	n2s_index_t* i = n2s_commandbuffer_alloc_index(state, cb, 6);
 	const n2_fvec2_t pivot_diff = n2_fvec2_mul(scale, n2_fvec2_sub(n2_fvec2(0.5f, 0.5f), pivot));
 	const n2_fvec3_t center = n2_fvec3_add(position, n2_fvec3(pivot_diff.x_, pivot_diff.y_, 0));
@@ -17572,23 +17720,23 @@ N2_API void n2s_commandbuffer_rect_textured_rotskew(n2_state_t* state, n2s_comma
 	i[0] = top_index + 0; i[1] = top_index + 2; i[2] = top_index + 1; i[3] = top_index + 0; i[4] = top_index + 3; i[5] = top_index + 2;
 }
 
-N2_API void n2s_commandbuffer_circle_wire(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t center, n2_fvec2_t scale, n2s_u8color_t color, float thickness, size_t div)
+N2_API void n2s_commandbuffer_d2circle_wire(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t center, n2_fvec2_t scale, n2s_u8color_t color, float thickness, size_t div)
 {
 	if (div < 3) { return; }
-	const n2s_index_t top_index = N2_SCAST(n2s_index_t, n2s_commandbuffer_vertex_size(cb));
+	const n2s_index_t top_index = N2_SCAST(n2s_index_t, n2s_commandbuffer_d2vertex_size(cb));
 	n2s_commandbuffer_set_texture(state, cb, NULL);
 	const size_t vertex_num = div * 2;
 	const size_t index_num = div * 6;
 	n2s_commandbuffer_add_command_draw(state, cb, vertex_num, index_num);
-	n2s_vertex_t* v = n2s_commandbuffer_alloc_vertex(state, cb, vertex_num);
+	n2s_d2vertex_t* v = n2s_commandbuffer_alloc_d2vertex(state, cb, vertex_num);
 	n2s_index_t* i = n2s_commandbuffer_alloc_index(state, cb, index_num);
 	const float ht = thickness * 0.5f;
 	for (size_t r = 0; r < div; ++r)
 	{
 		const float rad = N2_SCAST(float, r) / N2_SCAST(float, div) * N2_SCAST(float, N2_MPI) * 2.f;
 		const float c = N2_COSF(rad); const float s = N2_SINF(rad);
-		n2s_vertex_to(v + r * 2 + 0, n2_fvec3_add(center, n2_fvec3(c * (scale.x_ + ht), s * (scale.y_ + ht), 0)), n2_fvec2(0, 0), color);
-		n2s_vertex_to(v + r * 2 + 1, n2_fvec3_add(center, n2_fvec3(c * (scale.x_ - ht), s * (scale.y_ - ht), 0)), n2_fvec2(0, 0), color);
+		n2s_d2vertex_to(v + r * 2 + 0, n2_fvec3_add(center, n2_fvec3(c * (scale.x_ + ht), s * (scale.y_ + ht), 0)), n2_fvec2(0, 0), color);
+		n2s_d2vertex_to(v + r * 2 + 1, n2_fvec3_add(center, n2_fvec3(c * (scale.x_ - ht), s * (scale.y_ - ht), 0)), n2_fvec2(0, 0), color);
 		const n2s_index_t ri = N2_SCAST(n2s_index_t, r);
 		const n2s_index_t rni = N2_SCAST(n2s_index_t, r == div - 1 ? 0 : r + 1);
 		i[r * 6 + 0] = top_index + ri * 2 + 0; i[r * 6 + 1] = top_index + rni * 2 + 1; i[r * 6 + 2] = top_index + rni * 2 + 0;
@@ -17596,22 +17744,22 @@ N2_API void n2s_commandbuffer_circle_wire(n2_state_t* state, n2s_commandbuffer_t
 	}
 }
 
-N2_API void n2s_commandbuffer_circle(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t center, n2_fvec2_t scale, n2s_u8color_t color, size_t div)
+N2_API void n2s_commandbuffer_d2circle(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t center, n2_fvec2_t scale, n2s_u8color_t color, size_t div)
 {
 	if (div < 3) { return; }
-	const n2s_index_t top_index = N2_SCAST(n2s_index_t, n2s_commandbuffer_vertex_size(cb));
+	const n2s_index_t top_index = N2_SCAST(n2s_index_t, n2s_commandbuffer_d2vertex_size(cb));
 	n2s_commandbuffer_set_texture(state, cb, NULL);
 	const size_t vertex_num = div + 1;
 	const size_t index_num = div * 3;
 	n2s_commandbuffer_add_command_draw(state, cb, vertex_num, index_num);
-	n2s_vertex_t* v = n2s_commandbuffer_alloc_vertex(state, cb, vertex_num);
+	n2s_d2vertex_t* v = n2s_commandbuffer_alloc_d2vertex(state, cb, vertex_num);
 	n2s_index_t* i = n2s_commandbuffer_alloc_index(state, cb, index_num);
-	n2s_vertex_to(v + 0, center, n2_fvec2(0, 0), color);
+	n2s_d2vertex_to(v + 0, center, n2_fvec2(0, 0), color);
 	for (size_t r = 0; r < div; ++r)
 	{
 		const float rad = N2_SCAST(float, r) / N2_SCAST(float, div) * N2_SCAST(float, N2_MPI) * 2.f;
 		const float c = N2_COSF(rad); const float s = N2_SINF(rad);
-		n2s_vertex_to(v + r + 1, n2_fvec3_add(center, n2_fvec3(c * scale.x_ * 0.5f, s * scale.y_ * 0.5f, 0)), n2_fvec2(0, 0), color);
+		n2s_d2vertex_to(v + r + 1, n2_fvec3_add(center, n2_fvec3(c * scale.x_ * 0.5f, s * scale.y_ * 0.5f, 0)), n2_fvec2(0, 0), color);
 		i[r * 3 + 0] = top_index + 0; i[r * 3 + 1] = top_index + N2_SCAST(n2s_index_t, r); i[r * 3 + 2] = top_index + N2_SCAST(n2s_index_t, r == div - 1 ? 1 : r + 1);
 	}
 }
@@ -17654,7 +17802,7 @@ static void n2si_commandbuffer_text_callback(const n2s_font_text_callback_param_
 			uposition.x_ += unit->offset_.x_ + gsdiff.x_ * 0.5f;
 			uposition.y_ += unit->offset_.y_ + gsdiff.y_ * 0.5f;
 
-			n2s_commandbuffer_rect_textured_rotskew(
+			n2s_commandbuffer_d2rect_textured_rotskew(
 				context->state_,
 				context->cb_,
 				uposition,
@@ -17673,7 +17821,7 @@ static void n2si_commandbuffer_text_callback(const n2s_font_text_callback_param_
 	}
 }
 
-N2_API n2_bool_t n2s_commandbuffer_text_units(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t begin, n2s_font_t* font, const char* str, size_t str_length, float height, const n2s_text_render_unit_t* units, size_t unit_num, float wrap_width, size_t flags, n2_fvec2_t* dst_bb)
+N2_API n2_bool_t n2s_commandbuffer_d2text_units(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t begin, n2s_font_t* font, const char* str, size_t str_length, float height, const n2s_text_render_unit_t* units, size_t unit_num, float wrap_width, size_t flags, n2_fvec2_t* dst_bb)
 {
 	if (!font) { return N2_FALSE; }
 	n2si_commandbuffer_text_context_t context;
@@ -17690,7 +17838,7 @@ N2_API n2_bool_t n2s_commandbuffer_text_units(n2_state_t* state, n2s_commandbuff
 	return N2_TRUE;
 }
 
-N2_API n2_bool_t n2s_commandbuffer_text(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t begin, n2s_font_t* font, const char* str, size_t str_length, float height, n2s_u8color_t color, float wrap_width, size_t flags, n2_fvec2_t* dst_bb)
+N2_API n2_bool_t n2s_commandbuffer_d2text(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t begin, n2s_font_t* font, const char* str, size_t str_length, float height, n2s_u8color_t color, float wrap_width, size_t flags, n2_fvec2_t* dst_bb)
 {
 	n2s_text_render_unit_t unit;
 	unit.enable_ = N2_TRUE;
@@ -17698,10 +17846,10 @@ N2_API n2_bool_t n2s_commandbuffer_text(n2_state_t* state, n2s_commandbuffer_t* 
 	unit.scale_ = n2_fvec2(1, 1);
 	unit.offset_ = n2_fvec2(0, 0);
 	unit.topskew_ = 0.f;
-	return n2s_commandbuffer_text_units(state, cb, begin, font, str, str_length, height, &unit, 1, wrap_width, flags, dst_bb);
+	return n2s_commandbuffer_d2text_units(state, cb, begin, font, str, str_length, height, &unit, 1, wrap_width, flags, dst_bb);
 }
 
-N2_API n2_bool_t n2s_commandbuffer_text_ex(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t begin, n2s_font_t* font, const char* str, size_t str_length, float height, n2s_u8color_t color, float wrap_width, size_t flags, n2_fvec2_t* dst_bb, float topskew, n2_bool_t dropshadow, n2s_u8color_t dscolor, n2_fvec2_t dsscale, n2_fvec2_t dsoffset, n2_bool_t outline, n2s_u8color_t olcolor, n2_fvec2_t olscale, n2_fvec2_t oloffset)
+N2_API n2_bool_t n2s_commandbuffer_d2text_ex(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t begin, n2s_font_t* font, const char* str, size_t str_length, float height, n2s_u8color_t color, float wrap_width, size_t flags, n2_fvec2_t* dst_bb, float topskew, n2_bool_t dropshadow, n2s_u8color_t dscolor, n2_fvec2_t dsscale, n2_fvec2_t dsoffset, n2_bool_t outline, n2s_u8color_t olcolor, n2_fvec2_t olscale, n2_fvec2_t oloffset)
 {
 	n2s_text_render_unit_t units[3];
 	size_t unit_num = 0;
@@ -17734,13 +17882,13 @@ N2_API n2_bool_t n2s_commandbuffer_text_ex(n2_state_t* state, n2s_commandbuffer_
 		units[unit_num].topskew_ = topskew;
 		++unit_num;
 	}
-	return n2s_commandbuffer_text_units(state, cb, begin, font, str, str_length, height, units, unit_num, wrap_width, flags, dst_bb);
+	return n2s_commandbuffer_d2text_units(state, cb, begin, font, str, str_length, height, units, unit_num, wrap_width, flags, dst_bb);
 }
 
 N2_API void n2s_commandbuffer_draw_cache_init(n2s_commandbuffer_draw_cache_t* cbdc)
 {
 	cbdc->drawenv_ = NULL;
-	cbdc->d3env_ = NULL;
+	cbdc->g3env_ = NULL;
 
 	cbdc->program_ = -1;
 	cbdc->texture_ = NULL;
@@ -18025,6 +18173,8 @@ static n2s_window_t* n2si_window_alloc(n2_state_t* state, n2s_environment_t* se,
 #if N2_CONFIG_USE_GUI_LIB
 	w->nk_context_ = NULL;
 	w->nk_cmd_buf_ = NULL;
+	w->nk_vtx_buf_ = NULL;
+	w->nk_idx_buf_ = NULL;
 #endif
 
 #if N2_CONFIG_USE_SDL_LIB
@@ -18140,6 +18290,12 @@ static n2s_window_t* n2si_window_alloc(n2_state_t* state, n2s_environment_t* se,
 	w->nk_cmd_buf_ = N2_TMALLOC(struct nk_buffer, state);
 	nk_buffer_init(w->nk_cmd_buf_, &nk_alloc, 1024);
 
+	w->nk_vtx_buf_ = N2_TMALLOC(struct nk_buffer, state);
+	nk_buffer_init(w->nk_vtx_buf_, &nk_alloc, 1024);
+
+	w->nk_idx_buf_ = N2_TMALLOC(struct nk_buffer, state);
+	nk_buffer_init(w->nk_idx_buf_, &nk_alloc, 1024);
+
 	{
 		struct nk_color coltable[NK_COLOR_COUNT];
 		coltable[NK_COLOR_TEXT] = nk_rgba(0, 0, 0, 255);
@@ -18200,6 +18356,18 @@ static void n2si_window_free(n2_state_t* state, n2s_window_t* w)
 		nk_buffer_free(w->nk_cmd_buf_);
 		n2_free(state, w->nk_cmd_buf_);
 		w->nk_cmd_buf_ = NULL;
+	}
+	if (w->nk_vtx_buf_)
+	{
+		nk_buffer_free(w->nk_vtx_buf_);
+		n2_free(state, w->nk_vtx_buf_);
+		w->nk_vtx_buf_ = NULL;
+	}
+	if (w->nk_idx_buf_)
+	{
+		nk_buffer_free(w->nk_idx_buf_);
+		n2_free(state, w->nk_idx_buf_);
+		w->nk_idx_buf_ = NULL;
 	}
 	if (w->nk_context_)
 	{
@@ -18400,7 +18568,7 @@ static n2s_environment_t* n2si_environment_alloc(n2_state_t* state, const char**
 
 	se->widget_value_dirty_count_ = 0;
 
-	se->commandbuffer_ = n2s_commandbuffer_alloc(state, state->config_.standard_command_num_, state->config_.standard_vertex_num_, state->config_.standard_index_num_, state->config_.standard_command_data_num_);
+	se->commandbuffer_ = n2s_commandbuffer_alloc(state, state->config_.standard_command_num_, state->config_.standard_d2vertex_num_, state->config_.standard_index_num_, state->config_.standard_command_data_num_);
 	se->syscommandbuffer_ = n2s_commandbuffer_alloc(state, 16, 256, 256, 256);
 
 	se->default_font_ = NULL;
@@ -18780,30 +18948,31 @@ static void n2si_environment_free(n2_state_t* state, n2s_environment_t* se)
 static void n2si_gprogram_attribute_apply(n2_state_t* state, n2s_gprogram_t* p)
 {
 	N2_UNUSE(state);
-	const size_t vstride = sizeof(n2s_vertex_t);
+	const size_t vstride = sizeof(n2s_d2vertex_t);
 
 	for (size_t i = 0; i < N2S_MAX_GPROGRAM_ATTRIBUTE; ++i)
 	{
-		const int aloc = p->gl_alocation_[i];
+		const n2s_gprogram_attribute_entry_t* ae = &p->attributes_[i];
+		const int aloc = ae->gl_location_;
 		if (aloc >= 0)
 		{
 			switch (i)
 			{
 			case N2S_GPROGRAM_ATTRIBUTE_POSITION:
 				glEnableVertexAttribArray(N2_SCAST(GLuint, aloc));
-				glVertexAttribPointer(N2_SCAST(GLuint, aloc), 3, GL_FLOAT, GL_FALSE, N2_SCAST(GLsizei, vstride), N2_RCAST(void*, offsetof(n2s_vertex_t, position_)));
+				glVertexAttribPointer(N2_SCAST(GLuint, aloc), 3, GL_FLOAT, GL_FALSE, N2_SCAST(GLsizei, vstride), N2_RCAST(void*, offsetof(n2s_d2vertex_t, position_)));
 				break;
 			case N2S_GPROGRAM_ATTRIBUTE_TEXCOORD:
 				glEnableVertexAttribArray(N2_SCAST(GLuint, aloc));
-				glVertexAttribPointer(N2_SCAST(GLuint, aloc), 2, GL_FLOAT, GL_FALSE, N2_SCAST(GLsizei, vstride), N2_RCAST(void*, offsetof(n2s_vertex_t, uv_)));
+				glVertexAttribPointer(N2_SCAST(GLuint, aloc), 2, GL_FLOAT, GL_FALSE, N2_SCAST(GLsizei, vstride), N2_RCAST(void*, offsetof(n2s_d2vertex_t, uv_)));
 				break;
 			case N2S_GPROGRAM_ATTRIBUTE_COLOR:
 				glEnableVertexAttribArray(N2_SCAST(GLuint, aloc));
-				glVertexAttribPointer(N2_SCAST(GLuint, aloc), 4, GL_UNSIGNED_BYTE, GL_TRUE, N2_SCAST(GLsizei, vstride), N2_RCAST(void*, offsetof(n2s_vertex_t, color_)));
+				glVertexAttribPointer(N2_SCAST(GLuint, aloc), 4, GL_UNSIGNED_BYTE, GL_TRUE, N2_SCAST(GLsizei, vstride), N2_RCAST(void*, offsetof(n2s_d2vertex_t, color_)));
 				break;
 			case N2S_GPROGRAM_ATTRIBUTE_TEXCOORD_CLAMP:
 				glEnableVertexAttribArray(N2_SCAST(GLuint, aloc));
-				glVertexAttribPointer(N2_SCAST(GLuint, aloc), 4, GL_FLOAT, GL_FALSE, N2_SCAST(GLsizei, vstride), N2_RCAST(void*, offsetof(n2s_vertex_t, uv_clamp_)));
+				glVertexAttribPointer(N2_SCAST(GLuint, aloc), 4, GL_FLOAT, GL_FALSE, N2_SCAST(GLsizei, vstride), N2_RCAST(void*, offsetof(n2s_d2vertex_t, uv_clamp_)));
 				break;
 			default:
 				break;
@@ -18814,11 +18983,12 @@ static void n2si_gprogram_attribute_apply(n2_state_t* state, n2s_gprogram_t* p)
 	N2SI_ASSERT_GL(state);
 }
 
-static n2_bool_t n2si_gprogram_uniform_apply(n2_state_t* state, n2s_gprogram_t* p, GLint location, const n2s_gprogram_uniform_data_t* data)
+static n2_bool_t n2si_gprogram_uniform_apply(n2_state_t* state, n2s_gprogram_t* p, const n2s_gprogram_uniform_entry_t* ue, const n2s_gprogram_uniform_data_t* data)
 {
 	if (!p || !data) { return N2_FALSE; }
-	if (location < 0) { return N2_FALSE; }
+	if (!ue || ue->gl_location_ < 0) { return N2_FALSE; }
 	if (data->data_element_num_ <= 0 || !data->data_) { return N2_FALSE; }
+	const GLint location = ue->gl_location_;
 
 	switch (data->data_type_)
 	{
@@ -18860,7 +19030,7 @@ static n2_bool_t n2si_gprogram_uniform_block_apply(n2_state_t* state, n2s_gprogr
 
 static void n2si_environment_draw_commandbuffer(n2_state_t* state, n2s_environment_t* se, n2s_commandbuffer_t* cb, n2s_commandbuffer_draw_cache_t* dc)
 {
-	const size_t vstride = sizeof(n2s_vertex_t);
+	const size_t vstride = sizeof(n2s_d2vertex_t);
 	const size_t istride = sizeof(n2s_index_t);
 
 	// 毎回適用する（効率悪いしVAOの概念を割と無視してるが）
@@ -18873,12 +19043,12 @@ static void n2si_environment_draw_commandbuffer(n2_state_t* state, n2s_environme
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, dc->use_ebo_);
 	N2SI_ASSERT_GL(state);
 
-	glBufferData(GL_ARRAY_BUFFER, N2_SCAST(GLsizeiptr, n2s_commandbuffer_vertex_size(cb) * vstride), cb->vertexarray_->elements_, GL_STREAM_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, N2_SCAST(GLsizeiptr, n2s_commandbuffer_d2vertex_size(cb) * vstride), cb->d2vertexarray_->elements_, GL_STREAM_DRAW);
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, N2_SCAST(GLsizeiptr, n2s_commandbuffer_index_size(cb) * istride), cb->indexarray_->elements_, GL_STREAM_DRAW);
 	N2SI_ASSERT_GL(state);
 
 	if (dc->drawenv_) { n2si_gprogram_uniform_block_update(state, dc->use_ubo_[N2S_GPROGRAM_UNIFORM_BLOCK_DRAWENV], dc->drawenv_, sizeof(*dc->drawenv_), GL_STREAM_DRAW); }
-	if (dc->d3env_) { n2si_gprogram_uniform_block_update(state, dc->use_ubo_[N2S_GPROGRAM_UNIFORM_BLOCK_D3ENV], dc->d3env_, sizeof(*dc->d3env_), GL_STREAM_DRAW); }
+	if (dc->g3env_) { n2si_gprogram_uniform_block_update(state, dc->use_ubo_[N2S_GPROGRAM_UNIFORM_BLOCK_G3ENV], dc->g3env_, sizeof(*dc->g3env_), GL_STREAM_DRAW); }
 	for (size_t i = 0; i < N2S_MAX_GPROGRAM_UNIFORM_BLOCK; ++i) { glBindBufferBase(GL_UNIFORM_BUFFER, N2_SCAST(GLuint, i), dc->use_ubo_[i]); }
 	N2SI_ASSERT_GL(state);
 
@@ -18908,27 +19078,27 @@ static void n2si_environment_draw_commandbuffer(n2_state_t* state, n2s_environme
 			{
 				// uniform
 				n2s_gprogram_draw_cache_t* pdc = &dc->program_cache_[dc->program_];
-				if (pdc->u_cached_)
+				if (pdc->u_staled_)
 				{
 					for (size_t u = 0; u < N2S_MAX_GPROGRAM_UNIFORM; ++u)
 					{
 						const size_t uf = N2_SCAST(size_t, 1) << u;
-						if (pdc->u_cached_ & uf)
+						if (pdc->u_staled_ & uf)
 						{
-							n2si_gprogram_uniform_apply(state, p, p->gl_ulocation_[u], &dc->uniforms_[u]);
-							pdc->u_cached_ &= ~uf;
+							n2si_gprogram_uniform_apply(state, p, &p->uniforms_[u], &dc->uniforms_[u]);
+							pdc->u_staled_ &= ~uf;
 						}
 					}
 				}
-				if (pdc->ub_cached_)
+				if (pdc->ub_staled_)
 				{
 					for (size_t ub = 0; ub < N2S_MAX_GPROGRAM_UNIFORM_BLOCK; ++ub)
 					{
 						const size_t ubf = N2_SCAST(size_t, 1) << ub;
-						if (pdc->ub_cached_ & ubf)
+						if (pdc->ub_staled_ & ubf)
 						{
 							//n2si_gprogram_uniform_block_apply(state, p, N2_SCAST(GLuint, ub), dc->use_ubo_[ub]);// プログラム毎にする必要はない
-							pdc->ub_cached_ &= ~ubf;
+							pdc->ub_staled_ &= ~ubf;
 						}
 					}
 				}
@@ -18987,7 +19157,7 @@ static void n2si_environment_draw_commandbuffer(n2_state_t* state, n2s_environme
 				ud->data_element_num_ = u->data_element_num_;
 				ud->data_ = n2_u32array_peek(cb->commanddataarray_, N2_SCAST(int, u->data_offset_));
 				const size_t uf = N2_SCAST(size_t, 1) << u->uniform_;
-				for (size_t pi = 0; pi < N2S_MAX_GPROGRAM; ++pi) { dc->program_cache_[pi].u_cached_ |= uf; }
+				for (size_t pi = 0; pi < N2S_MAX_GPROGRAM; ++pi) { dc->program_cache_[pi].u_staled_ |= uf; }
 			}
 			break;
 		case N2S_COMMAND_UNIFORM_BLOCK:
@@ -18999,7 +19169,7 @@ static void n2si_environment_draw_commandbuffer(n2_state_t* state, n2s_environme
 					const void* data = n2_u32array_peek(cb->commanddataarray_, N2_SCAST(int, ub->data_offset_));
 					n2si_gprogram_uniform_block_update(state, ubo, data, ub->data_size_, GL_STREAM_DRAW);
 					const size_t ubf = N2_SCAST(size_t, 1) << ub->uniform_block_;
-					for (size_t pi = 0; pi < N2S_MAX_GPROGRAM; ++pi) { dc->program_cache_[pi].ub_cached_ |= ubf; }
+					for (size_t pi = 0; pi < N2S_MAX_GPROGRAM; ++pi) { dc->program_cache_[pi].ub_staled_ |= ubf; }
 				}
 			}
 			break;
@@ -19025,7 +19195,7 @@ static void n2si_environment_flush_commandbuffer_to_window(n2_state_t* state, n2
 
 	n2_bool_t draw_content = N2_TRUE;
 	if (n2s_commandbuffer_command_size(se->commandbuffer_) <= 0) { draw_content = N2_FALSE; }
-	if (n2s_commandbuffer_vertex_size(se->commandbuffer_) <= 0) { draw_content = N2_FALSE; }
+	if (n2s_commandbuffer_d2vertex_size(se->commandbuffer_) <= 0) { draw_content = N2_FALSE; }
 	if (n2s_commandbuffer_index_size(se->commandbuffer_) <= 0) { draw_content = N2_FALSE; }
 
 	if (w->draw_font_) { n2s_texture_submit(state, w->draw_font_->texture_, N2_FALSE); }
@@ -19072,8 +19242,8 @@ static void n2si_environment_flush_commandbuffer_to_window(n2_state_t* state, n2
 
 			n2s_guniform_block_drawenv_t drawenv;
 			n2s_guniform_block_drawenv_init(&drawenv);
-			n2_fmat4_ortho2d_to(&drawenv.p_mtx_, 0, N2_SCAST(float, framew), 0, N2_SCAST(float, frameh), -1, 1);
-			n2_fmat4_copy_to(&drawenv.pv_mtx_, &drawenv.p_mtx_);
+			n2_fmat4_ortho2d_to(&drawenv.proj_matrix_, 0, N2_SCAST(float, framew), 0, N2_SCAST(float, frameh), -1, 1);
+			n2_fmat4_copy_to(&drawenv.proj_veiw_matrix_, &drawenv.proj_matrix_);
 			n2s_guniform_block_drawenv_set_screen_param(&drawenv, framew, frameh);
 			dc.drawenv_ = &drawenv;
 
@@ -19108,7 +19278,7 @@ static n2_bool_t n2si_environment_sync_gmode_transcolor_commandbuffer(n2_state_t
 	default:
 		return N2_FALSE;
 	}
-	const n2s_u8color_t transcolor = nw->gmode_ == N2S_GMODE_COPY_BLACKTRANS ? N2S_COLOR_BLACK : n2s_u8color(nw->ginfo_r_, nw->ginfo_g_, nw->ginfo_b_, 0);
+	const n2s_u8color_t transcolor = nw->gmode_ == N2S_GMODE_COPY_BLACKTRANS ? N2S_U8COLOR_BLACK : n2s_u8color(nw->ginfo_r_, nw->ginfo_g_, nw->ginfo_b_, 0);
 	return n2s_commandbuffer_set_transcolor(state, cb, transcolor);
 }
 
@@ -19131,7 +19301,7 @@ static n2_bool_t n2si_environment_check_and_flush_commandbuffer(n2_state_t* stat
 {
 	n2_bool_t is_flush = N2_FALSE;
 	if (n2s_commandbuffer_command_size(se->commandbuffer_) > state->config_.standard_command_num_) { is_flush = N2_TRUE; }
-	if (n2s_commandbuffer_vertex_size(se->commandbuffer_) > state->config_.standard_vertex_num_) { is_flush = N2_TRUE; }
+	if (n2s_commandbuffer_d2vertex_size(se->commandbuffer_) > state->config_.standard_d2vertex_num_) { is_flush = N2_TRUE; }
 	if (n2s_commandbuffer_index_size(se->commandbuffer_) > state->config_.standard_index_num_) { is_flush = N2_TRUE; }
 	if (!is_flush) { return N2_FALSE; }
 	n2si_environment_flush_commandbuffer(state, se);
@@ -19255,17 +19425,17 @@ static n2_bool_t n2si_environemnt_draw_gui(n2_state_t* state, n2s_environment_t*
 	}
 
 	static const struct nk_draw_vertex_layout_element vertex_layout_conf[] = {
-		{NK_VERTEX_POSITION, NK_FORMAT_FLOAT, NK_OFFSETOF(n2s_vertex_t, position_)},
-		{NK_VERTEX_TEXCOORD, NK_FORMAT_FLOAT, NK_OFFSETOF(n2s_vertex_t, uv_)},
-		{NK_VERTEX_COLOR, NK_FORMAT_R8G8B8A8, NK_OFFSETOF(n2s_vertex_t, color_)},
+		{NK_VERTEX_POSITION, NK_FORMAT_FLOAT, NK_OFFSETOF(n2s_d2vertex_t, position_)},
+		{NK_VERTEX_TEXCOORD, NK_FORMAT_FLOAT, NK_OFFSETOF(n2s_d2vertex_t, uv_)},
+		{NK_VERTEX_COLOR, NK_FORMAT_R8G8B8A8, NK_OFFSETOF(n2s_d2vertex_t, color_)},
 		{NK_VERTEX_LAYOUT_END}
 	};
 
 	struct nk_convert_config cnvconf;
 	N2_MEMSET(&cnvconf, 0x00, sizeof(cnvconf));
 	cnvconf.vertex_layout = vertex_layout_conf;
-	cnvconf.vertex_size = sizeof(n2s_vertex_t);
-	cnvconf.vertex_alignment = NK_ALIGNOF(n2s_vertex_t);
+	cnvconf.vertex_size = sizeof(n2s_d2vertex_t);
+	cnvconf.vertex_alignment = NK_ALIGNOF(n2s_d2vertex_t);
 	cnvconf.null.texture.ptr = NULL;
 	cnvconf.null.uv = nk_vec2(0, 0);
 	cnvconf.circle_segment_count = 22;
@@ -19283,29 +19453,32 @@ static n2_bool_t n2si_environemnt_draw_gui(n2_state_t* state, n2s_environment_t*
 	cnvvbuf->size_ = 0;
 	cnvebuf->size_ = 0;
 
-	struct nk_buffer cbuf;
+	struct nk_buffer cbuf, vbuf, ebuf;
 	struct nk_buffer* usecbuf = w->nk_cmd_buf_ ? w->nk_cmd_buf_ : &cbuf;
+	struct nk_buffer* usevbuf = w->nk_vtx_buf_ ? w->nk_vtx_buf_ : &vbuf;
+	struct nk_buffer* useebuf = w->nk_idx_buf_ ? w->nk_idx_buf_ : &ebuf;
 
 	for (size_t ci = 0; ci < 2; ++ci)
 	{
-		struct nk_buffer vbuf, ebuf;
 		nk_buffer_init_fixed(&cbuf, cnvcbuf->data_, cnvcbuf->buffer_size_);
 		nk_buffer_init_fixed(&vbuf, cnvvbuf->data_, cnvvbuf->buffer_size_);
 		nk_buffer_init_fixed(&ebuf, cnvebuf->data_, cnvebuf->buffer_size_);
 		nk_buffer_clear(usecbuf);
-		const nk_flags cnvflags = nk_convert(c, usecbuf, &vbuf, &ebuf, &cnvconf);
+		nk_buffer_clear(usevbuf);
+		nk_buffer_clear(useebuf);
+		const nk_flags cnvflags = nk_convert(c, usecbuf, usevbuf, useebuf, &cnvconf);
 		if (cnvflags == NK_CONVERT_SUCCESS)
 		{
 			if (usecbuf == &cbuf) { cnvcbuf->size_ = cbuf.needed; }
-			cnvvbuf->size_ = vbuf.needed;
-			cnvebuf->size_ = ebuf.needed;
+			if (usevbuf == &vbuf) { cnvvbuf->size_ = vbuf.needed; }
+			if (useebuf == &ebuf) { cnvebuf->size_ = ebuf.needed; }
 			break;
 		}
 		if (ci == 0)
 		{
-			n2_buffer_reserve(state, cnvcbuf, cbuf.needed + 64);
-			n2_buffer_reserve(state, cnvvbuf, vbuf.needed + 64);
-			n2_buffer_reserve(state, cnvebuf, ebuf.needed + 64);
+			if (usecbuf == &cbuf) { n2_buffer_reserve(state, cnvcbuf, cbuf.needed + 64); }
+			if (usevbuf == &vbuf) { n2_buffer_reserve(state, cnvvbuf, vbuf.needed + 64); }
+			if (useebuf == &ebuf) { n2_buffer_reserve(state, cnvebuf, ebuf.needed + 64); }
 		}
 		else
 		{
@@ -19313,7 +19486,7 @@ static n2_bool_t n2si_environemnt_draw_gui(n2_state_t* state, n2s_environment_t*
 		}
 	}
 
-	if (usecbuf->needed > 0 && cnvvbuf->size_ > 0 && cnvebuf->size_ > 0)
+	if (usecbuf->needed > 0 && usevbuf->needed > 0 && useebuf->needed > 0)
 	{
 		n2s_font_t* font = N2_RCAST(n2s_font_t*, c->style.font->userdata.ptr);
 		if (font) { n2s_texture_submit(state, font->texture_, N2_FALSE); }
@@ -19335,16 +19508,16 @@ static n2_bool_t n2si_environemnt_draw_gui(n2_state_t* state, n2s_environment_t*
 		const float scalex = N2_SCAST(float, framew) / winx;
 		const float scaley = N2_SCAST(float, frameh) / winy;
 
-		if (p->gl_ulocation_[N2S_GPROGRAM_UNIFORM_TEXTURE] >= 0)
+		if (p->uniforms_[N2S_GPROGRAM_UNIFORM_TEXTURE].gl_location_ >= 0)
 		{
 			glActiveTexture(GL_TEXTURE0);
-			glUniform1i(p->gl_ulocation_[N2S_GPROGRAM_UNIFORM_TEXTURE], 0);
+			glUniform1i(p->uniforms_[N2S_GPROGRAM_UNIFORM_TEXTURE].gl_location_, 0);
 		}
 
 		n2s_guniform_block_drawenv_t drawenv;
 		n2s_guniform_block_drawenv_init(&drawenv);
-		n2_fmat4_ortho2d_to(&drawenv.p_mtx_, 0, winx, 0, winy, -1, 1);
-		n2_fmat4_copy_to(&drawenv.pv_mtx_, &drawenv.p_mtx_);
+		n2_fmat4_ortho2d_to(&drawenv.proj_matrix_, 0, winx, 0, winy, -1, 1);
+		n2_fmat4_copy_to(&drawenv.proj_veiw_matrix_, &drawenv.proj_matrix_);
 		GLuint drawenv_ubo = se->gl_gui_ubo_[N2S_GPROGRAM_UNIFORM_BLOCK_DRAWENV];
 		n2si_gprogram_uniform_block_update(state, drawenv_ubo, &drawenv, sizeof(drawenv), GL_DYNAMIC_DRAW);
 		glBindBufferBase(GL_UNIFORM_BUFFER, N2S_GPROGRAM_UNIFORM_BLOCK_DRAWENV, drawenv_ubo);
@@ -19358,8 +19531,8 @@ static n2_bool_t n2si_environemnt_draw_gui(n2_state_t* state, n2s_environment_t*
 
 		n2si_gprogram_attribute_apply(state, p);
 
-		glBufferData(GL_ARRAY_BUFFER, cnvvbuf->size_, cnvvbuf->data_, GL_STREAM_DRAW);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, cnvebuf->size_, cnvebuf->data_, GL_STREAM_DRAW);
+		glBufferData(GL_ARRAY_BUFFER, usevbuf->needed, usevbuf->memory.ptr, GL_STREAM_DRAW);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, useebuf->needed, useebuf->memory.ptr, GL_STREAM_DRAW);
 		N2SI_ASSERT_GL(state);
 
 		n2si_renderstate_apply(state, N2S_RENDERSTATE_2D_BLEND_ALPHA);
@@ -19560,12 +19733,12 @@ static void n2si_environment_present_window(n2_state_t* state, n2s_environment_t
 					ud->data_ = &uniform_transcolor;
 				}
 				n2s_guniform_block_drawenv_init(&drawenv);
-				n2_fmat4_ortho2d_to(&drawenv.p_mtx_, 0, 1, 0, 1, -1, 1);
-				n2_fmat4_copy_to(&drawenv.pv_mtx_, &drawenv.p_mtx_);
+				n2_fmat4_ortho2d_to(&drawenv.proj_matrix_, 0, 1, 0, 1, -1, 1);
+				n2_fmat4_copy_to(&drawenv.proj_veiw_matrix_, &drawenv.proj_matrix_);
 				dc.drawenv_ = &drawenv;
 			}
 
-			n2s_commandbuffer_rect_textured_rot(state, cb, n2_fvec3(0, 0, 0), n2_fvec2(0, 0), n2_fvec2(1, 1), N2S_COLOR_WHITE, &w->texturebuffer_->texture_, n2_fvec2(0, N2SI_FLIP_V(0)), n2_fvec2(1, N2SI_FLIP_V(1)), 0, 0, 0);
+			n2s_commandbuffer_d2rect_textured_rot(state, cb, n2_fvec3(0, 0, 0), n2_fvec2(0, 0), n2_fvec2(1, 1), N2S_U8COLOR_WHITE, &w->texturebuffer_->texture_, n2_fvec2(0, N2SI_FLIP_V(0)), n2_fvec2(1, N2SI_FLIP_V(1)), 0, 0, 0);
 			n2s_commandbuffer_flush_staging(state, cb);
 			n2si_environment_draw_commandbuffer(state, se, cb, &dc);
 			n2s_commandbuffer_clear(state, cb);
@@ -19600,12 +19773,12 @@ static void n2si_environment_present_window(n2_state_t* state, n2s_environment_t
 					ud->data_ = &uniform_transcolor;
 				}
 				n2s_guniform_block_drawenv_init(&drawenv);
-				n2_fmat4_ortho2d_to(&drawenv.p_mtx_, 0, 1, 0, 1, -1, 1);
-				n2_fmat4_copy_to(&drawenv.pv_mtx_, &drawenv.p_mtx_);
+				n2_fmat4_ortho2d_to(&drawenv.proj_matrix_, 0, 1, 0, 1, -1, 1);
+				n2_fmat4_copy_to(&drawenv.proj_veiw_matrix_, &drawenv.proj_matrix_);
 				dc.drawenv_ = &drawenv;
 			}
 
-			n2s_commandbuffer_rect_textured_rot(state, cb, n2_fvec3(0, 0, 0), n2_fvec2(0, 0), n2_fvec2(1, 1), N2S_COLOR_WHITE, &wtexturebuffer->texture_, n2_fvec2(0, N2SI_FLIP_V(0)), n2_fvec2(1, N2SI_FLIP_V(1)), 0, 0, 0);
+			n2s_commandbuffer_d2rect_textured_rot(state, cb, n2_fvec3(0, 0, 0), n2_fvec2(0, 0), n2_fvec2(1, 1), N2S_U8COLOR_WHITE, &wtexturebuffer->texture_, n2_fvec2(0, N2SI_FLIP_V(0)), n2_fvec2(1, N2SI_FLIP_V(1)), 0, 0, 0);
 			n2s_commandbuffer_flush_staging(state, cb);
 			n2si_environment_draw_commandbuffer(state, se, cb, &dc);
 			n2s_commandbuffer_clear(state, cb);
@@ -22417,7 +22590,7 @@ N2_API void n2_state_config_init_ex(n2_state_config_t* dst_config, size_t flags)
 	dst_config->standard_statup_window_shown_ = N2_TRUE;
 	dst_config->standard_window_resize_on_creation_workaround_ = N2_TRUE;
 
-	dst_config->standard_vertex_num_ = N2S_DEFAULT_STANDARD_VERTEX_NUM;
+	dst_config->standard_d2vertex_num_ = N2S_DEFAULT_STANDARD_D2VERTEX_NUM;
 	dst_config->standard_index_num_ = N2S_DEFAULT_STANDARD_INDEX_NUM;
 	dst_config->standard_command_num_ = N2S_DEFAULT_STANDARD_COMMAND_NUM;
 	dst_config->standard_command_data_num_ = N2S_DEFAULT_STANDARD_COMMAND_DATA_NUM;
@@ -27278,7 +27451,7 @@ static int n2si_bifunc_screen(const n2_funcarg_t* arg)
 		SDL_RaiseWindow(nw->window_);
 	}
 	N2_ASSERT(nw);
-	n2s_texture_fill_color(&nw->texturebuffer_->texture_, N2S_COLOR_WHITE);
+	n2s_texture_fill_color(&nw->texturebuffer_->texture_, N2S_U8COLOR_WHITE);
 	n2s_texture_submit(arg->state_, &nw->texturebuffer_->texture_, N2_TRUE);
 	se->selected_window_index_ = N2_SCAST(int, id);// 操作先を変更
 	n2si_environment_fullsync_gmode_commandbuffer(arg->state_, se, se->commandbuffer_);
@@ -27427,7 +27600,7 @@ static int n2si_bifunc_line_common(const n2_funcarg_t* arg, n2_bool_t independen
 	n2si_environment_checkout_draw_commandbuffer(arg->state_, se);
 	if (independent_gmode) { n2s_commandbuffer_set_program(arg->state_, se->commandbuffer_, N2S_GPROGRAM_2D); n2s_commandbuffer_set_renderstate(arg->state_, se->commandbuffer_, N2S_RENDERSTATE_2D_NOBLEND); }
 	const n2s_u8color_t c = n2s_u8color(nw->ginfo_r_, nw->ginfo_g_, nw->ginfo_b_, independent_gmode ? 255 : nw->ginfo_a_);
-	n2s_commandbuffer_line(arg->state_, se->commandbuffer_, n2_fvec3(N2_SCAST(float, sx), N2_SCAST(float, sy), 0), n2_fvec3(N2_SCAST(float, ex), N2_SCAST(float, ey), 0), c, 1);
+	n2s_commandbuffer_d2line(arg->state_, se->commandbuffer_, n2_fvec3(N2_SCAST(float, sx), N2_SCAST(float, sy), 0), n2_fvec3(N2_SCAST(float, ex), N2_SCAST(float, ey), 0), c, 1);
 	nw->posx_ = ex; nw->posy_ = ey;
 	return 0;
 }
@@ -27452,7 +27625,7 @@ static int n2si_bifunc_boxf_common(const n2_funcarg_t* arg, n2_bool_t independen
 	n2si_environment_checkout_draw_commandbuffer(arg->state_, se);
 	if (independent_gmode) { n2s_commandbuffer_set_program(arg->state_, se->commandbuffer_, N2S_GPROGRAM_2D); n2s_commandbuffer_set_renderstate(arg->state_, se->commandbuffer_, N2S_RENDERSTATE_2D_NOBLEND); }
 	const n2s_u8color_t c = n2s_u8color(nw->ginfo_r_, nw->ginfo_g_, nw->ginfo_b_, independent_gmode ? 255 : nw->ginfo_a_);
-	n2s_commandbuffer_rect(arg->state_, se->commandbuffer_, n2_fvec3(N2_SCAST(float, sx), N2_SCAST(float, sy), 0), n2_fvec3(N2_SCAST(float, ex + 1), N2_SCAST(float, ey + 1), 0), c);
+	n2s_commandbuffer_d2rect(arg->state_, se->commandbuffer_, n2_fvec3(N2_SCAST(float, sx), N2_SCAST(float, sy), 0), n2_fvec3(N2_SCAST(float, ex + 1), N2_SCAST(float, ey + 1), 0), c);
 	return 0;
 }
 static int n2si_bifunc_boxf(const n2_funcarg_t* arg) { return n2si_bifunc_boxf_common(arg, N2_TRUE); }
@@ -27480,8 +27653,8 @@ static int n2si_bifunc_circle_common(const n2_funcarg_t* arg, n2_bool_t independ
 	const n2s_u8color_t c = n2s_u8color(nw->ginfo_r_, nw->ginfo_g_, nw->ginfo_b_, independent_gmode ? 255 : nw->ginfo_a_);
 	const n2_fvec3_t center = n2_fvec3((N2_SCAST(float, sx) + N2_SCAST(float, ex)) * 0.5f, (N2_SCAST(float, sy) + N2_SCAST(float, ey)) * 0.5f, 0);
 	const n2_fvec2_t scale = n2_fvec2(N2_SCAST(float, ex) - N2_SCAST(float, sx), N2_SCAST(float, ey) - N2_SCAST(float, sy));
-	if (f) { n2s_commandbuffer_circle(arg->state_, se->commandbuffer_, center, scale, c, 64); }
-	else { n2s_commandbuffer_circle_wire(arg->state_, se->commandbuffer_, center, scale, c, 1, 64); }
+	if (f) { n2s_commandbuffer_d2circle(arg->state_, se->commandbuffer_, center, scale, c, 64); }
+	else { n2s_commandbuffer_d2circle_wire(arg->state_, se->commandbuffer_, center, scale, c, 1, 64); }
 	return 0;
 }
 static int n2si_bifunc_circle(const n2_funcarg_t* arg) { return n2si_bifunc_circle_common(arg, N2_TRUE); }
@@ -27510,7 +27683,7 @@ static int n2si_bifunc_grect(const n2_funcarg_t* arg)
 	const n2s_u8color_t c = n2s_u8color(nw->ginfo_r_, nw->ginfo_g_, nw->ginfo_b_, nw->ginfo_a_);
 	const n2_fvec3_t center = n2_fvec3(N2_SCAST(float, sx), N2_SCAST(float, sy), 0);
 	const n2_fvec2_t scale = n2_fvec2(N2_SCAST(float, w), N2_SCAST(float, h));
-	n2s_commandbuffer_rect_textured_rot(arg->state_, se->commandbuffer_, center, n2_fvec2(0.5f, 0.5f), scale, c, NULL, n2_fvec2(0, 0), n2_fvec2(0, 0), N2_SCAST(float, rot), 0, 0);
+	n2s_commandbuffer_d2rect_textured_rot(arg->state_, se->commandbuffer_, center, n2_fvec2(0.5f, 0.5f), scale, c, NULL, n2_fvec2(0, 0), n2_fvec2(0, 0), N2_SCAST(float, rot), 0, 0);
 	return 0;
 }
 
@@ -27550,7 +27723,7 @@ static int n2si_bifunc_gcopy(const n2_funcarg_t* arg)
 	n2_fvec2_t uv0 = n2_fvec2(N2_SCAST(float, sx) / N2_SCAST(float, srcw->width_), N2SI_FLIP_V(N2_SCAST(float, sy) / N2_SCAST(float, srcw->height_)));
 	n2_fvec2_t uv1 = n2_fvec2(N2_SCAST(float, sx + w) / N2_SCAST(float, srcw->width_), N2SI_FLIP_V(N2_SCAST(float, sy + h) / N2_SCAST(float, srcw->height_)));
 	if (psx >= N2_SCAST(n2_valint_t, nw->width_) || psy >= N2_SCAST(n2_valint_t, nw->height_) || pex < 0 || pey < 0) { return 0; }// 範囲外
-	n2s_commandbuffer_rect_textured_rot(arg->state_, se->commandbuffer_, n2_fvec3(N2_SCAST(float, psx), N2_SCAST(float, psy), 0), n2_fvec2(0, 0), n2_fvec2(N2_SCAST(float, w * wsign), N2_SCAST(float, h * hsign)), mulc, &srcw->texturebuffer_->texture_, uv0, uv1, 0, nw->width_, nw->height_);
+	n2s_commandbuffer_d2rect_textured_rot(arg->state_, se->commandbuffer_, n2_fvec3(N2_SCAST(float, psx), N2_SCAST(float, psy), 0), n2_fvec2(0, 0), n2_fvec2(N2_SCAST(float, w * wsign), N2_SCAST(float, h * hsign)), mulc, &srcw->texturebuffer_->texture_, uv0, uv1, 0, nw->width_, nw->height_);
 	return 0;
 }
 
@@ -27593,7 +27766,7 @@ static int n2si_bifunc_gzoom(const n2_funcarg_t* arg)
 	n2_fvec2_t uv0 = n2_fvec2(N2_SCAST(float, sx) / N2_SCAST(float, srcw->width_), N2SI_FLIP_V(N2_SCAST(float, sy) / N2_SCAST(float, srcw->height_)));
 	n2_fvec2_t uv1 = n2_fvec2(N2_SCAST(float, sx + w) / N2_SCAST(float, srcw->width_), N2SI_FLIP_V(N2_SCAST(float, sy + h) / N2_SCAST(float, srcw->height_)));
 	if (psx >= N2_SCAST(n2_valint_t, nw->width_) || psy >= N2_SCAST(n2_valint_t, nw->height_) || pex < 0 || pey < 0) { return 0; }// 範囲外
-	n2s_commandbuffer_rect_textured_rot(arg->state_, se->commandbuffer_, n2_fvec3(N2_SCAST(float, psx), N2_SCAST(float, psy), 0), n2_fvec2(0, 0), n2_fvec2(N2_SCAST(float, cw), N2_SCAST(float, ch)), mulc, &srcw->texturebuffer_->texture_, uv0, uv1, 0, nw->width_, nw->height_);
+	n2s_commandbuffer_d2rect_textured_rot(arg->state_, se->commandbuffer_, n2_fvec3(N2_SCAST(float, psx), N2_SCAST(float, psy), 0), n2_fvec2(0, 0), n2_fvec2(N2_SCAST(float, cw), N2_SCAST(float, ch)), mulc, &srcw->texturebuffer_->texture_, uv0, uv1, 0, nw->width_, nw->height_);
 	return 0;
 }
 
@@ -27635,7 +27808,7 @@ static int n2si_bifunc_grotate(const n2_funcarg_t* arg)
 	const n2s_u8color_t mulc = n2s_u8color(nw->ginfo_mulr_, nw->ginfo_mulg_, nw->ginfo_mulb_, nw->ginfo_a_);
 	n2_fvec2_t uv0 = n2_fvec2(N2_SCAST(float, sx) / N2_SCAST(float, srcw->width_), N2SI_FLIP_V(N2_SCAST(float, sy) / N2_SCAST(float, srcw->height_)));
 	n2_fvec2_t uv1 = n2_fvec2(N2_SCAST(float, sx + sw) / N2_SCAST(float, srcw->width_), N2SI_FLIP_V(N2_SCAST(float, sy + sh) / N2_SCAST(float, srcw->height_)));
-	n2s_commandbuffer_rect_textured_rot(arg->state_, se->commandbuffer_, n2_fvec3(N2_SCAST(float, psx), N2_SCAST(float, psy), 0), n2_fvec2(0.5f, 0.5f), n2_fvec2(N2_SCAST(float, w * wsign), N2_SCAST(float, h * hsign)), mulc, &srcw->texturebuffer_->texture_, uv0, uv1, N2_SCAST(float, rot), srcw->width_, srcw->height_);
+	n2s_commandbuffer_d2rect_textured_rot(arg->state_, se->commandbuffer_, n2_fvec3(N2_SCAST(float, psx), N2_SCAST(float, psy), 0), n2_fvec2(0.5f, 0.5f), n2_fvec2(N2_SCAST(float, w * wsign), N2_SCAST(float, h * hsign)), mulc, &srcw->texturebuffer_->texture_, uv0, uv1, N2_SCAST(float, rot), srcw->width_, srcw->height_);
 	return 0;
 }
 
@@ -27675,7 +27848,7 @@ static int n2si_bifunc_mes(const n2_funcarg_t* arg)
 		size_t flags = 0x00;
 		if (arg->state_->config_.standard_font_draw_pixel_perfect_) { flags |= N2S_TEXT_RENDER_FLAG_PIXEL_PERFECT; }
 		// 描画
-		n2s_commandbuffer_text_ex(arg->state_, se->commandbuffer_, pos, nw->draw_font_, str->str_, str->size_, nw->draw_font_height_, c, -1, flags, &bb, (nw->draw_font_style_ & N2S_WINDOW_DRAW_FONT_STYLE_ITALIC) ? nw->draw_font_height_ * 0.2f : 0, sw & (1 << N2S_MESOPT_SHADOW), n2s_u8color(nw->objcolor_r_, nw->objcolor_g_, nw->objcolor_b_, independent_draw ? 255 : nw->ginfo_a_), n2_fvec2(1, 1), n2_fvec2(1, 1), N2_FALSE, N2S_COLOR_BLACK, n2_fvec2(0, 0), n2_fvec2(0, 0));
+		n2s_commandbuffer_d2text_ex(arg->state_, se->commandbuffer_, pos, nw->draw_font_, str->str_, str->size_, nw->draw_font_height_, c, -1, flags, &bb, (nw->draw_font_style_ & N2S_WINDOW_DRAW_FONT_STYLE_ITALIC) ? nw->draw_font_height_ * 0.2f : 0, sw & (1 << N2S_MESOPT_SHADOW), n2s_u8color(nw->objcolor_r_, nw->objcolor_g_, nw->objcolor_b_, independent_draw ? 255 : nw->ginfo_a_), n2_fvec2(1, 1), n2_fvec2(1, 1), N2_FALSE, N2S_U8COLOR_BLACK, n2_fvec2(0, 0), n2_fvec2(0, 0));
 		// 次のカーソル
 		if (sw & (1 << N2S_MESOPT_NOCR)) { nw->posx_ += N2_SCAST(n2_valint_t, bb.x_); }
 		else { nw->posy_ += N2_SCAST(n2_valint_t, bb.y_); }
@@ -28101,8 +28274,8 @@ static int n2si_bifunc_loadimage_core(const n2_funcarg_t* arg, n2s_environment_t
 				}
 				else
 				{
-					n2s_texture_fill_color(&mw->texturebuffer_->texture_, f == 0 ? N2S_COLOR_WHITE : N2S_COLOR_BLACK);
-					n2s_texture_render_buffer(&mw->texturebuffer_->texture_, imagebuf, imagew, imageh, 0, 0, N2S_COLOR_WHITE);
+					n2s_texture_fill_color(&mw->texturebuffer_->texture_, f == 0 ? N2S_U8COLOR_WHITE : N2S_U8COLOR_BLACK);
+					n2s_texture_render_buffer(&mw->texturebuffer_->texture_, imagebuf, imagew, imageh, 0, 0, N2S_U8COLOR_WHITE);
 				}
 				n2s_texture_submit(arg->state_, &mw->texturebuffer_->texture_, N2_TRUE);
 				// draw cache
@@ -28120,8 +28293,8 @@ static int n2si_bifunc_loadimage_core(const n2_funcarg_t* arg, n2s_environment_t
 				}
 				else
 				{
-					n2s_texture_fill_color(&nw->texturebuffer_->texture_, f == 0 ? N2S_COLOR_WHITE : N2S_COLOR_BLACK);
-					n2s_texture_render_buffer(&nw->texturebuffer_->texture_, imagebuf, imagew, imageh, 0, 0, N2S_COLOR_WHITE);
+					n2s_texture_fill_color(&nw->texturebuffer_->texture_, f == 0 ? N2S_U8COLOR_WHITE : N2S_U8COLOR_BLACK);
+					n2s_texture_render_buffer(&nw->texturebuffer_->texture_, imagebuf, imagew, imageh, 0, 0, N2S_U8COLOR_WHITE);
 				}
 				n2s_texture_submit(arg->state_, &nw->texturebuffer_->texture_, N2_TRUE);
 				n2si_window_register(arg->state_, se, nw, window_index);
@@ -28137,7 +28310,7 @@ static int n2si_bifunc_loadimage_core(const n2_funcarg_t* arg, n2s_environment_t
 			if (nw)
 			{
 				n2s_texturebuffer_read(arg->state_, nw->texturebuffer_);
-				n2s_texture_render_buffer(&nw->texturebuffer_->texture_, imagebuf, imagew, imageh, N2_SCAST(int, nw->posx_), N2SI_FLIP_V_OR(N2_SCAST(int, nw->height_) - N2_SCAST(int, imageh) - N2_SCAST(int, nw->posy_), N2_SCAST(int, nw->posy_)), N2S_COLOR_WHITE);
+				n2s_texture_render_buffer(&nw->texturebuffer_->texture_, imagebuf, imagew, imageh, N2_SCAST(int, nw->posx_), N2SI_FLIP_V_OR(N2_SCAST(int, nw->height_) - N2_SCAST(int, imageh) - N2_SCAST(int, nw->posy_), N2_SCAST(int, nw->posy_)), N2S_U8COLOR_WHITE);
 				n2s_texture_submit(arg->state_, &nw->texturebuffer_->texture_, N2_TRUE);
 				n2si_window_sync_drawbuffer_from_texturebuffer(arg->state_, nw);
 				uw = nw;
@@ -28148,8 +28321,8 @@ static int n2si_bifunc_loadimage_core(const n2_funcarg_t* arg, n2s_environment_t
 				nw = n2si_window_alloc(arg->state_, se, N2S_WINDOW_OFFSCREEN, imagew, imageh, 0, N2_FALSE);
 				if (!nw) { n2e_funcarg_raise(arg, "%s：ウィンドウの再生成に失敗しました", label); res = -1; break; }
 				// texture buffer
-				n2s_texture_fill_color(&nw->texturebuffer_->texture_, f == 0 ? N2S_COLOR_WHITE : N2S_COLOR_BLACK);
-				n2s_texture_render_buffer(&nw->texturebuffer_->texture_, imagebuf, imagew, imageh, 0, 0, N2S_COLOR_WHITE);
+				n2s_texture_fill_color(&nw->texturebuffer_->texture_, f == 0 ? N2S_U8COLOR_WHITE : N2S_U8COLOR_BLACK);
+				n2s_texture_render_buffer(&nw->texturebuffer_->texture_, imagebuf, imagew, imageh, 0, 0, N2S_U8COLOR_WHITE);
 				n2s_texture_submit(arg->state_, &nw->texturebuffer_->texture_, N2_TRUE);
 				// draw cache
 				n2si_window_sync_drawbuffer_from_texturebuffer(arg->state_, nw);
@@ -28301,7 +28474,7 @@ static int n2si_bifunc_celput(const n2_funcarg_t* arg)
 	const n2s_u8color_t mulc = n2s_u8color(nw->ginfo_mulr_, nw->ginfo_mulg_, nw->ginfo_mulb_, nw->ginfo_a_);
 	n2_fvec2_t uv0 = n2_fvec2(N2_SCAST(float, sx) / N2_SCAST(float, bw->width_), N2SI_FLIP_V(N2_SCAST(float, sy) / N2_SCAST(float, bw->height_)));
 	n2_fvec2_t uv1 = n2_fvec2(N2_SCAST(float, sx + srcw) / N2_SCAST(float, bw->width_), N2SI_FLIP_V(N2_SCAST(float, sy + srch) / N2_SCAST(float, bw->height_)));
-	n2s_commandbuffer_rect_textured_rot(arg->state_, se->commandbuffer_, n2_fvec3(N2_SCAST(float, nw->posx_), N2_SCAST(float, nw->posy_), 0), n2_fvec2(bw->cel_offset_.x_ / N2_SCAST(float, srcw), bw->cel_offset_.y_ / N2_SCAST(float, srch)), n2_fvec2(N2_SCAST(float, srcw) * N2_SCAST(float, scalex), N2_SCAST(float, srch) * N2_SCAST(float, scaley)), mulc, &bw->texturebuffer_->texture_, uv0, uv1, N2_SCAST(float, rad), bw->width_, bw->height_);
+	n2s_commandbuffer_d2rect_textured_rot(arg->state_, se->commandbuffer_, n2_fvec3(N2_SCAST(float, nw->posx_), N2_SCAST(float, nw->posy_), 0), n2_fvec2(bw->cel_offset_.x_ / N2_SCAST(float, srcw), bw->cel_offset_.y_ / N2_SCAST(float, srch)), n2_fvec2(N2_SCAST(float, srcw) * N2_SCAST(float, scalex), N2_SCAST(float, srch) * N2_SCAST(float, scaley)), mulc, &bw->texturebuffer_->texture_, uv0, uv1, N2_SCAST(float, rad), bw->width_, bw->height_);
 	nw->posx_ += N2_SCAST(n2_valint_t, N2_SCAST(n2_valfloat_t, srcw) * scalex);
 	return 0;
 }

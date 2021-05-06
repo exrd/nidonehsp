@@ -171,6 +171,16 @@
 #define N2_CONFIG_USE_SDL_LIB					(0)
 #endif
 
+// OpenGLESを使う（未対応）
+#ifndef N2_CONFIG_USE_GLES
+#define N2_CONFIG_USE_GLES						(1)
+#endif
+
+// vulkanを使う（未対応）
+#ifndef N2_CONFIG_USE_VULKAN
+#define N2_CONFIG_USE_VULKAN					(0)
+#endif
+
 // lxmsgpack.hを有効
 #ifndef N2_CONFIG_USE_MSGPACK_LIB
 #define N2_CONFIG_USE_MSGPACK_LIB				(1)
@@ -533,7 +543,7 @@
 #define N2S_DEFAULT_WINDOW_WIDTH					(640)
 #define N2S_DEFAULT_WINDOW_HEIGHT					(480)
 
-#define N2S_DEFAULT_STANDARD_VERTEX_NUM				(128 * 1024)
+#define N2S_DEFAULT_STANDARD_D2VERTEX_NUM			(128 * 1024)
 #define N2S_DEFAULT_STANDARD_INDEX_NUM				(128 * 1024)
 #define N2S_DEFAULT_STANDARD_COMMAND_NUM			(4 * 1024)
 #define N2S_DEFAULT_STANDARD_COMMAND_DATA_NUM		(4 * 1024)
@@ -590,8 +600,10 @@ typedef struct SDL_Window SDL_Window;
 typedef struct SDL_Renderer SDL_Renderer;
 #endif
 
+#if N2_CONFIG_USE_GLES
 #include <SDL_opengles2_khrplatform.h>
 #include "embed/glad_gles3.h"
+#endif
 
 #define N2_SDL_OR(sdl, nosdl)	sdl
 
@@ -1526,6 +1538,8 @@ N2_VEC2_DECLARE(d, double);
 	N2_API n2_##prefix##vec3_t n2_##prefix##vec3_scale(const n2_##prefix##vec3_t lhs, type s); \
 	N2_API n2_##prefix##vec3_t n2_##prefix##vec3_lerp(const n2_##prefix##vec3_t lhs, const n2_##prefix##vec3_t rhs, type t); \
 	N2_API type n2_##prefix##vec3_dot(const n2_##prefix##vec3_t lhs, const n2_##prefix##vec3_t rhs); \
+	N2_API void n2_##prefix##vec3_cross_to(n2_##prefix##vec3_t* to, const n2_##prefix##vec3_t lhs, const n2_##prefix##vec3_t rhs); \
+	N2_API n2_##prefix##vec3_t n2_##prefix##vec3_cross(const n2_##prefix##vec3_t lhs, const n2_##prefix##vec3_t rhs); \
 	N2_API type n2_##prefix##vec3_length2(n2_##prefix##vec3_t lhs); \
 	N2_API type n2_##prefix##vec3_length(n2_##prefix##vec3_t lhs); \
 	N2_API type n2_##prefix##vec3_normalize_to(n2_##prefix##vec3_t* to, n2_##prefix##vec3_t from); \
@@ -1596,6 +1610,7 @@ N2_VEC4_DECLARE(d, double);
 	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_erotation_zyx(n2_##prefix##vec3_t rot_rads); \
 	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_erotation_xyz(n2_##prefix##vec3_t rot_rads); \
 	N2_API type n2_##prefix##quat4_decompose(n2_##prefix##vec3_t* axis, n2_##prefix##quat4_t q); \
+	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_nlerp(n2_##prefix##quat4_t lhs, n2_##prefix##quat4_t rhs, type t); \
 	N2_API n2_##prefix##quat4_t n2_##prefix##quat4_slerp(n2_##prefix##quat4_t lhs, n2_##prefix##quat4_t rhs, type t); \
 
 N2_QUAT4_DECLARE(f, float);
@@ -1637,6 +1652,7 @@ N2_QUAT4_DECLARE(d, double);
 	N2_API void n2_##prefix##mat4_scaling_to(n2_##prefix##mat4_t* to, n2_##prefix##vec3_t scale); \
 	N2_API void n2_##prefix##mat4_trs_to(n2_##prefix##mat4_t* to, n2_##prefix##vec3_t trans, n2_##prefix##vec3_t rot_rads, n2_##prefix##vec3_t scale); \
 	N2_API void n2_##prefix##mat4_tqs_to(n2_##prefix##mat4_t* to, n2_##prefix##vec3_t trans, n2_##prefix##quat4_t q, n2_##prefix##vec3_t scale); \
+	N2_API void n2_##prefix##mat4_lookat_to(n2_##prefix##mat4_t* to, n2_##prefix##vec3_t eye, n2_##prefix##vec3_t at, n2_##prefix##vec3_t yup, n2_bool_t view_matrix); \
 	N2_API void n2_##prefix##mat4_ortho2d_to(n2_##prefix##mat4_t* to, type left, type right, type top, type bottom, type z_near, type z_far); \
 	N2_API void n2_##prefix##mat4_ortho3d_to(n2_##prefix##mat4_t* to, type left, type right, type bottom, type top, type z_near, type z_far); \
 	N2_API void n2_##prefix##mat4_perspective_to(n2_##prefix##mat4_t* to, type fovy, type aspect, type z_near, type z_far); \
@@ -3689,6 +3705,20 @@ enum
 
 //=============================================================================
 // n2標準機能
+
+N2_DECLARE_ENUM(n2s_ginterface_e);
+enum n2s_ginterface_e
+{
+	N2S_GINTERFACE_UNKNOWN = -1,
+	N2S_GINTERFACE_GLES = 0,
+	N2S_GINTERFACE_VULKAN,
+
+	N2S_MAX_GINTERFACE
+};
+
+N2_API n2s_ginterface_e n2s_ginterface_find(const char* name, size_t length);
+N2_API const char* n2s_ginterface_name(n2s_ginterface_e gi, const char* on_failed);
+
 typedef union n2s_u8color_t n2s_u8color_t;
 union n2s_u8color_t
 {
@@ -3715,8 +3745,13 @@ N2_API n2s_fcolor_t n2s_u8color_to_fcolor(n2s_u8color_t u8color);
 N2_API n2s_fcolor_t n2s_hsv_to_fcolor(n2_fvec3_t hsv, float a);
 N2_API n2_fvec3_t n2s_fcolor_to_hsv(n2s_fcolor_t fcolor);
 
-typedef struct n2s_vertex_t n2s_vertex_t;
-struct n2s_vertex_t
+typedef uint32_t n2s_index_t;
+N2_DECLARE_TARRAY(n2s_index_t, n2s_indexarray, N2_API);
+
+N2_API n2_bool_t n2s_uv_clamp_pixel(n2_fvec2_t* uv0, n2_fvec2_t* uv1, size_t w, size_t h);
+
+typedef struct n2s_d2vertex_t n2s_d2vertex_t;
+struct n2s_d2vertex_t
 {
 	n2_fvec3_t position_;
 	n2_fvec2_t uv_;
@@ -3724,18 +3759,13 @@ struct n2s_vertex_t
 	n2_fvec4_t uv_clamp_;
 };
 
-N2_API n2_bool_t n2s_uv_clamp_pixel(n2_fvec2_t* uv0, n2_fvec2_t* uv1, size_t w, size_t h);
-N2_API void n2s_vertex_uv_clamp_to(n2s_vertex_t* dst, n2_fvec3_t position, n2_fvec2_t uv, n2s_u8color_t color, n2_fvec2_t uvc0, n2_fvec2_t uvc1);
-N2_API void n2s_vertex_to(n2s_vertex_t* dst, n2_fvec3_t position, n2_fvec2_t uv, n2s_u8color_t color);
-N2_API n2s_vertex_t n2s_vertex(n2_fvec3_t position, n2_fvec2_t uv, n2s_u8color_t color);
-N2_API void n2s_vertex_set_uv_clamp_direct_to(n2s_vertex_t* dst, n2_fvec2_t uv0, n2_fvec2_t uv1);
-N2_API void n2s_vertex_set_uv_clamp_pixel(n2s_vertex_t* dst, n2_fvec2_t uv0, n2_fvec2_t uv1, size_t w, size_t h);
+N2_API void n2s_d2vertex_uv_clamp_to(n2s_d2vertex_t* dst, n2_fvec3_t position, n2_fvec2_t uv, n2s_u8color_t color, n2_fvec2_t uvc0, n2_fvec2_t uvc1);
+N2_API void n2s_d2vertex_to(n2s_d2vertex_t* dst, n2_fvec3_t position, n2_fvec2_t uv, n2s_u8color_t color);
+N2_API n2s_d2vertex_t n2s_d2vertex(n2_fvec3_t position, n2_fvec2_t uv, n2s_u8color_t color);
+N2_API void n2s_d2vertex_set_uv_clamp_direct_to(n2s_d2vertex_t* dst, n2_fvec2_t uv0, n2_fvec2_t uv1);
+N2_API void n2s_d2vertex_set_uv_clamp_pixel(n2s_d2vertex_t* dst, n2_fvec2_t uv0, n2_fvec2_t uv1, size_t w, size_t h);
 
-N2_DECLARE_TARRAY(n2s_vertex_t, n2s_vertexarray, N2_API);
-
-typedef uint32_t n2s_index_t;
-
-N2_DECLARE_TARRAY(n2s_index_t, n2s_indexarray, N2_API);
+N2_DECLARE_TARRAY(n2s_d2vertex_t, n2s_d2vertexarray, N2_API);
 
 N2_DECLARE_ENUM(n2s_samplerfilter_e);
 enum n2s_samplerfilter_e
@@ -3759,9 +3789,13 @@ struct n2s_texture_t
 	size_t dirty_end_y_;
 	n2s_samplerfilter_e samplerfilter_;
 
+	size_t givalid_;
+
 	// SDL特有
 #if N2_CONFIG_USE_SDL_LIB
+#if N2_CONFIG_USE_GLES
 	GLuint gl_texture_;
+#endif
 #endif
 };
 
@@ -3785,7 +3819,10 @@ struct n2s_texturebuffer_t
 
 	// SDL特有
 #if N2_CONFIG_USE_SDL_LIB
+#if N2_CONFIG_USE_GLES
+	GLuint gl_depthtexture_;
 	GLuint gl_framebuffer_;
+#endif
 #endif
 };
 
@@ -3949,6 +3986,22 @@ enum n2s_gprogram_data_e
 	N2S_MAX_GPROGRAM_DATA
 };
 
+typedef struct n2s_gprogram_uniform_entry_t n2s_gprogram_uniform_entry_t;
+struct n2s_gprogram_uniform_entry_t
+{
+	size_t givalid_;
+	n2_str_t name_;
+
+#if N2_CONFIG_USE_SDL_LIB
+#if N2_CONFIG_USE_GLES
+	GLint gl_location_;
+#endif
+#endif
+};
+
+N2_API void n2s_gprogram_uniform_entry_init(n2s_gprogram_uniform_entry_t* ue);
+N2_API void n2s_gprogram_uniform_entry_teardown(n2_state_t* state, n2s_gprogram_uniform_entry_t* ue);
+
 N2_DECLARE_ENUM(n2s_gprogram_uniform_e);
 enum n2s_gprogram_uniform_e
 {
@@ -3972,12 +4025,29 @@ struct n2s_gprogram_uniform_data_t
 
 N2_API void n2s_gprogram_uniform_data_init(n2s_gprogram_uniform_data_t* uniform_data);
 
+typedef struct n2s_gprogram_uniform_block_entry_t n2s_gprogram_uniform_block_entry_t;
+struct n2s_gprogram_uniform_block_entry_t
+{
+	size_t givalid_;
+	n2_str_t name_;
+
+#if N2_CONFIG_USE_SDL_LIB
+#if N2_CONFIG_USE_GLES
+	GLint gl_location_;
+#endif
+#endif
+};
+
+N2_API void n2s_gprogram_uniform_block_entry_init(n2s_gprogram_uniform_block_entry_t* ube);
+N2_API void n2s_gprogram_uniform_block_entry_teardown(n2_state_t* state, n2s_gprogram_uniform_block_entry_t* ube);
+
 N2_DECLARE_ENUM(n2s_gprogram_uniform_block_e);
 enum n2s_gprogram_uniform_block_e
 {
 	N2S_GPROGRAM_UNIFORM_BLOCK_UNKNOWN = -1,
 	N2S_GPROGRAM_UNIFORM_BLOCK_DRAWENV = 0,
-	N2S_GPROGRAM_UNIFORM_BLOCK_D3ENV,
+	N2S_GPROGRAM_UNIFORM_BLOCK_G3ENV,
+	N2S_GPROGRAM_UNIFORM_BLOCK_D3MODEL,
 
 	N2S_MAX_GPROGRAM_UNIFORM_BLOCK
 };
@@ -3988,21 +4058,46 @@ N2_API const char* n2s_gprogram_uniform_block_name(n2s_gprogram_uniform_block_e 
 typedef struct n2s_guniform_block_drawenv_t n2s_guniform_block_drawenv_t;
 struct n2s_guniform_block_drawenv_t
 {
-	n2_fmat4_t v_mtx_;
-	n2_fmat4_t p_mtx_;
-	n2_fmat4_t pv_mtx_;
+	n2_fmat4_t view_matrix_;
+	n2_fmat4_t proj_matrix_;
+	n2_fmat4_t proj_veiw_matrix_;
 	n2_fvec4_t screen_param_;
 };
 
 N2_API void n2s_guniform_block_drawenv_init(n2s_guniform_block_drawenv_t* drawenv);
 N2_API void n2s_guniform_block_drawenv_set_screen_param(n2s_guniform_block_drawenv_t* drawenv, size_t width, size_t height);
 
-typedef struct n2s_guniform_block_d3env_t n2s_guniform_block_d3env_t;
-struct n2s_guniform_block_d3env_t
+typedef struct n2s_guniform_block_g3env_t n2s_guniform_block_g3env_t;
+struct n2s_guniform_block_g3env_t
 {
 	// @todo
-	n2_fvec4_t color_;
+	n2s_fcolor_t color_;
 };
+
+typedef struct n2s_guniform_block_d3model_t n2s_guniform_block_d3model_t;
+struct n2s_guniform_block_d3model_t
+{
+	n2_fmat4_t world_matrix_;
+	n2s_fcolor_t color_;
+};
+
+N2_API void n2s_guniform_block_d3model_init(n2s_guniform_block_d3model_t* d3model);
+
+typedef struct n2s_gprogram_attribute_entry_t n2s_gprogram_attribute_entry_t;
+struct n2s_gprogram_attribute_entry_t
+{
+	size_t givalid_;
+	n2_str_t name_;
+
+#if N2_CONFIG_USE_SDL_LIB
+#if N2_CONFIG_USE_GLES
+	GLint gl_location_;
+#endif
+#endif
+};
+
+N2_API void n2s_gprogram_attribute_entry_init(n2s_gprogram_attribute_entry_t* ae);
+N2_API void n2s_gprogram_attribute_entry_teardown(n2_state_t* state, n2s_gprogram_attribute_entry_t* ae);
 
 N2_DECLARE_ENUM(n2s_gprogram_attribute_e);
 enum n2s_gprogram_attribute_e
@@ -4026,14 +4121,18 @@ struct n2s_gprogram_t
 
 	n2_str_t last_error_;
 
+	size_t givalid_;
+
 #if N2_CONFIG_USE_SDL_LIB
+	n2s_gprogram_uniform_entry_t uniforms_[N2S_MAX_GPROGRAM_UNIFORM];
+	n2s_gprogram_uniform_block_entry_t uniform_blocks_[N2S_MAX_GPROGRAM_UNIFORM_BLOCK];
+	n2s_gprogram_attribute_entry_t attributes_[N2S_MAX_GPROGRAM_ATTRIBUTE];
+
+#if N2_CONFIG_USE_GLES
 	GLuint gl_vsh_;
 	GLuint gl_fsh_;
 	GLuint gl_program_;
-
-	GLint gl_ulocation_[N2S_MAX_GPROGRAM_UNIFORM];
-	GLint gl_ublocation_[N2S_MAX_GPROGRAM_UNIFORM_BLOCK];
-	GLint gl_alocation_[N2S_MAX_GPROGRAM_ATTRIBUTE];
+#endif
 #endif
 };
 
@@ -4046,8 +4145,9 @@ N2_API n2_bool_t n2s_gprogram_is_loaded(const n2s_gprogram_t* program);
 typedef struct n2s_gprogram_draw_cache_t n2s_gprogram_draw_cache_t;
 struct n2s_gprogram_draw_cache_t
 {
-	size_t u_cached_;
-	size_t ub_cached_;
+	// @todo command buffer revision index
+	size_t u_staled_;
+	size_t ub_staled_;
 };
 
 N2_API void n2s_gprogram_draw_cache_reset(n2s_gprogram_draw_cache_t* pdc);
@@ -4252,7 +4352,7 @@ N2_API void n2s_commandbuffer_staging_state_reset(n2s_commandbuffer_staging_stat
 typedef struct n2s_commandbuffer_t n2s_commandbuffer_t;
 struct n2s_commandbuffer_t
 {
-	n2s_vertexarray_t* vertexarray_;
+	n2s_d2vertexarray_t* d2vertexarray_;
 	n2s_indexarray_t* indexarray_;
 	n2s_commandarray_t* commandarray_;
 	n2_u32array_t* commanddataarray_;
@@ -4260,18 +4360,18 @@ struct n2s_commandbuffer_t
 	n2s_commandbuffer_staging_state_t staging_;
 };
 
-N2_API n2s_commandbuffer_t* n2s_commandbuffer_alloc(n2_state_t* state, size_t max_command_num, size_t max_vertex_num, size_t max_index_num, size_t max_data_num);
+N2_API n2s_commandbuffer_t* n2s_commandbuffer_alloc(n2_state_t* state, size_t max_command_num, size_t max_d2vertex_num, size_t max_index_num, size_t max_data_num);
 N2_API void n2s_commandbuffer_free(n2_state_t* state, n2s_commandbuffer_t* cb);
 N2_API void n2s_commandbuffer_clear(n2_state_t* state, n2s_commandbuffer_t* cb);
 N2_API size_t n2s_commandbuffer_command_size(const n2s_commandbuffer_t* cb);
-N2_API size_t n2s_commandbuffer_vertex_size(const n2s_commandbuffer_t* cb);
+N2_API size_t n2s_commandbuffer_d2vertex_size(const n2s_commandbuffer_t* cb);
 N2_API size_t n2s_commandbuffer_index_size(const n2s_commandbuffer_t* cb);
 N2_API n2s_command_t* n2s_commandbuffer_add_command(n2_state_t* state, n2s_commandbuffer_t* cb, size_t num);
 N2_API n2_bool_t n2s_commandbuffer_flush_staging(n2_state_t* state, n2s_commandbuffer_t* cb);
-N2_API n2_bool_t n2s_commandbuffer_add_command_draw(n2_state_t* state, n2s_commandbuffer_t* cb, size_t vertex_num, size_t index_num);
+N2_API n2_bool_t n2s_commandbuffer_add_command_draw_d2(n2_state_t* state, n2s_commandbuffer_t* cb, size_t d2vertex_num, size_t index_num);
 N2_API n2_bool_t n2s_commandbuffer_add_command_program(n2_state_t* state, n2s_commandbuffer_t* cb, n2s_gprogram_e program);
 N2_API n2_bool_t n2s_commandbuffer_add_command_renderstate(n2_state_t* state, n2s_commandbuffer_t* cb, n2s_renderstate_e renderstate);
-N2_API n2s_vertex_t* n2s_commandbuffer_alloc_vertex(n2_state_t* state, n2s_commandbuffer_t* cb, size_t num);
+N2_API n2s_d2vertex_t* n2s_commandbuffer_alloc_d2vertex(n2_state_t* state, n2s_commandbuffer_t* cb, size_t num);
 N2_API n2s_index_t* n2s_commandbuffer_alloc_index(n2_state_t* state, n2s_commandbuffer_t* cb, size_t num);
 N2_API uint32_t* n2s_commandbuffer_alloc_commanddata(n2_state_t* state, n2s_commandbuffer_t* cb, size_t num);
 N2_API size_t n2s_commandbuffer_add_commanddata(n2_state_t* state, n2s_commandbuffer_t* cb, const void* data, size_t bytesize);
@@ -4282,27 +4382,27 @@ N2_API n2_bool_t n2s_commandbuffer_set_renderstate(n2_state_t* state, n2s_comman
 N2_API n2_bool_t n2s_commandbuffer_set_texture(n2_state_t* state, n2s_commandbuffer_t* cb, const n2s_texture_t* texture);
 N2_API n2_bool_t n2s_commandbuffer_set_transcolor(n2_state_t* state, n2s_commandbuffer_t* cb, n2s_u8color_t transcolor);
 
-N2_API void n2s_commandbuffer_triangle_textured_colored(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t v0, n2_fvec3_t v1, n2_fvec3_t v2, const n2s_texture_t* texture, n2_fvec2_t uv0, n2_fvec2_t uv1, n2_fvec2_t uv2, n2s_u8color_t c0, n2s_u8color_t c1, n2s_u8color_t c2);
-N2_API void n2s_commandbuffer_triangle_textured(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t v0, n2_fvec3_t v1, n2_fvec3_t v2, const n2s_texture_t* texture, n2_fvec2_t uv0, n2_fvec2_t uv1, n2_fvec2_t uv2, n2s_u8color_t color);
-N2_API void n2s_commandbuffer_triangle_colored(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t v0, n2_fvec3_t v1, n2_fvec3_t v2, n2s_u8color_t c0, n2s_u8color_t c1, n2s_u8color_t c2);
-N2_API void n2s_commandbuffer_triangle(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t v0, n2_fvec3_t v1, n2_fvec3_t v2, n2s_u8color_t color);
-N2_API void n2s_commandbuffer_line(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t start, n2_fvec3_t end, n2s_u8color_t color, float thickness);
-N2_API void n2s_commandbuffer_rect(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t left_top, n2_fvec3_t right_bottom, n2s_u8color_t color);
+N2_API void n2s_commandbuffer_d2triangle_textured_colored(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t v0, n2_fvec3_t v1, n2_fvec3_t v2, const n2s_texture_t* texture, n2_fvec2_t uv0, n2_fvec2_t uv1, n2_fvec2_t uv2, n2s_u8color_t c0, n2s_u8color_t c1, n2s_u8color_t c2);
+N2_API void n2s_commandbuffer_d2triangle_textured(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t v0, n2_fvec3_t v1, n2_fvec3_t v2, const n2s_texture_t* texture, n2_fvec2_t uv0, n2_fvec2_t uv1, n2_fvec2_t uv2, n2s_u8color_t color);
+N2_API void n2s_commandbuffer_d2triangle_colored(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t v0, n2_fvec3_t v1, n2_fvec3_t v2, n2s_u8color_t c0, n2s_u8color_t c1, n2s_u8color_t c2);
+N2_API void n2s_commandbuffer_d2triangle(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t v0, n2_fvec3_t v1, n2_fvec3_t v2, n2s_u8color_t color);
+N2_API void n2s_commandbuffer_d2line(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t start, n2_fvec3_t end, n2s_u8color_t color, float thickness);
+N2_API void n2s_commandbuffer_d2rect(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t left_top, n2_fvec3_t right_bottom, n2s_u8color_t color);
 //N2_API void n2s_commandbuffer_roundrect_ex(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t position, n2_fvec2_t pivot, n2_fvec2_t scale, n2s_u8color_t color, float rad, float rounding, size_t rounding_corners, size_t rounding_division);
-N2_API void n2s_commandbuffer_rect_textured_rot(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t position, n2_fvec2_t pivot, n2_fvec2_t scale, n2s_u8color_t color, const n2s_texture_t* texture, n2_fvec2_t left_top_uv, n2_fvec2_t right_bottom_uv, float rad, size_t w, size_t h);
-N2_API void n2s_commandbuffer_rect_textured_rotskew(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t position, n2_fvec2_t pivot, n2_fvec2_t scale, n2s_u8color_t color, const n2s_texture_t* texture, n2_fvec2_t left_top_uv, n2_fvec2_t right_bottom_uv, float rad, n2_fvec2_t topskew, n2_fvec2_t bottomskew, size_t w, size_t h);
-N2_API void n2s_commandbuffer_circle_wire(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t center, n2_fvec2_t scale, n2s_u8color_t color, float thickness, size_t div);
-N2_API void n2s_commandbuffer_circle(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t center, n2_fvec2_t scale, n2s_u8color_t color, size_t div);
+N2_API void n2s_commandbuffer_d2rect_textured_rot(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t position, n2_fvec2_t pivot, n2_fvec2_t scale, n2s_u8color_t color, const n2s_texture_t* texture, n2_fvec2_t left_top_uv, n2_fvec2_t right_bottom_uv, float rad, size_t w, size_t h);
+N2_API void n2s_commandbuffer_d2rect_textured_rotskew(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t position, n2_fvec2_t pivot, n2_fvec2_t scale, n2s_u8color_t color, const n2s_texture_t* texture, n2_fvec2_t left_top_uv, n2_fvec2_t right_bottom_uv, float rad, n2_fvec2_t topskew, n2_fvec2_t bottomskew, size_t w, size_t h);
+N2_API void n2s_commandbuffer_d2circle_wire(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t center, n2_fvec2_t scale, n2s_u8color_t color, float thickness, size_t div);
+N2_API void n2s_commandbuffer_d2circle(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t center, n2_fvec2_t scale, n2s_u8color_t color, size_t div);
 
-N2_API n2_bool_t n2s_commandbuffer_text_units(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t begin, n2s_font_t* font, const char* str, size_t str_length, float height, const n2s_text_render_unit_t* units, size_t unit_num, float wrap_width, size_t flags, n2_fvec2_t* dst_bb);
-N2_API n2_bool_t n2s_commandbuffer_text(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t begin, n2s_font_t* font, const char* str, size_t str_length, float height, n2s_u8color_t color, float wrap_width, size_t flags, n2_fvec2_t* dst_bb);
-N2_API n2_bool_t n2s_commandbuffer_text_ex(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t begin, n2s_font_t* font, const char* str, size_t str_length, float height, n2s_u8color_t color, float wrap_width, size_t flags, n2_fvec2_t* dst_bb, float topskew, n2_bool_t dropshadow, n2s_u8color_t dscolor, n2_fvec2_t dsscale, n2_fvec2_t dsoffset, n2_bool_t outline, n2s_u8color_t olcolor, n2_fvec2_t olscale, n2_fvec2_t oloffset);
+N2_API n2_bool_t n2s_commandbuffer_d2text_units(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t begin, n2s_font_t* font, const char* str, size_t str_length, float height, const n2s_text_render_unit_t* units, size_t unit_num, float wrap_width, size_t flags, n2_fvec2_t* dst_bb);
+N2_API n2_bool_t n2s_commandbuffer_d2text(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t begin, n2s_font_t* font, const char* str, size_t str_length, float height, n2s_u8color_t color, float wrap_width, size_t flags, n2_fvec2_t* dst_bb);
+N2_API n2_bool_t n2s_commandbuffer_d2text_ex(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t begin, n2s_font_t* font, const char* str, size_t str_length, float height, n2s_u8color_t color, float wrap_width, size_t flags, n2_fvec2_t* dst_bb, float topskew, n2_bool_t dropshadow, n2s_u8color_t dscolor, n2_fvec2_t dsscale, n2_fvec2_t dsoffset, n2_bool_t outline, n2s_u8color_t olcolor, n2_fvec2_t olscale, n2_fvec2_t oloffset);
 
 typedef struct n2s_commandbuffer_draw_cache_t n2s_commandbuffer_draw_cache_t;
 struct n2s_commandbuffer_draw_cache_t
 {
 	const n2s_guniform_block_drawenv_t* drawenv_;
-	const n2s_guniform_block_d3env_t* d3env_;
+	const n2s_guniform_block_g3env_t* g3env_;
 
 	int program_;
 	const n2s_texture_t* texture_;
@@ -4530,6 +4630,8 @@ struct n2s_window_t
 #if N2_CONFIG_USE_GUI_LIB
 	struct nk_context* nk_context_;
 	struct nk_buffer* nk_cmd_buf_;
+	struct nk_buffer* nk_vtx_buf_;
+	struct nk_buffer* nk_idx_buf_;
 #endif
 };
 
@@ -4575,6 +4677,8 @@ struct n2s_environment_t
 
 	// SDL特有
 #if N2_CONFIG_USE_SDL_LIB
+
+#if N2_CONFIG_USE_GLES
 	void* gl_context_;
 
 	GLuint gl_cb_vbo_;
@@ -4589,6 +4693,7 @@ struct n2s_environment_t
 	n2_buffer_t gui_cmd_buf_;
 	n2_buffer_t gui_vbo_buf_;
 	n2_buffer_t gui_ebo_buf_;
+#endif
 
 	n2s_texture_t* white_texture_;
 	n2s_texture_t* black_texture_;
@@ -5047,7 +5152,7 @@ struct n2_state_config_t
 	n2_bool_t standard_window_resize_on_creation_workaround_;// = N2_TRUE
 
 	// コマンドバッファ
-	size_t standard_vertex_num_;// = N2S_DEFAULT_STANDARD_VERTEX_NUM
+	size_t standard_d2vertex_num_;// = N2S_DEFAULT_STANDARD_D2VERTEX_NUM
 	size_t standard_index_num_;// = N2S_DEFAULT_STANDARD_INDEX_NUM
 	size_t standard_command_num_;// = N2S_DEFAULT_STANDARD_COMMAND_NUM
 	size_t standard_command_data_num_;// = N2S_DEFAULT_STANDARD_COMMAND_DATA_NUM
