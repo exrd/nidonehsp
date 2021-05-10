@@ -55,5 +55,41 @@ repeat 16
 	loop
 	print@n2 "."
 loop
-mes
+mes ""
+
+mes "sortnote"
+repeat 16
+	test = cnt
+	num = rnd(10) + 4
+	sdim a, 128, num
+	repeat num
+		s = ""
+		repeat rnd(16) + 5
+			s += strf("%U", rnd(25) + 65)
+		loop
+		a(cnt) = s
+	loop
+	lines = ""
+	repeat num
+		lines += a(cnt) + "\n"
+	loop
+	sortstr a// ground truth
+	sortnote lines
+	notesel lines
+	if (notemax < num) { raise }
+	repeat num
+		noteget line, cnt
+		if (a(cnt) != line) { mes strf("sortnote [%d] %s != %s", cnt, a(cnt), line) : raise }
+	loop
+	print@n2 "."
+loop
+mes ""
+
+#if 0
+a = "abc\nab\nzde\ndef"
+mes a
+mes ""
+sortnote a
+mes a
+#endif
 

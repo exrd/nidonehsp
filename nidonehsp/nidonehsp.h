@@ -837,6 +837,20 @@ N2_API n2_bool_t n2_encoding_cp932_convert_to_utf8(n2_state_t* state, n2_str_t* 
 N2_API int n2_snprintf(char* buf, size_t bufsize, const char* fmt, ...);
 N2_API int n2_vsnprintf(char* buf, size_t bufsize, const char* fmt, va_list args);
 
+typedef struct n2_plstr_span_t n2_plstr_span_t;
+struct n2_plstr_span_t
+{
+	char* p_;
+	size_t size_;
+};
+
+typedef struct n2_plstr_view_t n2_plstr_view_t;
+struct n2_plstr_view_t
+{
+	const char* p_;
+	size_t size_;
+};
+
 N2_API char* n2_plstr_clone_size(n2_state_t* state, const char* s, size_t l);
 N2_API char* n2_plstr_clone(n2_state_t* state, const char* s);
 N2_API int n2_plstr_ncmp_sized(const char* lhs, size_t lhs_length, const char* rhs, size_t rhs_length);// 辞書順
@@ -1458,6 +1472,7 @@ N2_DECLARE_TARRAY(uint32_t, n2_u32array, N2_API);
 N2_DECLARE_TARRAY(size_t, n2_szarray, N2_API);
 N2_DECLARE_TARRAY(char*, n2_plstrarray, N2_API);
 N2_DECLARE_TARRAY(char*, n2_cstrarray, N2_API);
+N2_DECLARE_TARRAY(n2_plstr_view_t, n2_plstrviewarray, N2_API);
 N2_DECLARE_TSORTED_ARRAY(char*, void, char, n2_plstrset, N2_API);
 N2_DECLARE_TSORTED_ARRAY(void*, void, void*, n2_ptrset, N2_API);
 
@@ -4925,8 +4940,9 @@ struct n2_fiber_t
 	n2_valint_t looplev_;
 
 	// sortの元インデックスなど
-	n2_intarray_t* sort_indices_;
-	n2_intarray_t* sort_fill_;
+	n2_intarray_t sort_indices_;
+	n2_intarray_t sort_fill_;
+	n2_plstrviewarray_t sort_notelines_;
 
 	// easing
 	n2_valint_t ease_type_;

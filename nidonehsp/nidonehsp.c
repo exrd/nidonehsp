@@ -592,7 +592,8 @@ static void n2i_do_error(n2_state_t* state, n2_error_e e, const n2_sourcecode_t*
 
 //=============================================================================
 // メモリユーティリティ
-N2_API void n2_swap(void* l, void* r, size_t size)
+#if 0
+static void n2i_swap_tight(void* l, void* r, size_t size)
 {
 	uint8_t* u = N2_RCAST(uint8_t*, l);
 	uint8_t* v = N2_RCAST(uint8_t*, r);
@@ -602,6 +603,26 @@ N2_API void n2_swap(void* l, void* r, size_t size)
 		*u = *v;
 		*v = t;
 	}
+}
+#endif
+
+N2_API void n2_swap(void* l, void* r, size_t size)
+{
+#define N2I_SWAP_TBUFFER	(64)
+	uint8_t t[N2I_SWAP_TBUFFER];
+	size_t i = 0;
+
+	while (i < size)
+	{
+		const size_t block = N2_MIN(size - i, N2I_SWAP_TBUFFER);
+		void* lp = n2_ptr_offset(l, i);
+		void* rp = n2_ptr_offset(r, i);
+		N2_MEMCPY(t, lp, block);
+		N2_MEMMOVE(lp, rp, block);
+		N2_MEMCPY(rp, t, block);
+		i += block;
+	}
+#undef N2I_SWAP_TBUFFER
 }
 
 N2_API void* n2_ptr_offset(void* p, ptrdiff_t offset)
@@ -3084,6 +3105,8 @@ static int n2i_plstarray_matchfunc(const n2_array_t* a, const void* strkey, cons
 }
 N2_DEFINE_TARRAY(char*, n2_plstrarray, N2_API, n2i_setupfunc_nothing, n2i_plstr_freefunc);
 N2_DEFINE_TARRAY(char*, n2_cstrarray, N2_API, n2i_setupfunc_nothing, n2i_freefunc_nothing);
+
+N2_DEFINE_TARRAY(n2_plstr_view_t, n2_plstrviewarray, N2_API, n2i_setupfunc_nothing, n2i_freefunc_nothing);
 
 static int n2i_plstrset_cmpfunc(const n2_sorted_array_t* a, const void* lkey, const void* rkey, const void* key)
 {
@@ -20175,8 +20198,9 @@ N2_API n2_fiber_t* n2_fiber_alloc(n2_state_t* state, n2_environment_t* e, int id
 	fiber->refstr_ = n2_str_alloc(state, 1024);
 	fiber->strsize_ = 0;
 	fiber->looplev_ = 0;
-	fiber->sort_indices_ = n2_intarray_alloc(state, 0, 0);
-	fiber->sort_fill_ = n2_intarray_alloc(state, 0, 0);
+	n2_intarray_setup(state, &fiber->sort_indices_, 0, 0);
+	n2_intarray_setup(state, &fiber->sort_fill_, 0, 0);
+	n2_plstrviewarray_setup(state, &fiber->sort_notelines_, 0, 0);
 	fiber->ease_type_ = N2_EASE_LINEAR;
 	fiber->ease_start_ = 0;
 	fiber->ease_end_ = 1;
@@ -20227,8 +20251,9 @@ N2_API void n2_fiber_free(n2_state_t* state, n2_fiber_t* fiber)
 	for (size_t i = 0; i < N2_ARRAYDIM(fiber->debugvarsysvarelements_); ++i) { if (fiber->debugvarsysvarelements_[i]) { n2_debugvarpool_push(state, fiber->debugvarpool_, fiber->debugvarsysvarelements_[i]); fiber->debugvarsysvarelements_[i] = NULL; } }
 	fiber->debugvarpool_ = NULL;
 #endif
-	n2_intarray_free(state, fiber->sort_fill_);
-	n2_intarray_free(state, fiber->sort_indices_);
+	n2_intarray_teardown(state, &fiber->sort_fill_);
+	n2_intarray_teardown(state, &fiber->sort_indices_);
+	n2_plstrviewarray_teardown(state, &fiber->sort_notelines_);
 	n2_str_free(state, fiber->refstr_);
 	n2_shortframearray_free(state, fiber->shortframes_);
 	n2_callframearray_free(state, fiber->callframes_);
@@ -25511,7 +25536,7 @@ static int n2i_bifunc_sort_common(const n2_funcarg_t* arg, const char* label, n2
 	{
 		if (valtype != N2_VALUE_INT && valtype != N2_VALUE_FLOAT)
 		{
-			n2e_funcarg_raise(arg, "%s：対象の変数の型が想定と違います", label);
+			n2e_funcarg_raise(arg, "%s：対象の変数の型が想定（整数または実数）と違います", label);
 			return -1;
 		}
 	}
@@ -25519,7 +25544,7 @@ static int n2i_bifunc_sort_common(const n2_funcarg_t* arg, const char* label, n2
 	{
 		if (valtype != N2_VALUE_STRING)
 		{
-			n2e_funcarg_raise(arg, "%s：対象の変数の型が想定と違います", label);
+			n2e_funcarg_raise(arg, "%s：対象の変数の型が想定（文字列）と違います", label);
 			return -1;
 		}
 	}
@@ -25533,8 +25558,8 @@ static int n2i_bifunc_sort_common(const n2_funcarg_t* arg, const char* label, n2
 	}
 
 	const size_t len = var->length_[0];
-	n2_intarray_t* indices = arg->fiber_->sort_indices_;
-	n2_intarray_t* fills = arg->fiber_->sort_fill_;
+	n2_intarray_t* indices = &arg->fiber_->sort_indices_;
+	n2_intarray_t* fills = &arg->fiber_->sort_fill_;
 	n2_intarray_clear(arg->state_, indices); n2_intarray_clear(arg->state_, fills);
 	n2_intarray_reserve(arg->state_, indices, len); n2_intarray_reserve(arg->state_, fills, len);
 	for (size_t i = 0; i < len; ++i)
@@ -25584,6 +25609,107 @@ static int n2i_bifunc_sort_common(const n2_funcarg_t* arg, const char* label, n2
 static int n2i_bifunc_sortval(const n2_funcarg_t* arg) { return n2i_bifunc_sort_common(arg, "sortval", N2_TRUE); }
 static int n2i_bifunc_sortstr(const n2_funcarg_t* arg) { return n2i_bifunc_sort_common(arg, "sortstr", N2_FALSE); }
 
+typedef struct n2i_sortnote_ctx_t n2i_sortnote_ctx_t;
+struct n2i_sortnote_ctx_t
+{
+	n2_bool_t is_reverse_;
+	const n2_plstrviewarray_t* lines_;
+};
+
+static int n2i_sortnote_cmpfunc(const n2_array_t* a, const void* lkey, const void* rkey, const void* key)
+{
+	N2_UNUSE(a);
+	const n2i_sortnote_ctx_t* ctx = N2_RCAST(const n2i_sortnote_ctx_t*, key);
+	const int lindex = *N2_RCAST(const int*, lkey);
+	const int rindex = *N2_RCAST(const int*, rkey);
+	const n2_plstr_view_t* lline = n2_plstrviewarray_peekc(ctx->lines_, lindex);
+	const n2_plstr_view_t* rline = n2_plstrviewarray_peekc(ctx->lines_, rindex);
+	int cmp = n2_plstr_ncmp_sized(lline->p_, lline->size_, rline->p_, rline->size_);
+	if (cmp == 0) { cmp = lindex - rindex; }// make it stable
+	if (ctx->is_reverse_) { cmp = -cmp; }
+	return cmp;
+}
+
+static int n2i_bifunc_sortnote(const n2_funcarg_t* arg)
+{
+	const char* label = "sortnote";
+	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	if (arg_num < 1 || arg_num > 2) { n2e_funcarg_raise(arg, "%s：引数の数（%d）が期待（%d - %d）と違います", label, arg_num, 1, 2); return -1; }
+
+	const n2_value_t* varval = n2e_funcarg_getarg(arg, 0);
+	if (varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "%s：対象が変数ではありません", label); return -1; }
+	n2_variable_t* var = varval->field_.varvalue_.var_;
+	n2_str_t* varstr = n2_variable_get_str(var, varval->field_.varvalue_.aptr_);
+	if (var->type_ != N2_VALUE_STRING || !varstr)
+	{
+		n2e_funcarg_raise(arg, "%s：対象の変数の型が想定（文字列）と違います", label);
+		return -1;
+	}
+
+	const size_t varstrsize = n2_str_compute_size(varstr);
+
+	n2_bool_t is_reverse = N2_FALSE;
+	if (arg_num > 1)
+	{
+		const n2_value_t* rval = n2e_funcarg_getarg(arg, 1);
+		const n2_valint_t ri = n2e_funcarg_eval_int(arg, rval);
+		is_reverse = ri == 0 ? N2_FALSE : N2_TRUE;
+	}
+
+	n2_intarray_t* indices = &arg->fiber_->sort_indices_;
+	n2_plstrviewarray_t* lines = &arg->fiber_->sort_notelines_;
+	n2_intarray_clear(arg->state_, indices); n2_plstrviewarray_clear(arg->state_, lines);
+
+	// 改行区切りで全部取り出す
+	{
+		int line_num = 0;
+		const char* str = varstr->str_;
+		size_t last_head = 0;
+		n2_plstr_view_t line_view;
+
+		for (size_t i = 0; i < varstrsize + 1; ++i)
+		{
+			if (str[i] == '\n' || i == varstrsize)
+			{
+				n2_intarray_pushv(arg->state_, indices, line_num);
+				line_view.p_ = str + last_head;
+				line_view.size_ = i - last_head;
+				n2_plstrviewarray_push(arg->state_, lines, &line_view);
+				last_head = i + 1;
+				++i;
+				++line_num;
+			}
+		}
+	}
+
+	n2i_sortnote_ctx_t ctx;
+	ctx.is_reverse_ = is_reverse;
+	ctx.lines_ = lines;
+	n2i_array_heapsort(indices, n2i_sortnote_cmpfunc, &ctx);
+
+	// 新しく生成しなおして、新しく作り、中身を直接交換
+	{
+		n2_str_t* nstr = n2e_funcarg_pushs(arg, "");
+		n2_str_reserve(arg->state_, nstr, varstrsize + 4);
+
+		for (size_t i = 0, l = n2_intarray_size(indices); i < l; ++i)
+		{
+			const int index = n2_intarray_peekv(indices, N2_SCAST(int, i), 0);
+			const n2_plstr_view_t* line = n2_plstrviewarray_peekc(lines, index);
+			N2_ASSERT(line);
+			if (line)
+			{
+				n2_str_append(arg->state_, nstr, line->p_, line->size_);
+				n2_str_append(arg->state_, nstr, "\n", 1);
+			}
+		}
+
+		n2_str_swap(varstr, nstr);
+	}
+
+	return 0;
+}
+
 static int n2i_bifunc_sortget(const n2_funcarg_t* arg)
 {
 	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
@@ -25596,11 +25722,11 @@ static int n2i_bifunc_sortget(const n2_funcarg_t* arg)
 	const n2_value_t* indexval = n2e_funcarg_getarg(arg, 1);
 	const n2_valint_t index = n2e_funcarg_eval_int(arg, indexval);
 
-	if (index < 0 || index >= N2_SCAST(n2_valint_t, n2_intarray_size(arg->fiber_->sort_indices_))) { n2e_funcarg_raise(arg, "sortget：取得しようとしたインデックス（%" N2_VALINT_PRI "）が配列の範囲（%zu）を超えています", index, n2_intarray_size(arg->fiber_->sort_indices_)); return -1; }
+	if (index < 0 || index >= N2_SCAST(n2_valint_t, n2_intarray_size(&arg->fiber_->sort_indices_))) { n2e_funcarg_raise(arg, "sortget：取得しようとしたインデックス（%" N2_VALINT_PRI "）が配列の範囲（%zu）を超えています", index, n2_intarray_size(&arg->fiber_->sort_indices_)); return -1; }
 
 	n2_value_t v;
 	n2i_value_init(&v);
-	n2_value_seti(arg->state_, &v, n2_intarray_peekv(arg->fiber_->sort_indices_, N2_SCAST(int, index), -1));
+	n2_value_seti(arg->state_, &v, n2_intarray_peekv(&arg->fiber_->sort_indices_, N2_SCAST(int, index), -1));
 	n2_variable_set(arg->state_, arg->fiber_, var, varval->field_.varvalue_.aptr_, &v);
 	n2i_value_teardown(arg->state_, &v);
 	return 0;
@@ -26768,6 +26894,7 @@ static void n2i_environment_bind_basic_builtins(n2_state_t* state, n2_environmen
 		{"llpeek",				n2i_bifunc_llpeek,				N2_FALSE},
 		{"sortval",				n2i_bifunc_sortval,				N2_FALSE},
 		{"sortstr",				n2i_bifunc_sortstr,				N2_FALSE},
+		{"sortnote",			n2i_bifunc_sortnote,			N2_FALSE},
 		{"sortget",				n2i_bifunc_sortget,				N2_FALSE},
 		{"randomize",			n2i_bifunc_radomize,			N2_FALSE},
 		{"rnd",					n2i_bifunc_rnd,					N2_FALSE},

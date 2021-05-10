@@ -2055,6 +2055,33 @@
 				"sorting"
 			]
 		},
+		"sortnote": {
+			"type": "function",
+			"summary": "変数の中身をnote形式としてソート",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "var",
+					"description": "note形式でソートする変数"
+				},
+				{
+					"name": "reverse",
+					"description": "ソート順（0=昇順／1=降順）",
+					"omitted": "0"
+				}
+			],
+			"description": [
+				"引数として渡された変数の要素をnote形式の文字列とみなして（安定）ソートします",
+				"この命令の後、渡した引数の中身はソートされた状態の文字列に置き換わります。",
+				"また、この命令は文字列型の変数要素のみを対象としており、それ以外の型の変数が渡された場合はエラーとなります。",
+				"",
+				"各要素のソート前の位置を取得するためには$ref(sortget)を使用してください。"
+			],
+			"relationGroup": [
+				"sorting"
+			]
+		},
 		"sortget": {
 			"type": "function",
 			"summary": "ソート前の位置を取得",
