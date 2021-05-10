@@ -2941,7 +2941,7 @@ N2_API void n2_variable_compute_dimension_indices_indim(size_t dst_length[N2_VAR
 N2_API void n2_variable_compute_dimension_indices(size_t dst_length[N2_VARIABLE_DIM], size_t element_index, const size_t length[N2_VARIABLE_DIM]);
 N2_API void* n2_variable_element_ptr(const n2_variable_t* var, int aptr);
 N2_API size_t n2_variable_element_size(const n2_variable_t* var, int aptr);
-N2_API size_t n2_variable_left_buffer_size(const n2_variable_t* var, int aptr);
+N2_API size_t n2_variable_left_buffer_size(const n2_variable_t* var, int aptr, n2_bool_t to_write);
 N2_API void* n2_variable_map_data(size_t* data_size, const n2_variable_t* var, int aptr);
 N2_API void n2_variable_unmap_data(const n2_variable_t* var, int aptr);
 N2_API n2_valint_t n2_variable_eval_int(n2_state_t* state, n2_fiber_t* f, const n2_variable_t* var, int aptr);

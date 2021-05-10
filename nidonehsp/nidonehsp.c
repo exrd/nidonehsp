@@ -10974,7 +10974,7 @@ N2_API size_t n2_variable_element_size(const n2_variable_t* var, int aptr)
 	return data_size;
 }
 
-N2_API size_t n2_variable_left_buffer_size(const n2_variable_t* var, int aptr)
+N2_API size_t n2_variable_left_buffer_size(const n2_variable_t* var, int aptr, n2_bool_t to_write)
 {
 	const void* element = n2_variable_element_ptr(var, aptr);
 	if (!element) { return 0; }
@@ -10988,7 +10988,9 @@ N2_API size_t n2_variable_left_buffer_size(const n2_variable_t* var, int aptr)
 		data_size = var->data_buffer_size_ - N2_SCAST(size_t, n2_ptr_diff(element, var->data_));
 		break;
 	case N2_VALUE_STRING:	data_size = N2_MAX(N2_RCAST(const n2_valstr_t*, element)->buffer_size_, 1) - 1/*without null temrmination*/; break;
-	default:				break;
+	default:
+		if (!to_write) { data_size = n2_variable_element_size(var, aptr); }
+		break;
 	}
 	return data_size;
 }
@@ -11014,7 +11016,7 @@ N2_API void* n2_variable_map_data(size_t* data_size, const n2_variable_t* var, i
 	default:
 		break;
 	}
-	if (data_size) { *data_size = n2_variable_left_buffer_size(var, aptr); }
+	if (data_size) { *data_size = n2_variable_left_buffer_size(var, aptr, N2_TRUE); }
 	return data;
 }
 
@@ -25263,7 +25265,10 @@ static int n2i_bifunc_varsize(const n2_funcarg_t* arg)
 	const n2_value_t* val = n2e_funcarg_getarg(arg, 0);
 	if (val->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "varsize：対象が変数ではありません"); return -1; }
 
-	const size_t data_size = n2_variable_element_size(val->field_.varvalue_.var_, val->field_.varvalue_.aptr_);
+	const n2_variable_t* var = val->field_.varvalue_.var_;
+	const int aptr = N2_MAX(0, val->field_.varvalue_.aptr_);
+
+	const size_t data_size = n2_variable_left_buffer_size(var, aptr, N2_FALSE);
 	n2e_funcarg_pushi(arg, N2_SCAST(n2_valint_t, data_size));
 	return 1;
 }

@@ -41,6 +41,8 @@ mes "varsize"
 a = 0 : if (varsize(a) != 8) { raise }
 a = 0.0 : if (varsize(a) != 8) { raise }
 sdim a, 256 : if (varsize(a) < 256) { raise }// 大きいことを保証しているので、違っても良い
+a = 0, 1, 2, 3 : if (varsize(a) != 32) { raise }
+a = 0, 1, 2, 3 : if (varsize(a(3)) != 8) { raise }
 
 mes "length"
 a = "0" : a = 0 : if (length(a) != 1) { raise }
