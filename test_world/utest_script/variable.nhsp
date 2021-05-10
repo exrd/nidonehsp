@@ -38,9 +38,13 @@ if (vartype("label") != typeid_label) { raise }
 if (vartype("modinst") != typeid_modinst) { raise }
 
 mes "varsize"
-a = 0 : if (varsize(a) != 8) {raise }
-a = 0.0 : if (varsize(a) != 8) {raise }
+a = 0 : if (varsize(a) != 8) { raise }
+a = 0.0 : if (varsize(a) != 8) { raise }
 sdim a, 256 : if (varsize(a) < 256) { raise }// 大きいことを保証しているので、違っても良い
+
+mes "length"
+a = "0" : a = 0 : if (length(a) != 1) { raise }
+dim a, 12 : if (length(a) != 12) { raise }
 
 // varuseの方はモジュールのテストでやってるので省略
 
