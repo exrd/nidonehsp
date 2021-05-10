@@ -3767,6 +3767,20 @@ N2_API void n2s_d2vertex_set_uv_clamp_pixel(n2s_d2vertex_t* dst, n2_fvec2_t uv0,
 
 N2_DECLARE_TARRAY(n2s_d2vertex_t, n2s_d2vertexarray, N2_API);
 
+typedef struct n2s_d3vertex_t n2s_d3vertex_t;
+struct n2s_d3vertex_t
+{
+	n2_fvec3_t position_;
+	n2_fvec3_t normal_;
+	n2_fvec2_t uv_;
+	n2s_u8color_t color_;
+};
+
+N2_API void n2s_d3vertex_to(n2s_d3vertex_t* dst, n2_fvec3_t position, n2_fvec3_t normal, n2_fvec2_t uv, n2s_u8color_t color);
+N2_API n2s_d3vertex_t n2s_d3vertex(n2_fvec3_t position, n2_fvec3_t normal, n2_fvec2_t uv, n2s_u8color_t color);
+
+N2_DECLARE_TARRAY(n2s_d3vertex_t, n2s_d3vertexarray, N2_API);
+
 N2_DECLARE_ENUM(n2s_samplerfilter_e);
 enum n2s_samplerfilter_e
 {
@@ -4077,7 +4091,7 @@ struct n2s_guniform_block_g3env_t
 typedef struct n2s_guniform_block_d3model_t n2s_guniform_block_d3model_t;
 struct n2s_guniform_block_d3model_t
 {
-	n2_fmat4_t world_matrix_;
+	n2_fmat4_t model_matrix_;
 	n2s_fcolor_t color_;
 };
 

@@ -48,10 +48,10 @@
 #define N2I_GL_SHADER_UB_D3MODEL() \
 	"#define N2_DECLARE_UB_D3MODEL() \\\n" \
 	"	layout(std140) uniform ubD3Model{ \\\n" \
-	"		mat4 uWorldMatrix; \\\n" \
+	"		mat4 uModelMatrix; \\\n" \
 	"		vec4 uModelColor; \\\n" \
 	"	}\n" \
-	"#define N2_WMTX (uWorldMatrix)\n" \
+	"#define N2_MMTX (uModelMatrix)\n" \
 	"#define N2_MODEL_COLOR (uModelColor)\n" \
 
 #define N2I_GL_SHADER_DEF_UB_D3MODEL() \

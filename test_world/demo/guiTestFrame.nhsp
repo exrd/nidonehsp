@@ -7,6 +7,7 @@
 	// グローバル初期化
 	if (!gIsInitialized) {
 		gIsInitialized = 1
+		gIsFontItalic = 0 : gIsFontShadow = 0 : gIsFontOutline = 0 : gIsFontHeight = 32.0
 	}
 	// ローカル初期化
 	toReturn = 0
@@ -18,6 +19,7 @@
 	objsize 200, 20 : pos 20, 60 : button gosub "ボタンをおしてください", *implPushButton
 	objsize 200, 20 : pos 20, 90 : chkbox "チェックボックスのテスト", checked
 	objsize 200, 20 : pos 20, 120 : input textInput
+	objsize 100, 20 : pos 20, 150 : chkbox "斜体", gIsFontItalic : pos 130, 150 : chkbox "シャドウ", gIsFontShadow : pos 250, 150 : chkbox "アウトライン", gIsFontOutline
 	objsize 60, 20 : pos 600, 400 : button gosub "終わる", *implReturnTo
 	return
 
@@ -62,6 +64,13 @@
 		pos 240, 60 : mes buttonPushed > 0 then `ボタンが ${buttonPushed} 回押されました` else ""
 		pos 240, 90 : mes `チェック状態 ${checked}`
 		pos 240, 120 : mes `テキスト入力 ${textInput}`
+
+		font "Stick", gIsFontHeight, (gIsFontItalic then 2 else 0)
+		color 255, 0, 255 : objcolor 255, 255, 0
+		tsx = 380 : tsy = 150
+		pos tsx, tsy : mes `nidonehspのテキスト表示テスト\n入力＝${textInput}`, (gIsFontShadow then mesopt_shadow else 0) | (gIsFontOutline then mesopt_outline else 0)
+		color 0, 255, 255
+		pos tsx, tsy : line tsx + ginfo_mesx, tsy : line tsx + ginfo_mesx, tsy + ginfo_mesy : line tsx, tsy + ginfo_mesy : line tsx, tsy
 	return
 
 #global

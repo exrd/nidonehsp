@@ -16046,16 +16046,31 @@ N2_API n2s_d2vertex_t n2s_d2vertex(n2_fvec3_t position, n2_fvec2_t uv, n2s_u8col
 	return r;
 }
 
-N2_API void n2s_vertex_set_uv_clamp_direct_to(n2s_d2vertex_t* dst, n2_fvec2_t uv0, n2_fvec2_t uv1)
+N2_API void n2s_d2vertex_set_uv_clamp_direct_to(n2s_d2vertex_t* dst, n2_fvec2_t uv0, n2_fvec2_t uv1)
 {
 	dst->uv_clamp_.xy_ = uv0;
 	dst->uv_clamp_.zw_ = uv1;
 }
 
-N2_API void n2s_vertex_set_uv_clamp_pixel(n2s_d2vertex_t* dst, n2_fvec2_t uv0, n2_fvec2_t uv1, size_t w, size_t h)
+N2_API void n2s_d2vertex_set_uv_clamp_pixel(n2s_d2vertex_t* dst, n2_fvec2_t uv0, n2_fvec2_t uv1, size_t w, size_t h)
 {
 	n2s_uv_clamp_pixel(&uv0, &uv1, w, h);
-	n2s_vertex_set_uv_clamp_direct_to(dst, uv0, uv1);
+	n2s_d2vertex_set_uv_clamp_direct_to(dst, uv0, uv1);
+}
+
+N2_API void n2s_d3vertex_to(n2s_d3vertex_t* dst, n2_fvec3_t position, n2_fvec3_t normal, n2_fvec2_t uv, n2s_u8color_t color)
+{
+	dst->position_ = position;
+	dst->normal_ = normal;
+	dst->uv_ = uv;
+	dst->color_ = color;
+}
+
+N2_API n2s_d3vertex_t n2s_d3vertex(n2_fvec3_t position, n2_fvec3_t normal, n2_fvec2_t uv, n2s_u8color_t color)
+{
+	n2s_d3vertex_t r;
+	n2s_d3vertex_to(&r, position, normal, uv, color);
+	return r;
 }
 
 N2_DEFINE_TARRAY(n2s_d2vertex_t, n2s_d2vertexarray, N2_API, n2i_setupfunc_nothing, n2i_freefunc_nothing);
@@ -17117,7 +17132,7 @@ N2_API void n2s_guniform_block_drawenv_set_screen_param(n2s_guniform_block_drawe
 
 N2_API void n2s_guniform_block_d3model_init(n2s_guniform_block_d3model_t* d3model)
 {
-	n2_fmat4_identity_to(&d3model->world_matrix_);
+	n2_fmat4_identity_to(&d3model->model_matrix_);
 	d3model->color_ = n2s_fcolor(1, 1, 1, 1);
 }
 
@@ -17851,7 +17866,7 @@ N2_API n2_bool_t n2s_commandbuffer_d2text(n2_state_t* state, n2s_commandbuffer_t
 
 N2_API n2_bool_t n2s_commandbuffer_d2text_ex(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t begin, n2s_font_t* font, const char* str, size_t str_length, float height, n2s_u8color_t color, float wrap_width, size_t flags, n2_fvec2_t* dst_bb, float topskew, n2_bool_t dropshadow, n2s_u8color_t dscolor, n2_fvec2_t dsscale, n2_fvec2_t dsoffset, n2_bool_t outline, n2s_u8color_t olcolor, n2_fvec2_t olscale, n2_fvec2_t oloffset)
 {
-	n2s_text_render_unit_t units[3];
+	n2s_text_render_unit_t units[1 + 4 + 1];
 	size_t unit_num = 0;
 	// dropshadow
 	if (dropshadow)
@@ -17866,12 +17881,15 @@ N2_API n2_bool_t n2s_commandbuffer_d2text_ex(n2_state_t* state, n2s_commandbuffe
 	// outline
 	if (outline)
 	{
-		units[unit_num].enable_ = N2_TRUE;
-		units[unit_num].color_ = olcolor;
-		units[unit_num].scale_ = olscale;
-		units[unit_num].offset_ = oloffset;
-		units[unit_num].topskew_ = topskew;
-		++unit_num;
+		for (int i = 0; i < 4; ++i)
+		{
+			units[unit_num].enable_ = N2_TRUE;
+			units[unit_num].color_ = olcolor;
+			units[unit_num].scale_ = olscale;
+			units[unit_num].offset_ = n2_fvec2(oloffset.x_ * (i / 2 == 0 ? 1 : -1), oloffset.y_ * (i % 2 == 0 ? 1 : -1));
+			units[unit_num].topskew_ = topskew;
+			++unit_num;
+		}
 	}
 	// foreground
 	{
@@ -19332,60 +19350,63 @@ static n2_bool_t n2si_environemnt_input_gui(n2_state_t* state, n2s_environment_t
 		nk_input_scroll(c, nk_vec2(0, N2_SCAST(float, w->mousew_)));
 
 		// keys
-		for (size_t i = 0, l = n2s_windoweventarray_size(w->events_); i < l; ++i)
 		{
-			const n2s_window_event_t* wevt = n2s_windoweventarray_peekc(w->events_, N2_SCAST(int, i));
-			switch (wevt->type_)
+			for (size_t i = 0, l = n2s_windoweventarray_size(w->events_); i < l; ++i)
 			{
-			case N2S_WINDOW_EVENT_KEY:
-				switch (wevt->content_.key_.key_)
+				const n2s_window_event_t* wevt = n2s_windoweventarray_peekc(w->events_, N2_SCAST(int, i));
+				switch (wevt->type_)
 				{
-				case SDLK_LSHIFT: case SDLK_RSHIFT:	nk_input_key(c, NK_KEY_SHIFT, wevt->content_.key_.is_down_); break;
-				case SDLK_LCTRL: case SDLK_RCTRL:	nk_input_key(c, NK_KEY_CTRL, wevt->content_.key_.is_down_); break;
-				case SDLK_DELETE:		nk_input_key(c, NK_KEY_DEL, wevt->content_.key_.is_down_); break;
-				case SDLK_RETURN:		nk_input_key(c, NK_KEY_ENTER, wevt->content_.key_.is_down_); break;
-				case SDLK_TAB:			nk_input_key(c, NK_KEY_TAB, wevt->content_.key_.is_down_); break;
-				case SDLK_BACKSPACE:	nk_input_key(c, NK_KEY_BACKSPACE, wevt->content_.key_.is_down_); break;
-				case SDLK_UP:			nk_input_key(c, NK_KEY_UP, wevt->content_.key_.is_down_); break;
-				case SDLK_DOWN:			nk_input_key(c, NK_KEY_DOWN, wevt->content_.key_.is_down_); break;
-				case SDLK_LEFT:			nk_input_key(c, NK_KEY_LEFT, wevt->content_.key_.is_down_); break;
-				case SDLK_RIGHT:		nk_input_key(c, NK_KEY_RIGHT, wevt->content_.key_.is_down_); break;
-				default:				break;
-				}
-				break;
-			case N2S_WINDOW_EVENT_SPECIALKEY:
-				switch (wevt->content_.specialkey_.key_)
-				{
-				case N2S_SPECIAL_KEY_UNDO:	nk_input_key(c, NK_KEY_TEXT_UNDO, wevt->content_.specialkey_.is_down_); break;
-				case N2S_SPECIAL_KEY_REDO:	nk_input_key(c, NK_KEY_TEXT_REDO, wevt->content_.specialkey_.is_down_); break;
-				case N2S_SPECIAL_KEY_COPY:	nk_input_key(c, NK_KEY_COPY, wevt->content_.specialkey_.is_down_); break;
-				case N2S_SPECIAL_KEY_CUT:	nk_input_key(c, NK_KEY_CUT, wevt->content_.specialkey_.is_down_); break;
-				case N2S_SPECIAL_KEY_PASTE:	nk_input_key(c, NK_KEY_PASTE, wevt->content_.specialkey_.is_down_); break;
-				default:					break;
-				}
-				break;
-			case N2S_WINDOW_EVENT_MOUSEBUTTON:
-				{
-					enum nk_buttons button = NK_BUTTON_LEFT;
-					switch (wevt->content_.mousebutton_.button_)
+				case N2S_WINDOW_EVENT_KEY:
+					switch (wevt->content_.key_.key_)
 					{
-					case N2S_MOUSE_BUTTON_LEFT:		button = wevt->content_.mousebutton_.is_dclick_ ? NK_BUTTON_DOUBLE : NK_BUTTON_LEFT; break;
-					case N2S_MOUSE_BUTTON_RIGHT:	button = NK_BUTTON_RIGHT; break;
-					case N2S_MOUSE_BUTTON_MIDDLE:	button = NK_BUTTON_MIDDLE; break;
-					default:						break;
+					case SDLK_LSHIFT: case SDLK_RSHIFT:	nk_input_key(c, NK_KEY_SHIFT, wevt->content_.key_.is_down_); break;
+					case SDLK_LCTRL: case SDLK_RCTRL:	nk_input_key(c, NK_KEY_CTRL, wevt->content_.key_.is_down_); break;
+					case SDLK_DELETE:		nk_input_key(c, NK_KEY_DEL, wevt->content_.key_.is_down_); break;
+					case SDLK_RETURN:		nk_input_key(c, NK_KEY_ENTER, wevt->content_.key_.is_down_); break;
+					case SDLK_TAB:			nk_input_key(c, NK_KEY_TAB, wevt->content_.key_.is_down_); break;
+					case SDLK_BACKSPACE:	nk_input_key(c, NK_KEY_BACKSPACE, wevt->content_.key_.is_down_); break;
+					case SDLK_UP:			nk_input_key(c, NK_KEY_UP, wevt->content_.key_.is_down_); break;
+					case SDLK_DOWN:			nk_input_key(c, NK_KEY_DOWN, wevt->content_.key_.is_down_); break;
+					case SDLK_LEFT:			nk_input_key(c, NK_KEY_LEFT, wevt->content_.key_.is_down_); break;
+					case SDLK_RIGHT:		nk_input_key(c, NK_KEY_RIGHT, wevt->content_.key_.is_down_); break;
+					default:				break;
 					}
-					nk_input_button(
-						c,
-						button,
-						N2_SCAST(int, wevt->content_.mousebutton_.position_.x_),
-						N2_SCAST(int, wevt->content_.mousebutton_.position_.y_),
-						wevt->content_.mousebutton_.is_down_
-					);
+					break;
+				case N2S_WINDOW_EVENT_SPECIALKEY:
+					switch (wevt->content_.specialkey_.key_)
+					{
+					case N2S_SPECIAL_KEY_UNDO:	nk_input_key(c, NK_KEY_TEXT_UNDO, wevt->content_.specialkey_.is_down_); break;
+					case N2S_SPECIAL_KEY_REDO:	nk_input_key(c, NK_KEY_TEXT_REDO, wevt->content_.specialkey_.is_down_); break;
+					case N2S_SPECIAL_KEY_COPY:	nk_input_key(c, NK_KEY_COPY, wevt->content_.specialkey_.is_down_); break;
+					case N2S_SPECIAL_KEY_CUT:	nk_input_key(c, NK_KEY_CUT, wevt->content_.specialkey_.is_down_); break;
+					case N2S_SPECIAL_KEY_PASTE:	nk_input_key(c, NK_KEY_PASTE, wevt->content_.specialkey_.is_down_); break;
+					default:					break;
+					}
+					break;
+				case N2S_WINDOW_EVENT_MOUSEBUTTON:
+					{
+						enum nk_buttons button = NK_BUTTON_LEFT;
+						switch (wevt->content_.mousebutton_.button_)
+						{
+						case N2S_MOUSE_BUTTON_LEFT:		button = wevt->content_.mousebutton_.is_dclick_ ? NK_BUTTON_DOUBLE : NK_BUTTON_LEFT; break;
+						case N2S_MOUSE_BUTTON_RIGHT:	button = NK_BUTTON_RIGHT; break;
+						case N2S_MOUSE_BUTTON_MIDDLE:	button = NK_BUTTON_MIDDLE; break;
+						default:						break;
+						}
+						nk_input_button(
+							c,
+							button,
+							N2_SCAST(int, wevt->content_.mousebutton_.position_.x_),
+							N2_SCAST(int, wevt->content_.mousebutton_.position_.y_),
+							wevt->content_.mousebutton_.is_down_
+						);
+					}
+					break;
+				default:
+					break;
 				}
-				break;
-			default:
-				break;
 			}
+			n2s_windoweventarray_clear(state, w->events_);
 		}
 
 		// text input
@@ -19399,6 +19420,8 @@ static n2_bool_t n2si_environemnt_input_gui(n2_state_t* state, n2s_environment_t
 				p = n2_encoding_utf8_fetch(p, &unicp);
 				nk_input_unicode(c, N2_SCAST(nk_rune, unicp));
 			}
+
+			n2_str_clear(&w->textinput_);
 		}
 }
 	nk_input_end(c);
@@ -19834,8 +19857,6 @@ static n2_bool_t n2si_environment_frame_update(n2_state_t* state, n2s_environmen
 		w->prev_mousex_ = w->mousex_;
 		w->prev_mousey_ = w->mousey_;
 		w->mousew_ = 0;
-		n2s_windoweventarray_clear(state, w->events_);
-		n2_str_clear(&w->textinput_);
 	}
 
 	// poll all events
@@ -27848,7 +27869,8 @@ static int n2si_bifunc_mes(const n2_funcarg_t* arg)
 		size_t flags = 0x00;
 		if (arg->state_->config_.standard_font_draw_pixel_perfect_) { flags |= N2S_TEXT_RENDER_FLAG_PIXEL_PERFECT; }
 		// 描画
-		n2s_commandbuffer_d2text_ex(arg->state_, se->commandbuffer_, pos, nw->draw_font_, str->str_, str->size_, nw->draw_font_height_, c, -1, flags, &bb, (nw->draw_font_style_ & N2S_WINDOW_DRAW_FONT_STYLE_ITALIC) ? nw->draw_font_height_ * 0.2f : 0, sw & (1 << N2S_MESOPT_SHADOW), n2s_u8color(nw->objcolor_r_, nw->objcolor_g_, nw->objcolor_b_, independent_draw ? 255 : nw->ginfo_a_), n2_fvec2(1, 1), n2_fvec2(1, 1), N2_FALSE, N2S_U8COLOR_BLACK, n2_fvec2(0, 0), n2_fvec2(0, 0));
+		const n2s_u8color_t shadow_outline_color = n2s_u8color(nw->objcolor_r_, nw->objcolor_g_, nw->objcolor_b_, independent_draw ? 255 : nw->ginfo_a_);
+		n2s_commandbuffer_d2text_ex(arg->state_, se->commandbuffer_, pos, nw->draw_font_, str->str_, str->size_, nw->draw_font_height_, c, -1, flags, &bb, (nw->draw_font_style_ & N2S_WINDOW_DRAW_FONT_STYLE_ITALIC) ? nw->draw_font_height_ * 0.2f : 0, sw & (1 << N2S_MESOPT_SHADOW), shadow_outline_color, n2_fvec2(1, 1), n2_fvec2(1, 1), sw & (1 << N2S_MESOPT_OUTLINE), shadow_outline_color, n2_fvec2(1, 1), n2_fvec2(1, 1));
 		// 次のカーソル
 		if (sw & (1 << N2S_MESOPT_NOCR)) { nw->posx_ += N2_SCAST(n2_valint_t, bb.x_); }
 		else { nw->posy_ += N2_SCAST(n2_valint_t, bb.y_); }
