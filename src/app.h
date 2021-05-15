@@ -87,25 +87,6 @@ static n2_bool_t n2ri_win_to_system_string(n2_state_t* state, n2_str_t* dst, con
 }
 #endif
 
-static n2_bool_t n2ri_change_cwd(n2_state_t* state, const n2_str_t* cwd)
-{
-#if N2_PLATFORM_IS_WINDOWS
-	n2_str_t ucwd;
-	n2_str_init(&ucwd);
-	n2_bool_t succeeded = n2ri_win_to_system_string(state, &ucwd, cwd);
-	if (succeeded)
-	{
-		succeeded = SetCurrentDirectoryW(N2_RCAST(LPCWSTR, ucwd.str_)) == TRUE;
-	}
-	return succeeded;
-#elif N2_PLATFORM_IS_UNIX
-#else
-	N2_UNUSE(state);
-	N2_UNUSE(cwd);
-	return N2_FALSE;
-#endif
-}
-
 static n2_buffer_t n2ri_load_raw_file(n2_state_t* state, const n2_str_t* filepath)
 {
 	n2_buffer_t filebuf;

@@ -2119,6 +2119,15 @@ enum n2h_filesystem_e
 	N2H_MAX_FILESYSTEM
 };
 
+N2_DECLARE_ENUM(n2h_filesystem_directory_operation_e);
+enum n2h_filesystem_directory_operation_e
+{
+	N2H_FILESYSTEM_DIRECTORY_OPERATION_MAKE = 0,
+	N2H_FILESYSTEM_DIRECTORY_OPERATION_REMOVE,
+
+	N2H_MAX_FILESYSTEM_DIRECTORY_OPERATION
+};
+
 N2_DECLARE_ENUM(n2h_filesystem_read_e);
 enum n2h_filesystem_read_e
 {
@@ -2132,6 +2141,38 @@ typedef struct n2h_filesystem_handle_t n2h_filesystem_handle_t;
 typedef struct n2h_filesystem_readhandle_t n2h_filesystem_readhandle_t;
 typedef struct n2h_filesystem_writehandle_t n2h_filesystem_writehandle_t;
 typedef struct n2h_filesystem_t n2h_filesystem_t;
+
+typedef struct n2h_filesystem_filestat_t n2h_filesystem_filestat_t;
+struct n2h_filesystem_filestat_t
+{
+	n2_bool_t is_directory_;
+	size_t filesize_;
+
+	n2h_filesystem_t* root_filesystem_;
+	n2h_filesystem_t* domain_filesystem_;
+};
+
+N2_API void n2h_filesystem_filestat_init(n2h_filesystem_filestat_t* filestat);
+N2_API void n2h_filesystem_filestat_teardown(n2_state_t* state, n2h_filesystem_filestat_t* filestat);
+
+typedef struct n2h_filesystem_statparam_t n2h_filesystem_statparam_t;
+struct n2h_filesystem_statparam_t
+{
+	n2_state_t* state_;
+	const char* filepath_;
+	n2h_filesystem_filestat_t* dst_filestat_;
+	n2h_filesystem_t* filesystem_;
+};
+
+typedef struct n2h_filesystem_removeparam_t n2h_filesystem_removeparam_t;
+struct n2h_filesystem_removeparam_t
+{
+	n2_state_t* state_;
+	const char* filepath_;
+	n2_bool_t allow_file_;
+	n2_bool_t allow_dir_;
+	n2h_filesystem_t* filesystem_;
+};
 
 typedef struct n2h_filesystem_readparam_t n2h_filesystem_readparam_t;
 struct n2h_filesystem_readparam_t
@@ -2157,9 +2198,21 @@ struct n2h_filesystem_writeparam_t
 	n2h_filesystem_t* filesystem_;
 };
 
+typedef struct n2h_filesystem_dirparam_t n2h_filesystem_dirparam_t;
+struct n2h_filesystem_dirparam_t
+{
+	n2_state_t* state_;
+	n2h_filesystem_directory_operation_e operation_;
+	const char* dirpath_;
+	n2h_filesystem_t* filesystem_;
+};
+
+typedef n2_bool_t (*n2h_filesystem_stat_func_t)(const n2h_filesystem_statparam_t* statparam);
+typedef n2_bool_t (*n2h_filesystem_remove_func_t)(const n2h_filesystem_removeparam_t* removeparam);
 typedef n2h_filesystem_readhandle_t* (*n2h_filesystem_read_func_t)(const n2h_filesystem_readparam_t* readparam);
 typedef n2h_filesystem_writehandle_t* (*n2h_filesystem_write_func_t)(const n2h_filesystem_writeparam_t* writeparam);
 typedef void (*n2h_filesystem_close_func_t)(n2_state_t* state, n2h_filesystem_handle_t* handle);
+typedef n2_bool_t (*n2h_filesystem_dir_func_t)(const n2h_filesystem_dirparam_t* dirparam);
 typedef void (*n2h_filesystem_fin_func_t)(n2_state_t* state, n2h_filesystem_t* fs);
 
 struct n2h_filesystem_handle_t
@@ -2197,9 +2250,12 @@ struct n2h_filesystem_t
 	n2_str_t name_;
 	int priority_;
 	int id_;
+	n2h_filesystem_stat_func_t stat_func_;
+	n2h_filesystem_remove_func_t remove_func_;
 	n2h_filesystem_read_func_t read_func_;
 	n2h_filesystem_write_func_t write_func_;
 	n2h_filesystem_close_func_t close_func_;
+	n2h_filesystem_dir_func_t dir_func_;
 	n2h_filesystem_fin_func_t fin_func_;
 	void* user_;
 };
@@ -2223,9 +2279,16 @@ N2_API const n2_str_t* n2h_filesystem_get_name(const n2h_filesystem_t* fs);
 N2_API void n2h_filesystem_set_priority(n2_state_t* state, n2h_filesystem_t* fs, int priority);
 N2_API int n2h_filesystem_get_priority(const n2h_filesystem_t* fs);
 
+N2_API n2_bool_t n2h_filesystem_filestat(n2_state_t* state, n2h_filesystem_filestat_t* dst_filestat, n2h_filesystem_t* fs, const char* filepath);
+
+N2_API n2_bool_t n2h_filesystem_remove(n2_state_t* state, n2h_filesystem_t* fs, const char* filepath, n2_bool_t allow_file, n2_bool_t allow_dir);
+
 N2_API n2h_filesystem_readhandle_t* n2h_filesystem_read(n2_state_t* state, n2h_filesystem_t* fs, const char* filepath, n2_bool_t is_binary, size_t readsize, size_t readoffset, n2h_filesystem_read_e read);
 N2_API n2h_filesystem_writehandle_t* n2h_filesystem_write(n2_state_t* state, n2h_filesystem_t* fs, const char* filepath, n2_bool_t is_binary, const void* writedata, size_t writesize, size_t writeoffset);
 N2_API void n2h_filesystem_close(n2_state_t* state, n2h_filesystem_handle_t* handle);
+
+N2_API n2_bool_t n2h_filesystem_mkdir(n2_state_t* state, n2h_filesystem_t* fs, const char* dirpath);
+N2_API n2_bool_t n2h_filesystem_rmdir(n2_state_t* state, n2h_filesystem_t* fs, const char* dirpath);
 
 N2_API n2_bool_t n2h_filesystem_load(n2_state_t* state, n2h_filesystem_t* fs, n2_buffer_t* dst, const char* filepath, n2_bool_t is_binary, size_t readsize, size_t readoffset);
 N2_API n2_bool_t n2h_filesystem_save(n2_state_t* state, n2h_filesystem_t* fs, size_t* dst_writtensize, const char* filepath, n2_bool_t is_binary, const void* writedata, size_t writesize, size_t writeoffset);
@@ -2249,6 +2312,17 @@ N2_API n2h_filesystem_t* n2h_filesystem_alloc_msgpack(n2_state_t* state, const n
 #if N2_CONFIG_USE_Z_LIB
 //N2_API n2h_filesystem_t* n2h_filesystem_alloc_zip(n2_state_t* state, n2h_zip_t* zip);// @todo
 #endif
+
+// システムファイルデバイス
+N2_API n2_bool_t n2h_systemfiledevice_selfpath(n2_state_t* state, n2_str_t* dst_path);
+N2_API n2_bool_t n2h_systemfiledevice_cwd(n2_state_t* state, n2_str_t* dst_path);
+N2_API n2_bool_t n2h_systemfiledevice_chdir(n2_state_t* state, const char* path, size_t path_size);
+
+N2_API n2_bool_t n2h_systemfiledevice_filestat(n2_state_t* state, n2h_filesystem_filestat_t* dst_filestat, const char* path, size_t path_size);
+
+N2_API n2_bool_t n2h_systemfiledevice_rmfile(n2_state_t* state, const char* path, size_t path_size, size_t flags);
+N2_API n2_bool_t n2h_systemfiledevice_mkdir(n2_state_t* state, const char* path, size_t path_size, size_t flags);
+N2_API n2_bool_t n2h_systemfiledevice_rmdir(n2_state_t* state, const char* path, size_t path_size, size_t flags);
 
 #if N2_CONFIG_USE_NET_SOCKET_LIB
 typedef struct n2h_socket_t n2h_socket_t;

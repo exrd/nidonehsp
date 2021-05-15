@@ -3202,6 +3202,148 @@
 			]
 		},
 
+		"exist": {
+			"type": "function",
+			"summary": "指定したファイルのサイズを取得",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "filePath",
+					"description": "サイズを調べるファイルパス"
+				}
+			],
+			"description": [
+				"filePathで指定したファイルのファイルサイズを取得し、$ref(strsize)に格納ます",
+				"",
+				"もし指定したファイルが存在しない場合、エラーにはならず`-1`が格納されます。",
+				"これにより、ファイルの存在確認に用いることができます。"
+			],
+			"relationGroup": [
+				"fileIOCommon"
+			]
+		},
+		"delete": {
+			"type": "function",
+			"summary": "指定したファイルの削除",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "filePath",
+					"description": "削除するファイルパス"
+				}
+			],
+			"description": [
+				"filePathで指定したファイルを削除します。",
+				"",
+				"ファイルの削除に失敗した場合エラーとなります。",
+				"そのため、ファイルが存在するかを実行前に$ref(exist)でチェックしてください。",
+				"",
+				"なお、ファイルシステムがサポートされないプラットフォームや、対象ファイルが実行ファイルへ埋め込まれたファイルの場合、$ref(exist)でファイルが存在していても削除に失敗することがあります。"
+			],
+			"relationGroup": [
+				"fileIOCommon"
+			]
+		},
+		"dirinfo": {
+			"type": "function",
+			"summary": "特定のディレクトリパスの取得",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "dirType",
+					"description": "取得するディレクトリのタイプ"
+				}
+			],
+			"description": [
+				"dirTypeに従って特定のディレクトリパスを取得します。",
+				"dirTypeに指定できる値は次の表の通りです。$",
+				"$",
+				"|dirType|内容|マクロ|備考|$",
+				"|:--|:--|:--|:--|$",
+				"|0|カレントディレクトリ|$ref(dir_cur)||$",
+				"|1|実行ファイルのディレクトリ|$ref(dir_exe)||$",
+				"$",
+				""
+			],
+			"relationGroup": [
+				"fileIOCommon"
+			]
+		},
+		"chdir": {
+			"type": "function",
+			"summary": "カレントディレクトリの変更",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "dirPath",
+					"description": "カレントディレクトリに設定するディレクトリパス"
+				}
+			],
+			"description": [
+				"カレントディレクトリをdirPathに変更します。",
+				"カレントディレクトリの変更に失敗した場合エラーとなります。",
+				"",
+				"なお、ファイルシステムがサポートされないプラットフォームの場合（HTMLなど）、ディレクトリが存在していてもこの命令に失敗することがあります。"
+			],
+			"relationGroup": [
+				"fileIOCommon"
+			]
+		},
+		"mkdir": {
+			"type": "function",
+			"summary": "ディレクトリの作成",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "dirPath",
+					"description": "作成するディレクトリパス"
+				}
+			],
+			"description": [
+				"dirPathで指定したパスのディレクトリを作成します。",
+				"",
+				"なお、ファイルシステムがサポートされないプラットフォームの場合（HTMLなど）、この命令に失敗することがあります。"
+			],
+			"relationGroup": [
+				"fileIOCommon"
+			]
+		},
+		"dir_cur": {
+			"type": "macro",
+			"summary": "カレントディレクトリを表すマクロ",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"カレントディレクトリを表すマクロです。",
+				"内容は`dirinfo(0)`と同値です、"
+			],
+			"relationGroup": [
+				"macroCommon"
+			]
+		},
+		"dir_exe": {
+			"type": "macro",
+			"summary": "実行ファイルディレクトリを表すマクロ",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"実行ファイルディレクトリを表すマクロです。",
+				"内容は`dirinfo(0)`と同値です、"
+			],
+			"relationGroup": [
+				"macroCommon"
+			]
+		},
+
 		"notesel": {
 			"type": "function",
 			"summary": "noteの対象変数指定",
@@ -3569,6 +3711,28 @@
 				"writeSizeが負の場合、変数の内容全てが書き出されます。",
 				"writeOffsetが負の場合、ファイルの内容を全て上書きします。",
 				"writeOffset が 0 以上の値の場合、その位置からファイルの内容を上書きします。"
+			],
+			"relationGroup": [
+				"fileIOCommon"
+			]
+		},
+		"bcopy": {
+			"type": "function",
+			"summary": "バイナリファイルのコピー",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "srcFilePath",
+					"description": "コピー元ファイルパス"
+				},
+				{
+					"name": "dstFilePath",
+					"description": "コピー先ファイルパス"
+				}
+			],
+			"description": [
+				"srcFilePathで指定したファイルを、dstFilePathにコピーします。"
 			],
 			"relationGroup": [
 				"fileIOCommon"

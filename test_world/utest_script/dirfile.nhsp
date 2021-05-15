@@ -1,0 +1,33 @@
+
+//=============================================================================
+// dirfile
+
+fileroot = "utest_script"
+
+if (1) {
+	old_dir = dir_cur
+	mes `${dir_cur}`
+	chdir fileroot
+	mes `${dir_cur}`
+	chdir ".."
+	mes `${dir_cur}`
+	if (old_dir != dir_cur) { raise }
+}
+
+if (1) {
+	filepath = `${fileroot}/ref/btest`
+	exist filepath
+	mes `filesize(${filepath}) = ${strsize}`
+	if (strsize < 0) { raise }
+	tofilepath = `${fileroot}/out/btestcopy`
+	bcopy filepath, tofilepath
+	exist tofilepath
+	mes `tofilesize(${tofilepath}) = ${strsize}`
+	if (strsize < 0) { raise }
+
+	if (0) {
+		delete tofilepath
+		exist tofilepath
+		if (strsize >= 0) { raise }
+	}
+}

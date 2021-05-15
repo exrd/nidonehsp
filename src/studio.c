@@ -453,7 +453,7 @@ static n2_bool_t n2ai_build_ebinary(n2_state_t* state, n2_buffer_t* dst, const n
 // DAP用
 static n2_bool_t n2ai_dap_staging_cwd_setfunc(n2r_dap_t* dap, const n2_str_t* cwd)
 {
-	return n2ri_change_cwd(dap->estate_, cwd);
+	return n2h_systemfiledevice_chdir(dap->estate_, cwd->str_, cwd->size_);
 }
 
 static void n2ai_dap_staging_state_setupfunc(n2r_dap_t* dap, n2_state_config_t* state_config, const n2r_dap_launch_param_t* launch_param)
@@ -973,7 +973,7 @@ int main(int argc, char* argv[])
 				n2_str_t relpath;
 				n2_str_init(&relpath);
 				n2_str_set(state, &relpath, "../demo", SIZE_MAX);
-				n2ri_change_cwd(state, &relpath);
+				n2h_systemfiledevice_chdir(state, relpath.str_, relpath.size_);
 				n2_str_teardown(state, &relpath);
 			}
 #endif
