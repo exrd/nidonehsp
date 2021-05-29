@@ -1779,7 +1779,7 @@ N2_API void n2h_random_scratch(void* data, size_t data_size, uint64_t seed);
 N2_DECLARE_ENUM(n2h_binseq_flag_e);
 enum n2h_binseq_flag_e
 {
-	N2H_BINSEQ_FLAG_SCRATCHED = 1ULL << 0,
+	N2H_BINSEQ_FLAG_SCRATCHED = 1 << 0,
 };
 
 typedef struct n2h_binseq_header_t n2h_binseq_header_t;
@@ -1799,6 +1799,34 @@ N2_API n2_bool_t n2h_binseq_verify(const void* src, size_t src_size);
 N2_API n2_bool_t n2h_binseq_get_header(n2h_binseq_header_t* dst, const void* src, size_t src_size);
 
 N2_API size_t n2h_binseq_write_signature(void* dst, const n2h_binseq_header_t* header);
+
+// 時間
+typedef struct n2h_unixtime_t n2h_unixtime_t;
+struct n2h_unixtime_t
+{
+	int64_t seconds_;
+	int32_t nanoseconds_;
+};
+
+N2_API int64_t n2h_unixtime_localdiff_seconds();
+N2_API n2h_unixtime_t n2h_unixtime_now(n2_bool_t is_localtime);
+
+typedef struct n2h_datetime_t n2h_datetime_t;
+struct n2h_datetime_t
+{
+	int32_t nanosecond_;// [0, 999999999]
+	int seccond_;// [0, 60] (including leap seconds)
+	int minute_;// [0, 59]
+	int hour_;// [0, 23]
+	int monthday_;// [1, 31]
+	int month_;// [0, 11]
+	int year_;// 
+	int weekday_;// [0, 6]: 0 denotes Sunday, 6 denotes Saturday
+	//int yearday_;// [0, 365]
+};
+
+N2_API n2h_datetime_t n2h_unixtime_to_datetime(n2h_unixtime_t unixtime);
+N2_API n2h_unixtime_t n2h_datetime_tounixtime(n2h_datetime_t datetime);
 
 // イメージ
 N2_DECLARE_ENUM(n2_image_file_e);

@@ -60,7 +60,8 @@
 		color 255, 255, 255
 		pos 20, 20
 			mes `platform=${sysreq@n2(sysreq_platform@n2)} CPUCore=${sysreq@n2(sysreq_cpu_core_count@n2)} CacheLine=${sysreq@n2(sysreq_cpu_cache_line_size@n2)} RAM=${sysreq@n2(sysreq_system_ram_mb@n2)}[MB] Battery=${sysreq@n2(sysreq_battery_percentage@n2)}[%]`
-			mes `mouse(X=${tMouseX}, Y=${tMouseY})`
+			wdays = "日", "月", "火", "水", "木", "金", "土"
+			mes `mouse(X=${tMouseX}, Y=${tMouseY}) time(${gettime(0)}/${gettime(1)}/${gettime(3)}(${wdays(gettime(2))}) ${gettime(4)}:${gettime(5)}:${gettime(6)}.${gettime(7)} ${strf("H%+d", gettime(-1) / 60 / 60)})`
 			mes `cwd(${dir_cur})`
 			mes `exe(${dir_exe})`
 		pos 240, 120 : mes buttonPushed > 0 then `ボタンが ${buttonPushed} 回押されました` else ""

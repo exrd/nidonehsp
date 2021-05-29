@@ -284,6 +284,7 @@
 
 #if N2_PLATFORM_IS_EMSCRIPTEN
 #include <emscripten.h>
+#include <unistd.h>
 #endif
 
 #if N2_PLATFORM_IS_UNIX
@@ -299,6 +300,11 @@
 // その他
 #define N2SI_SDL_INIT_SYSTEM_FLAGS \
 	(SDL_INIT_TIMER/* | SDL_INIT_AUDIO*/ | SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS)
+
+// 隠しコンフィグ
+#ifndef N2_MAX_PATH
+#define N2_MAX_PATH			(512)
+#endif
 
 //=============================================================================
 //=============================================================================
@@ -4376,6 +4382,152 @@ N2_API size_t n2h_binseq_write_signature(void* dst, const n2h_binseq_header_t* h
 	return n2h_binseq_signature_size();
 }
 
+// 時間
+#if N2_PLATFORM_IS_WINDOWS
+#define N2HI_WINEPOCH_BIAS		(11644473600LL)
+
+static void n2hi_filetime_to_unixtime(n2h_unixtime_t* unixtime, const FILETIME* ft)
+{
+	const int64_t q = (N2_SCAST(int64_t, ft->dwHighDateTime) << 32) | N2_SCAST(int64_t, ft->dwLowDateTime);
+	const int64_t sec_unit = 10000000LL;
+	unixtime->seconds_ = q / sec_unit - N2HI_WINEPOCH_BIAS/*win epoch to unix epoch*/;
+	unixtime->nanoseconds_ = N2_SCAST(int32_t, q % sec_unit/*sec part only*/ * 100/*nsec*/);
+}
+
+static void n2hi_unixtime_to_filetime(FILETIME* ft, const n2h_unixtime_t* unixtime)
+{
+	const int64_t sec_unit = 10000000LL;
+	const int64_t q = (unixtime->seconds_ + N2HI_WINEPOCH_BIAS) * sec_unit + (unixtime->nanoseconds_ % 1000000000 / 100);
+	ft->dwHighDateTime = N2_SCAST(DWORD, (N2_BCAST(uint64_t, q) >> 32) & 0xffffffff);
+	ft->dwLowDateTime = N2_SCAST(DWORD, N2_BCAST(uint64_t, q & 0xffffffff));
+}
+#endif
+
+N2_API int64_t n2h_unixtime_localdiff_seconds()
+{
+	static n2_bool_t is_initialized = N2_FALSE;
+	static int64_t unixtime_diff = 0;
+	if (!is_initialized)
+	{
+#if N2_PLATFORM_IS_WINDOWS
+		FILETIME uft, ft;
+		GetSystemTimePreciseAsFileTime(&uft);
+		FileTimeToLocalFileTime(&uft, &ft);
+		const int64_t gt = (N2_SCAST(int64_t, uft.dwHighDateTime) << 32) + N2_SCAST(int64_t, uft.dwLowDateTime);
+		const int64_t lt = (N2_SCAST(int64_t, ft.dwHighDateTime) << 32) + N2_SCAST(int64_t, ft.dwLowDateTime);
+		unixtime_diff = N2_SCAST(int64_t, lt - gt);
+		unixtime_diff /= 10000000;
+#else
+		time_t t = N2_TIME();
+		struct tm ltm, gtm;
+#if N2_PLATFORM_IS_EMSCRIPTEN || N2_PLATFORM_IS_UNIX
+		localtime_r(&t, &ltm);
+		gmtime_r(&t, &gtm);
+#else
+		ltm = *localtime(&t);
+		gtm = *gmtime(&t);
+#endif
+		const time_t lt = mktime(&ltm);
+		const time_t gt = mktime(&gtm);
+		unixtime_diff = N2_SCAST(int64_t, lt) - N2_SCAST(int64_t, gt);
+#endif
+		is_initialized = N2_TRUE;
+	}
+	return unixtime_diff;
+}
+
+N2_API n2h_unixtime_t n2h_unixtime_now(n2_bool_t is_localtime)
+{
+	n2h_unixtime_t unixtime;
+#if N2_PLATFORM_IS_WINDOWS
+	FILETIME ft;
+	GetSystemTimePreciseAsFileTime(&ft);
+	n2hi_filetime_to_unixtime(&unixtime, &ft);
+#elif N2_PLATFORM_IS_EMSCRIPTEN || N2_PLATFORM_IS_UNIX
+	struct timespec ts;
+	clock_gettime(CLOCK_REALTIME, &ts);// POSIX
+	//timespec_get(&ts, TIME_UTC);// C11
+	unixtime.seconds_ = N2_SCAST(int64_t, ts.tv_sec);
+	unixtime.nanoseconds_ = N2_SCAST(int32_t, ts.tv_nsec);
+#else
+	time_t t = N2_TIME();
+	unixtime.seconds_ = N2_SCAST(int64_t, t);
+	unixtime.nanoseconds_ = 0;
+#endif
+	if (is_localtime) { unixtime.seconds_ += n2h_unixtime_localdiff_seconds(); }
+	return unixtime;
+}
+
+N2_API n2h_datetime_t n2h_unixtime_to_datetime(n2h_unixtime_t unixtime)
+{
+	n2h_datetime_t datetime;
+	datetime.nanosecond_ = unixtime.nanoseconds_;
+
+#if N2_PLATFORM_IS_WINDOWS
+	FILETIME ft;
+	n2hi_unixtime_to_filetime(&ft, &unixtime);
+	SYSTEMTIME st;
+	FileTimeToSystemTime(&ft, &st);
+	datetime.seccond_ = st.wSecond;
+	datetime.minute_ = st.wMinute;
+	datetime.hour_ = st.wHour;
+	datetime.monthday_ = st.wDay;
+	datetime.month_ = st.wMonth - 1;
+	datetime.year_ = st.wYear;
+	datetime.weekday_ = st.wDayOfWeek;
+	//datetime.yearday_ = st.wDay;
+#else
+	struct tm ttm;
+	const time_t tsec = N2_SCAST(time_t, unixtime.seconds_);
+#if N2_PLATFORM_IS_EMSCRIPTEN || N2_PLATFORM_IS_UNIX
+	gmtime_r(&tsec, &ttm);
+#else
+	ttm = *gmtime(&tsec);
+#endif
+	datetime.seccond_ = ttm.tm_sec;
+	datetime.minute_ = ttm.tm_min;
+	datetime.hour_ = ttm.tm_hour;
+	datetime.monthday_ = ttm.tm_mday;
+	datetime.month_ = ttm.tm_mon;
+	datetime.year_ = ttm.tm_year + 1900;
+	datetime.weekday_ = ttm.tm_wday;
+	//datetime.yearday_ = ttm.tm_yday;
+#endif
+	return datetime;
+}
+
+N2_API n2h_unixtime_t n2h_datetime_tounixtime(n2h_datetime_t datetime)
+{
+	n2h_unixtime_t unixtime;
+	unixtime.nanoseconds_ = datetime.nanosecond_;
+
+#if N2_PLATFORM_IS_WINDOWS
+	SYSTEMTIME st;
+	st.wSecond = N2_SCAST(WORD, datetime.seccond_);
+	st.wMinute = N2_SCAST(WORD, datetime.minute_);
+	st.wHour = N2_SCAST(WORD, datetime.hour_);
+	st.wDay = N2_SCAST(WORD, datetime.monthday_);
+	st.wMonth = N2_SCAST(WORD, datetime.month_ + 1);
+	st.wYear = N2_SCAST(WORD, datetime.year_);
+	st.wDayOfWeek = N2_SCAST(WORD, datetime.weekday_);
+	FILETIME ft;
+	SystemTimeToFileTime(&st, &ft);
+	n2hi_filetime_to_unixtime(&unixtime, &ft);
+#else
+	struct tm ttm;
+	ttm.tm_sec = datetime.seccond_;
+	ttm.tm_min = datetime.minute_;
+	ttm.tm_hour = datetime.hour_;
+	ttm.tm_mday = datetime.monthday_;
+	ttm.tm_mon = datetime.month_;
+	ttm.tm_year = datetime.year_ - 1900;
+	ttm.tm_wday = datetime.weekday_;
+	const time_t t = mktime(&ttm);
+	unixtime.seconds_ = N2_SCAST(int64_t, t);
+#endif
+	return unixtime;
+}
+
 // イメージ
 #if N2_CONFIG_USE_IMAGE_READ_LIB
 N2_API n2_bool_t n2h_image_read(n2_state_t* state, n2_buffer_t* dst, size_t* dst_width, size_t* dst_height, const void* src, size_t src_size)
@@ -6823,7 +6975,7 @@ static size_t n2hi_systemfiledevice_extract_fileattributes(DWORD dw_file_attribu
 N2_API n2_bool_t n2h_systemfiledevice_selfpath(n2_state_t* state, n2_str_t* dst_path)
 {
 #if N2_PLATFORM_IS_WINDOWS
-	const DWORD required = MAX_PATH * 2;
+	const DWORD required = N2_MAX_PATH;
 	if (!n2_str_reserve(state, dst_path, N2_SCAST(size_t, required * sizeof(wchar_t) + 4))) { return N2_FALSE; }
 	const DWORD written = GetModuleFileNameW(NULL, N2_RCAST(wchar_t*, dst_path->str_), N2_SCAST(DWORD, dst_path->buffer_size_));
 	if (written <= 0) { return N2_FALSE; }
@@ -6833,6 +6985,12 @@ N2_API n2_bool_t n2h_systemfiledevice_selfpath(n2_state_t* state, n2_str_t* dst_
 	n2hi_from_system_string(state, &tw, dst_path->str_, dst_path->size_);
 	n2_str_swap(dst_path, &tw);
 	n2_str_teardown(state, &tw);
+	return N2_TRUE;
+#elif N2_PLATFORM_IS_EMSCRIPTEN || N2_PLATFORM_IS_UNIX
+	if (!n2_str_reserve(state, dst_path, N2_MAX_PATH)) { return N2_FALSE; }
+	const ssize_t written = readlink("/proc/self/exe", dst_path->str_, dst_path->buffer_size_);// POSIX ...?
+	if (written < 0 || written >= N2_SCAST(ssize_t, dst_path->buffer_size_)) { return N2_FALSE; }
+	n2_str_update_size(dst_path);
 	return N2_TRUE;
 #else
 	// /proc/self/exe
@@ -6857,6 +7015,11 @@ N2_API n2_bool_t n2h_systemfiledevice_cwd(n2_state_t* state, n2_str_t* dst_path)
 	n2_str_swap(dst_path, &tw);
 	n2_str_teardown(state, &tw);
 	return N2_TRUE;
+#elif N2_PLATFORM_IS_EMSCRIPTEN || N2_PLATFORM_IS_UNIX
+	if (!n2_str_reserve(state, dst_path, N2_MAX_PATH)) { return N2_FALSE; }
+	if (!getcwd(dst_path->str_, dst_path->buffer_size_)) { return N2_FALSE; }
+	n2_str_update_size(dst_path);
+	return N2_TRUE;
 #else
 	N2_UNUSE(state);
 	N2_UNUSE(dst_path);
@@ -6877,6 +7040,13 @@ N2_API n2_bool_t n2h_systemfiledevice_chdir(n2_state_t* state, const char* path,
 			succeeded = N2_TRUE;
 		}
 	}
+	n2_str_teardown(state, &syspath);
+	return succeeded;
+#elif N2_PLATFORM_IS_EMSCRIPTEN || N2_PLATFORM_IS_UNIX
+	n2_str_t syspath;
+	n2_str_init(&syspath);
+	n2_str_set(state, &syspath, path, N2_MAX_PATH);
+	const n2_bool_t succeeded = chdir(path) == 0 ? N2_TRUE : N2_FALSE;
 	n2_str_teardown(state, &syspath);
 	return succeeded;
 #else
@@ -27467,18 +27637,20 @@ static int n2i_bifunc_gettime(const n2_funcarg_t* arg)
 	if (arg_num > 1) { n2e_funcarg_raise(arg, "gettime：引数の数（%d）が期待（0 - %d）と違います", arg_num, 1); return -1; }
 	const n2_value_t* fval = n2e_funcarg_getarg(arg, 0);
 	const n2_valint_t f = fval && fval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, fval) : 0;
-	time_t t = N2_TIME();
-	struct tm* ttm = localtime(&t);
+	const n2h_unixtime_t unixtime = n2h_unixtime_now(N2_TRUE);
+	const n2h_datetime_t datetime = n2h_unixtime_to_datetime(unixtime);
 	switch (f)
 	{
-	case 0:		n2e_funcarg_pushi(arg, ttm->tm_year + 1900); break;
-	case 1:		n2e_funcarg_pushi(arg, ttm->tm_mon + 1); break;
-	case 2:		n2e_funcarg_pushi(arg, ttm->tm_wday); break;
-	case 3:		n2e_funcarg_pushi(arg, ttm->tm_mday); break;
-	case 4:		n2e_funcarg_pushi(arg, ttm->tm_hour); break;
-	case 5:		n2e_funcarg_pushi(arg, ttm->tm_min); break;
-	case 6:		n2e_funcarg_pushi(arg, ttm->tm_sec); break;
-	case 7:		n2e_funcarg_pushi(arg, 0); break;
+	case 0:		n2e_funcarg_pushi(arg, datetime.year_); break;
+	case 1:		n2e_funcarg_pushi(arg, datetime.month_ + 1); break;
+	case 2:		n2e_funcarg_pushi(arg, datetime.weekday_); break;
+	case 3:		n2e_funcarg_pushi(arg, datetime.monthday_); break;
+	case 4:		n2e_funcarg_pushi(arg, datetime.hour_); break;
+	case 5:		n2e_funcarg_pushi(arg, datetime.minute_); break;
+	case 6:		n2e_funcarg_pushi(arg, datetime.seccond_); break;
+	case 7:		n2e_funcarg_pushi(arg, datetime.nanosecond_ / 1000000); break;
+	// n2 extension
+	case -1:	n2e_funcarg_pushi(arg, n2h_unixtime_localdiff_seconds()); break;
 	default:	n2e_funcarg_pushi(arg, 0); break;
 	}
 	return 1;
