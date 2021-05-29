@@ -3829,14 +3829,15 @@ N2_API void n2h_rpmalloc_free(void* ptr)
 #if N2_PLATFORM_IS_WINDOWS
 static n2_bool_t n2hi_to_system_string(n2_state_t* state, n2_str_t* dst, const char* src, size_t src_size)
 {
-	const int required = MultiByteToWideChar(CP_UTF8, 0, src, N2_SCAST(int, src_size), NULL, 0);
+	const int isrc_size = src_size == SIZE_MAX ? -1 : N2_SCAST(int, src_size);
+	const int required = MultiByteToWideChar(CP_UTF8, 0, src, isrc_size, NULL, 0);
 	if (required < 0) { return N2_FALSE; }
 
 	if (required > 0)
 	{
 		n2_str_reserve(state, dst, N2_SCAST(size_t, required) * sizeof(wchar_t) + 4);
 		N2_MEMSET(dst->str_, 0, dst->buffer_size_);
-		const int pathwritten = MultiByteToWideChar(CP_UTF8, 0, src, N2_SCAST(int, src_size), N2_RCAST(wchar_t*, dst->str_), N2_SCAST(int, dst->buffer_size_));
+		const int pathwritten = MultiByteToWideChar(CP_UTF8, 0, src, isrc_size, N2_RCAST(wchar_t*, dst->str_), N2_SCAST(int, dst->buffer_size_));
 		if (pathwritten > 0)
 		{
 			dst->size_ = N2_SCAST(size_t, pathwritten) * sizeof(wchar_t);
@@ -3851,14 +3852,15 @@ static n2_bool_t n2hi_to_system_string(n2_state_t* state, n2_str_t* dst, const c
 
 static n2_bool_t n2hi_from_system_string(n2_state_t* state, n2_str_t* dst, const char* src, size_t src_size)
 {
-	const int required = WideCharToMultiByte(CP_UTF8, 0, N2_RCAST(wchar_t*, src), N2_SCAST(int, src_size) / sizeof(wchar_t), NULL, 0, NULL, NULL);
+	const int isrc_size = src_size == SIZE_MAX ? -1 : N2_SCAST(int, src_size / sizeof(wchar_t));
+	const int required = WideCharToMultiByte(CP_UTF8, 0, N2_RCAST(wchar_t*, src), isrc_size, NULL, 0, NULL, NULL);
 	if (required < 0) { return N2_FALSE; }
 
 	if (required > 0)
 	{
 		n2_str_reserve(state, dst, N2_SCAST(size_t, required) + 4);
 		N2_MEMSET(dst->str_, 0, dst->buffer_size_);
-		const int pathwritten = WideCharToMultiByte(CP_UTF8, 0, N2_RCAST(wchar_t*, src), N2_SCAST(int, src_size) / sizeof(wchar_t), dst->str_, N2_SCAST(int, dst->buffer_size_), NULL, NULL);
+		const int pathwritten = WideCharToMultiByte(CP_UTF8, 0, N2_RCAST(wchar_t*, src), isrc_size, dst->str_, N2_SCAST(int, dst->buffer_size_), NULL, NULL);
 		if (pathwritten > 0)
 		{
 			dst->size_ = N2_SCAST(size_t, pathwritten);
@@ -6112,6 +6114,7 @@ N2_API void n2h_filesystem_filestat_init(n2h_filesystem_filestat_t* filestat)
 {
 	filestat->is_directory_ = N2_FALSE;
 	filestat->filesize_ = 0;
+	filestat->attributes_ = 0;
 
 	filestat->root_filesystem_ = NULL;
 	filestat->domain_filesystem_ = NULL;
@@ -6121,6 +6124,18 @@ N2_API void n2h_filesystem_filestat_teardown(n2_state_t* state, n2h_filesystem_f
 {
 	N2_UNUSE(state);
 	n2h_filesystem_filestat_init(filestat);
+}
+
+N2_API void n2h_filesystem_direntcontext_init(n2h_filesystem_direntcontext_t* direntcontext)
+{
+	direntcontext->parent_context_ = NULL;
+	direntcontext->user_ = NULL;
+}
+
+N2_API void n2h_filesystem_direntcontext_teardown(n2_state_t* state, n2h_filesystem_direntcontext_t* direntcontext)
+{
+	N2_UNUSE(state);
+	n2h_filesystem_direntcontext_init(direntcontext);
 }
 
 static void n2hi_filesystem_init(n2h_filesystem_t* fs)
@@ -6135,6 +6150,7 @@ static void n2hi_filesystem_init(n2h_filesystem_t* fs)
 	fs->write_func_ = NULL;
 	fs->close_func_ = NULL;
 	fs->dir_func_ = NULL;
+	fs->dirent_func_ = NULL;
 	fs->fin_func_ = NULL;
 	fs->user_ = NULL;
 }
@@ -6201,30 +6217,33 @@ N2_API n2h_filesystem_t* n2h_filesystem_alloc_null(n2_state_t* state)
 	return fs;
 }
 
-static n2_bool_t n2hi_filesystem_stat_func_system(const n2h_filesystem_statparam_t* statparam)
+static n2_bool_t n2hi_filesystem_stat_func_system(n2h_filesystem_t* self_fs, const n2h_filesystem_statparam_t* statparam)
 {
+	N2_ASSERT(self_fs->type_ == N2H_FILESYSTEM_SYSTEM);
 	if (!n2h_systemfiledevice_filestat(statparam->state_, statparam->dst_filestat_, statparam->filepath_, SIZE_MAX)) { return N2_FALSE; }
-	statparam->dst_filestat_->root_filesystem_ = statparam->filesystem_;
-	statparam->dst_filestat_->domain_filesystem_ = statparam->filesystem_;
+	statparam->dst_filestat_->domain_filesystem_ = self_fs;
 	return N2_TRUE;
 }
 
-static n2_bool_t n2hi_filesystem_remove_func_system(const n2h_filesystem_removeparam_t* removeparam)
+static n2_bool_t n2hi_filesystem_remove_func_system(n2h_filesystem_t* self_fs, const n2h_filesystem_removeparam_t* removeparam)
 {
+	N2_ASSERT(self_fs->type_ == N2H_FILESYSTEM_SYSTEM);
+	N2_UNUSE(self_fs);
 	n2_bool_t succeeded = N2_FALSE;
 	if (!succeeded && removeparam->allow_file_ && n2h_systemfiledevice_rmfile(removeparam->state_, removeparam->filepath_, SIZE_MAX, 0)) { succeeded = N2_TRUE; }
 	if (!succeeded && removeparam->allow_dir_ && n2h_systemfiledevice_rmdir(removeparam->state_, removeparam->filepath_, SIZE_MAX, 0)) { succeeded = N2_TRUE; }
 	return N2_TRUE;
 }
 
-static n2h_filesystem_readhandle_t* n2hi_filesystem_read_func_system(const n2h_filesystem_readparam_t* readparam)
+static n2h_filesystem_readhandle_t* n2hi_filesystem_read_func_system(n2h_filesystem_t* self_fs, const n2h_filesystem_readparam_t* readparam)
 {
+	N2_ASSERT(self_fs->type_ == N2H_FILESYSTEM_SYSTEM);
 	n2h_filesystem_readhandle_t* handle = NULL;
-	n2_state_t* state = N2_RCAST(n2_state_t*, readparam->filesystem_->user_);
+	n2_state_t* state = N2_RCAST(n2_state_t*, self_fs->user_);
 	if (state->config_.file_read_)
 	{
 		handle = N2_TMALLOC(n2h_filesystem_readhandle_t, readparam->state_);
-		n2h_filesystem_readhandle_init(handle, readparam->filesystem_);
+		n2h_filesystem_readhandle_init(handle, self_fs);
 		n2_bool_t succeed = N2_FALSE;
 
 		n2_fileread_param_t fparam;
@@ -6247,11 +6266,12 @@ static n2h_filesystem_readhandle_t* n2hi_filesystem_read_func_system(const n2h_f
 	return handle;
 }
 
-static n2h_filesystem_writehandle_t* n2hi_filesystem_write_func_system(const n2h_filesystem_writeparam_t* writeparam)
+static n2h_filesystem_writehandle_t* n2hi_filesystem_write_func_system(n2h_filesystem_t* self_fs, const n2h_filesystem_writeparam_t* writeparam)
 {
+	N2_ASSERT(self_fs->type_ == N2H_FILESYSTEM_SYSTEM);
 	n2h_filesystem_writehandle_t* handle = N2_TMALLOC(n2h_filesystem_writehandle_t, writeparam->state_);
-	n2h_filesystem_writehandle_init(handle, writeparam->filesystem_);
-	n2_state_t* state = N2_RCAST(n2_state_t*, writeparam->filesystem_->user_);
+	n2h_filesystem_writehandle_init(handle, self_fs);
+	n2_state_t* state = N2_RCAST(n2_state_t*, self_fs->user_);
 	if (state->config_.file_write_)
 	{
 		n2_filewrite_param_t fparam;
@@ -6267,14 +6287,18 @@ static n2h_filesystem_writehandle_t* n2hi_filesystem_write_func_system(const n2h
 	return handle;
 }
 
-static void n2hi_filesystem_close_func_system(n2_state_t* state, n2h_filesystem_handle_t* handle)
+static void n2hi_filesystem_close_func_system(n2_state_t* state, n2h_filesystem_t* self_fs, n2h_filesystem_handle_t* handle)
 {
+	N2_ASSERT(self_fs->type_ == N2H_FILESYSTEM_SYSTEM);
+	N2_UNUSE(self_fs);
 	n2h_filesystem_handle_teardown(state, handle);
 	n2_free(state, handle);
 }
 
-static n2_bool_t n2hi_filesystem_dir_func_system(const n2h_filesystem_dirparam_t* dirparam)
+static n2_bool_t n2hi_filesystem_dir_func_system(n2h_filesystem_t* self_fs, const n2h_filesystem_dirparam_t* dirparam)
 {
+	N2_ASSERT(self_fs->type_ == N2H_FILESYSTEM_SYSTEM);
+	N2_UNUSE(self_fs);
 	switch (dirparam->operation_)
 	{
 	case N2H_FILESYSTEM_DIRECTORY_OPERATION_MAKE:
@@ -6289,6 +6313,13 @@ static n2_bool_t n2hi_filesystem_dir_func_system(const n2h_filesystem_dirparam_t
 	return N2_FALSE;
 }
 
+static n2_bool_t n2hi_filesystem_dirent_func_system(n2h_filesystem_t* self_fs, const n2h_filesystem_direntparam_t* direntparam)
+{
+	N2_ASSERT(self_fs->type_ == N2H_FILESYSTEM_SYSTEM);
+	N2_UNUSE(self_fs);
+	return n2h_systemfiledevice_dirent(direntparam->state_, direntparam->dirpath_, direntparam->fnpattern_, direntparam->callback_, direntparam->callback_user_, direntparam->dirent_flags_);
+}
+
 N2_API n2h_filesystem_t* n2h_filesystem_alloc_system(n2_state_t* state)
 {
 	n2h_filesystem_t* fs = N2_TMALLOC(n2h_filesystem_t, state);
@@ -6300,6 +6331,7 @@ N2_API n2h_filesystem_t* n2h_filesystem_alloc_system(n2_state_t* state)
 	fs->write_func_ = n2hi_filesystem_write_func_system;
 	fs->close_func_ = n2hi_filesystem_close_func_system;
 	fs->dir_func_ = n2hi_filesystem_dir_func_system;
+	fs->dirent_func_ = n2hi_filesystem_dirent_func_system;
 	fs->user_ = state;
 	return fs;
 }
@@ -6335,12 +6367,17 @@ N2_API n2_bool_t n2h_filesystem_filestat(n2_state_t* state, n2h_filesystem_files
 {
 	if (!fs) { return N2_FALSE; }
 	if (!fs->stat_func_) { return N2_FALSE; }
+	N2_ASSERT(dst_filestat);
+	if (!dst_filestat) { return N2_FALSE; }
 	n2h_filesystem_statparam_t fsparam;
 	fsparam.state_ = state;
 	fsparam.filepath_ = filepath;
 	fsparam.dst_filestat_ = dst_filestat;
 	fsparam.filesystem_ = fs;
-	return fs->stat_func_(&fsparam);
+	dst_filestat->domain_filesystem_ = fs;
+	dst_filestat->root_filesystem_ = fs;
+	if (!fs->stat_func_(fs, &fsparam)) { return N2_FALSE; }
+	return N2_TRUE;
 }
 
 N2_API n2_bool_t n2h_filesystem_remove(n2_state_t* state, n2h_filesystem_t* fs, const char* filepath, n2_bool_t allow_file, n2_bool_t allow_dir)
@@ -6353,7 +6390,7 @@ N2_API n2_bool_t n2h_filesystem_remove(n2_state_t* state, n2h_filesystem_t* fs, 
 	frparam.allow_file_ = allow_file;
 	frparam.allow_dir_ = allow_dir;
 	frparam.filesystem_ = fs;
-	return fs->remove_func_(&frparam);
+	return fs->remove_func_(fs, &frparam);
 }
 
 N2_API n2h_filesystem_readhandle_t* n2h_filesystem_read(n2_state_t* state, n2h_filesystem_t* fs, const char* filepath, n2_bool_t is_binary, size_t readsize, size_t readoffset, n2h_filesystem_read_e read)
@@ -6368,7 +6405,7 @@ N2_API n2h_filesystem_readhandle_t* n2h_filesystem_read(n2_state_t* state, n2h_f
 	frparam.readoffset_ = readoffset;
 	frparam.read_ = read;
 	frparam.filesystem_ = fs;
-	n2h_filesystem_readhandle_t* readhandle = fs->read_func_(&frparam);
+	n2h_filesystem_readhandle_t* readhandle = fs->read_func_(fs, &frparam);
 	return readhandle;
 }
 
@@ -6384,7 +6421,7 @@ N2_API n2h_filesystem_writehandle_t* n2h_filesystem_write(n2_state_t* state, n2h
 	fwparam.writesize_ = writesize;
 	fwparam.writeoffset_ = writeoffset;
 	fwparam.filesystem_ = fs;
-	n2h_filesystem_writehandle_t* writehandle = fs->write_func_(&fwparam);
+	n2h_filesystem_writehandle_t* writehandle = fs->write_func_(fs, &fwparam);
 	return writehandle;
 }
 
@@ -6393,7 +6430,7 @@ N2_API void n2h_filesystem_close(n2_state_t* state, n2h_filesystem_handle_t* han
 	if (!handle) { return; }
 	if (handle->filesystem_ && handle->filesystem_->close_func_)
 	{
-		handle->filesystem_->close_func_(state, handle);
+		handle->filesystem_->close_func_(state, handle->filesystem_, handle);
 	}
 }
 
@@ -6406,7 +6443,7 @@ N2_API n2_bool_t n2h_filesystem_mkdir(n2_state_t* state, n2h_filesystem_t* fs, c
 	fdparam.operation_ = N2H_FILESYSTEM_DIRECTORY_OPERATION_MAKE;
 	fdparam.dirpath_ = dirpath;
 	fdparam.filesystem_ = fs;
-	return fs->dir_func_(&fdparam);
+	return fs->dir_func_(fs, &fdparam);
 }
 
 N2_API n2_bool_t n2h_filesystem_rmdir(n2_state_t* state, n2h_filesystem_t* fs, const char* dirpath)
@@ -6418,7 +6455,24 @@ N2_API n2_bool_t n2h_filesystem_rmdir(n2_state_t* state, n2h_filesystem_t* fs, c
 	fdparam.operation_ = N2H_FILESYSTEM_DIRECTORY_OPERATION_REMOVE;
 	fdparam.dirpath_ = dirpath;
 	fdparam.filesystem_ = fs;
-	return fs->dir_func_(&fdparam);
+	return fs->dir_func_(fs, &fdparam);
+}
+
+N2_API n2_bool_t n2h_filesystem_dirent(n2_state_t* state, n2h_filesystem_t* fs, const char* dirpath, const char* fnpattern, n2h_filesystem_dirent_callback_func_t callback, void* callback_user, size_t dirent_flags)
+{
+	if (!fs) { return N2_FALSE; }
+	if (!fs->dirent_func_) { return N2_FALSE; }
+	if (!callback) { return N2_FALSE; }
+	n2h_filesystem_direntparam_t deparam;
+	deparam.state_ = state;
+	deparam.dirpath_ = dirpath;
+	deparam.fnpattern_ = fnpattern;
+	deparam.callback_ = callback;
+	deparam.callback_user_ = callback_user;
+	deparam.dirent_flags_ = dirent_flags;
+	deparam.filesystem_ = fs;
+	deparam.direntcontext_ = NULL;
+	return fs->dirent_func_(fs, &deparam);
 }
 
 N2_API n2_bool_t n2h_filesystem_load(n2_state_t* state, n2h_filesystem_t* fs, n2_buffer_t* dst, const char* filepath, n2_bool_t is_binary, size_t readsize, size_t readoffset)
@@ -6440,96 +6494,84 @@ N2_API n2_bool_t n2h_filesystem_save(n2_state_t* state, n2h_filesystem_t* fs, si
 	return written_succeeded;
 }
 
-static n2_bool_t n2hi_filesystem_stat_func_array(const n2h_filesystem_statparam_t* statparam)
+static n2_bool_t n2hi_filesystem_stat_func_array(n2h_filesystem_t* self_fs, const n2h_filesystem_statparam_t* statparam)
 {
-	N2_ASSERT(statparam->filesystem_->type_ == N2H_FILESYSTEM_ARRAY);
-	n2h_filesystem_array_context_t* context = N2_RCAST(n2h_filesystem_array_context_t*, statparam->filesystem_->user_);
+	N2_ASSERT(self_fs->type_ == N2H_FILESYSTEM_ARRAY);
+	n2h_filesystem_array_context_t* context = N2_RCAST(n2h_filesystem_array_context_t*, self_fs->user_);
 	for (size_t i = 0, l = n2h_filesystemarray_size(context->filesystem_array_); i < l; ++i)
 	{
 		n2h_filesystem_t* fs = n2h_filesystemarray_peekv(context->filesystem_array_, N2_SCAST(int, i), NULL);
 		if (!fs->stat_func_) { continue; }
-		n2h_filesystem_statparam_t elementstatparam = *statparam;
-		elementstatparam.filesystem_ = fs;
-		if (fs->stat_func_(&elementstatparam))
-		{
-			statparam->dst_filestat_->root_filesystem_ = statparam->filesystem_;
-			return N2_TRUE;
-		}
+		if (fs->stat_func_(fs, statparam)) { return N2_TRUE; }
 	}
 	return N2_FALSE;
 }
 
-static n2_bool_t n2hi_filesystem_remove_func_array(const n2h_filesystem_removeparam_t* removeparam)
+static n2_bool_t n2hi_filesystem_remove_func_array(n2h_filesystem_t* self_fs, const n2h_filesystem_removeparam_t* removeparam)
 {
-	N2_ASSERT(removeparam->filesystem_->type_ == N2H_FILESYSTEM_ARRAY);
-	n2h_filesystem_array_context_t* context = N2_RCAST(n2h_filesystem_array_context_t*, removeparam->filesystem_->user_);
+	N2_ASSERT(self_fs->type_ == N2H_FILESYSTEM_ARRAY);
+	n2h_filesystem_array_context_t* context = N2_RCAST(n2h_filesystem_array_context_t*, self_fs->user_);
 	for (size_t i = 0, l = n2h_filesystemarray_size(context->filesystem_array_); i < l; ++i)
 	{
 		n2h_filesystem_t* fs = n2h_filesystemarray_peekv(context->filesystem_array_, N2_SCAST(int, i), NULL);
-		if (!fs->stat_func_) { continue; }
-		n2h_filesystem_removeparam_t elementremoveparam = *removeparam;
-		elementremoveparam.filesystem_ = fs;
-		if (fs->remove_func_(&elementremoveparam)) { return N2_TRUE; }
+		if (!fs->remove_func_) { continue; }
+		if (fs->remove_func_(fs, removeparam)) { return N2_TRUE; }
 	}
 	return N2_FALSE;
 }
 
-static n2h_filesystem_readhandle_t* n2hi_filesystem_read_func_array(const n2h_filesystem_readparam_t* readparam)
+static n2h_filesystem_readhandle_t* n2hi_filesystem_read_func_array(n2h_filesystem_t* self_fs, const n2h_filesystem_readparam_t* readparam)
 {
-	N2_ASSERT(readparam->filesystem_->type_ == N2H_FILESYSTEM_ARRAY);
-	n2h_filesystem_array_context_t* context = N2_RCAST(n2h_filesystem_array_context_t*, readparam->filesystem_->user_);
+	N2_ASSERT(self_fs->type_ == N2H_FILESYSTEM_ARRAY);
+	n2h_filesystem_array_context_t* context = N2_RCAST(n2h_filesystem_array_context_t*, self_fs->user_);
 	for (size_t i = 0, l = n2h_filesystemarray_size(context->filesystem_array_); i < l; ++i)
 	{
 		n2h_filesystem_t* fs = n2h_filesystemarray_peekv(context->filesystem_array_, N2_SCAST(int, i), NULL);
 		if (!fs->read_func_) { continue; }
-		n2h_filesystem_readparam_t elementreadparam = *readparam;
-		elementreadparam.filesystem_ = fs;
-		n2h_filesystem_readhandle_t* handle = fs->read_func_(&elementreadparam);
+		n2h_filesystem_readhandle_t* handle = fs->read_func_(fs, readparam);
 		if (handle) { return handle; }
 	}
 	return NULL;
 }
 
-static n2h_filesystem_writehandle_t* n2hi_filesystem_write_func_array(const n2h_filesystem_writeparam_t* writeparam)
+static n2h_filesystem_writehandle_t* n2hi_filesystem_write_func_array(n2h_filesystem_t* self_fs, const n2h_filesystem_writeparam_t* writeparam)
 {
-	N2_ASSERT(writeparam->filesystem_->type_ == N2H_FILESYSTEM_ARRAY);
-	n2h_filesystem_array_context_t* context = N2_RCAST(n2h_filesystem_array_context_t*, writeparam->filesystem_->user_);
+	N2_ASSERT(self_fs->type_ == N2H_FILESYSTEM_ARRAY);
+	n2h_filesystem_array_context_t* context = N2_RCAST(n2h_filesystem_array_context_t*, self_fs->user_);
 	for (size_t i = 0, l = n2h_filesystemarray_size(context->filesystem_array_); i < l; ++i)
 	{
 		n2h_filesystem_t* fs = n2h_filesystemarray_peekv(context->filesystem_array_, N2_SCAST(int, i), NULL);
 		if (!fs->write_func_) { continue; }
-		n2h_filesystem_writeparam_t elementwriteparam = *writeparam;
-		elementwriteparam.filesystem_ = fs;
-		n2h_filesystem_writehandle_t* handle = fs->write_func_(&elementwriteparam);
+		n2h_filesystem_writehandle_t* handle = fs->write_func_(fs, writeparam);
 		if (handle) { return handle; }
 	}
 	return NULL;
 }
 
-static void n2hi_filesystem_close_func_array(n2_state_t* state, n2h_filesystem_handle_t* handle)
+static void n2hi_filesystem_close_func_array(n2_state_t* state, n2h_filesystem_t* self_fs, n2h_filesystem_handle_t* handle)
 {
+	N2_ASSERT(self_fs->type_ == N2H_FILESYSTEM_ARRAY);
+	N2_UNUSE(self_fs);
 	n2h_filesystem_handle_teardown(state, handle);
 	n2_free(state, handle);
 }
 
-static n2_bool_t n2hi_filesystem_dir_func_array(const n2h_filesystem_dirparam_t* dirparam)
+static n2_bool_t n2hi_filesystem_dir_func_array(n2h_filesystem_t* self_fs, const n2h_filesystem_dirparam_t* dirparam)
 {
-	N2_ASSERT(dirparam->filesystem_->type_ == N2H_FILESYSTEM_ARRAY);
-	n2h_filesystem_array_context_t* context = N2_RCAST(n2h_filesystem_array_context_t*, dirparam->filesystem_->user_);
+	N2_ASSERT(self_fs->type_ == N2H_FILESYSTEM_ARRAY);
+	n2h_filesystem_array_context_t* context = N2_RCAST(n2h_filesystem_array_context_t*, self_fs->user_);
 	for (size_t i = 0, l = n2h_filesystemarray_size(context->filesystem_array_); i < l; ++i)
 	{
 		n2h_filesystem_t* fs = n2h_filesystemarray_peekv(context->filesystem_array_, N2_SCAST(int, i), NULL);
 		if (!fs->dir_func_) { continue; }
-		n2h_filesystem_dirparam_t elementdirparam = *dirparam;
-		elementdirparam.filesystem_ = fs;
-		if (fs->dir_func_(&elementdirparam)) { return N2_TRUE; }
+		if (fs->dir_func_(fs, dirparam)) { return N2_TRUE; }
 	}
 	return N2_FALSE;
 }
 
-static void n2hi_filesystem_fin_func_array(n2_state_t* state, n2h_filesystem_t* fs)
+static void n2hi_filesystem_fin_func_array(n2_state_t* state, n2h_filesystem_t* self_fs)
 {
-	n2h_filesystem_array_context_t* context = N2_RCAST(n2h_filesystem_array_context_t*, fs->user_);
+	n2h_filesystem_array_context_t* context = N2_RCAST(n2h_filesystem_array_context_t*, self_fs->user_);
 	n2h_filesystemarray_free(state, context->filesystem_array_);
 	n2_free(state, context);
 }
@@ -6643,33 +6685,34 @@ static void n2hi_filesystem_msgpack_filehandle_teardown(n2_state_t* state, n2hi_
 	n2_str_teardown(state, &filehandle->nfilepath_);
 }
 
-static n2_bool_t n2hi_filesystem_stat_func_msgpack(const n2h_filesystem_statparam_t* statparam)
+static n2_bool_t n2hi_filesystem_stat_func_msgpack(n2h_filesystem_t* self_fs, const n2h_filesystem_statparam_t* statparam)
 {
+	N2_ASSERT(self_fs->type_ == N2H_FILESYSTEM_MSGPACK);
 	n2_bool_t succeeded = N2_FALSE;
 
-	n2h_filesystem_msgpack_context_t* context = N2_RCAST(n2h_filesystem_msgpack_context_t*, statparam->filesystem_->user_);
+	n2h_filesystem_msgpack_context_t* context = N2_RCAST(n2h_filesystem_msgpack_context_t*, self_fs->user_);
 	n2hi_filesystem_msgpack_filehandle_t hfile;
 	n2hi_filesystem_msgpack_filehandle_init(&hfile);
 	if (n2hi_filesystem_msgpack_filehandle_setup(statparam->state_, &hfile, context, statparam->filepath_))
 	{
 		statparam->dst_filestat_->is_directory_ = N2_FALSE;
 		statparam->dst_filestat_->filesize_ = hfile.filesize_;
-		statparam->dst_filestat_->root_filesystem_ = statparam->filesystem_;
-		statparam->dst_filestat_->domain_filesystem_ = statparam->filesystem_;
+		statparam->dst_filestat_->domain_filesystem_ = self_fs;
 		succeeded = N2_TRUE;
 	}
 	n2hi_filesystem_msgpack_filehandle_teardown(statparam->state_, &hfile);
 	return succeeded;
 }
 
-static n2h_filesystem_readhandle_t* n2hi_filesystem_read_func_msgpack(const n2h_filesystem_readparam_t* readparam)
+static n2h_filesystem_readhandle_t* n2hi_filesystem_read_func_msgpack(n2h_filesystem_t* self_fs, const n2h_filesystem_readparam_t* readparam)
 {
+	N2_ASSERT(self_fs->type_ == N2H_FILESYSTEM_MSGPACK);
 	n2h_filesystem_readhandle_t* handle = N2_TMALLOC(n2h_filesystem_readhandle_t, readparam->state_);
-	n2h_filesystem_readhandle_init(handle, readparam->filesystem_);
+	n2h_filesystem_readhandle_init(handle, self_fs);
 
 	n2_bool_t succeeded = N2_FALSE;
 
-	n2h_filesystem_msgpack_context_t* context = N2_RCAST(n2h_filesystem_msgpack_context_t*, readparam->filesystem_->user_);
+	n2h_filesystem_msgpack_context_t* context = N2_RCAST(n2h_filesystem_msgpack_context_t*, self_fs->user_);
 	n2hi_filesystem_msgpack_filehandle_t hfile;
 	n2hi_filesystem_msgpack_filehandle_init(&hfile);
 	if (n2hi_filesystem_msgpack_filehandle_setup(readparam->state_, &hfile, context, readparam->filepath_))
@@ -6740,8 +6783,10 @@ static n2h_filesystem_readhandle_t* n2hi_filesystem_read_func_msgpack(const n2h_
 	return handle;
 }
 
-static void n2hi_filesystem_close_func_msgpack(n2_state_t* state, n2h_filesystem_handle_t* handle)
+static void n2hi_filesystem_close_func_msgpack(n2_state_t* state, n2h_filesystem_t* self_fs, n2h_filesystem_handle_t* handle)
 {
+	N2_ASSERT(self_fs->type_ == N2H_FILESYSTEM_MSGPACK);
+	N2_UNUSE(self_fs);
 	n2h_filesystem_handle_teardown(state, handle);
 	n2_free(state, handle);
 }
@@ -6762,6 +6807,16 @@ N2_API n2h_filesystem_t* n2h_filesystem_alloc_msgpack(n2_state_t* state, const n
 	context->msgpack_ = msgpack;
 	fs->user_ = context;
 	return fs;
+}
+#endif
+
+#if N2_PLATFORM_IS_WINDOWS
+static size_t n2hi_systemfiledevice_extract_fileattributes(DWORD dw_file_attributes)
+{
+	size_t attributes = 0;
+	if (dw_file_attributes & FILE_ATTRIBUTE_HIDDEN) { attributes |= N2H_FILESYSTEM_ATTRIBUTE_FLAG_HIDDEN; }
+	if (dw_file_attributes & FILE_ATTRIBUTE_SYSTEM) { attributes |= N2H_FILESYSTEM_ATTRIBUTE_FLAG_SYSFILE; }
+	return attributes;
 }
 #endif
 
@@ -6872,6 +6927,7 @@ N2_API n2_bool_t n2h_systemfiledevice_filestat(n2_state_t* state, n2h_filesystem
 		{
 			dst_filestat->is_directory_ = (fileinfo.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? N2_TRUE : N2_FALSE;
 			dst_filestat->filesize_ = N2_SCAST(size_t, (N2_SCAST(uint64_t, fileinfo.nFileSizeHigh) << 32) + N2_SCAST(uint64_t, fileinfo.nFileSizeLow));
+			dst_filestat->attributes_ = n2hi_systemfiledevice_extract_fileattributes(fileinfo.dwFileAttributes);
 			succeeded = N2_TRUE;
 		}
 #endif
@@ -6979,6 +7035,76 @@ N2_API n2_bool_t n2h_systemfiledevice_rmdir(n2_state_t* state, const char* path,
 	N2_UNUSE(flags);
 	return N2_FALSE;
 #endif
+}
+
+N2_API n2_bool_t n2h_systemfiledevice_dirent(n2_state_t* state, const char* dirpath, const char* fnpattern, n2h_filesystem_dirent_callback_func_t callback, void* callback_user, size_t dirent_flags)
+{
+	if (!callback) { return N2_FALSE; }
+	n2_bool_t succeeded = N2_FALSE;
+#if N2_PLATFORM_IS_WINDOWS
+	{
+		N2_UNUSE(dirent_flags);// @todo
+
+		n2_str_t dirfnpath;
+		n2_str_init(&dirfnpath);
+		if (fnpattern && fnpattern != '\0')
+		{
+			n2_path_join(state, &dirfnpath, dirpath, SIZE_MAX, fnpattern, SIZE_MAX);
+		}
+		else
+		{
+			n2_str_set(state, &dirfnpath, dirpath, SIZE_MAX);
+		}
+
+		n2_str_t sysdirpath;
+		n2_str_init(&sysdirpath);
+		if (n2hi_to_system_string(state, &sysdirpath, dirfnpath.str_, SIZE_MAX))
+		{
+			WIN32_FIND_DATAW fdata;
+			HANDLE dirhandle = FindFirstFileW(N2_RCAST(const wchar_t*, sysdirpath.str_), &fdata);
+			if (dirhandle != INVALID_HANDLE_VALUE)
+			{
+				n2_str_t entry_filename;
+				n2_str_init(&entry_filename);
+
+				n2h_filesystem_dirent_entry_t entry;
+				entry.domain_filesystem_ = NULL;
+
+				do
+				{
+					n2_bool_t valid = N2_TRUE;
+					if (fdata.cFileName[0] == '\0') { valid = N2_FALSE; }
+					if (fdata.cFileName[0] == '.' && fdata.cFileName[1] == '\0') { valid = N2_FALSE; }
+					if (fdata.cFileName[0] == '.' && fdata.cFileName[1] == '.' && fdata.cFileName[2] == '\0') { valid = N2_FALSE; }
+
+					if (valid)
+					{
+						n2hi_from_system_string(state, &entry_filename, N2_RCAST(const char*, fdata.cFileName), SIZE_MAX);
+						entry.entryname_ = entry_filename.str_;
+						entry.is_directory_ = (fdata.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? N2_TRUE : N2_FALSE;
+						entry.filesize_ = N2_SCAST(size_t, (N2_SCAST(uint64_t, fdata.nFileSizeHigh) << 32) + N2_SCAST(uint64_t, fdata.nFileSizeLow));
+						entry.attributes_ = n2hi_systemfiledevice_extract_fileattributes(fdata.dwFileAttributes);
+						if (!callback(state, &entry, callback_user)) { break; }
+					}
+				} while (FindNextFileW(dirhandle, &fdata));
+				FindClose(dirhandle);
+
+				n2_str_teardown(state, &entry_filename);
+			}
+		}
+		n2_str_teardown(state, &dirfnpath);
+		n2_str_teardown(state, &sysdirpath);
+	}
+#elif N2_PLATFORM_IS_UNIX
+#else
+	N2_UNUSE(state);
+	N2_UNUSE(dirpath);
+	N2_UNUSE(fnpattern);
+	N2_UNUSE(callback);
+	N2_UNUSE(callback_user);
+	N2_UNUSE(dirent_flags);
+#endif
+	return succeeded;
 }
 
 // ネットワーク
@@ -26944,12 +27070,64 @@ static int n2i_bifunc_dirinfo(const n2_funcarg_t* arg)
 		{
 			n2_valstr_t* dirpart = n2e_funcarg_pushs(arg, "");
 			n2_path_split(arg->state_, dirpart, NULL, NULL, dirpath);
-			n2_str_swap(dirpath, dirpart);
 		}
 		break;
 	default:
 		break;
 	}
+	return 1;
+}
+
+typedef struct n2i_bifunc_dirlist_context_t n2i_bifunc_dirlist_context_t;
+struct n2i_bifunc_dirlist_context_t
+{
+	const n2_funcarg_t* arg_;
+	n2_valstr_t* filepaths_;
+	size_t filepaths_count_;
+	n2_valint_t mode_;
+};
+
+static n2_bool_t n2h_bifunc_dirlist_callback_func(n2_state_t* state, const n2h_filesystem_dirent_entry_t* entry, void* callback_user)
+{
+	N2_ASSERT(callback_user);
+	n2i_bifunc_dirlist_context_t* context = N2_RCAST(n2i_bifunc_dirlist_context_t*, callback_user);
+	n2_bool_t target = N2_FALSE;
+	if (context->mode_ & 1) { if (entry->is_directory_) { target = N2_TRUE; } }
+	if (context->mode_ & 2) { if (entry->attributes_ & (N2H_FILESYSTEM_ATTRIBUTE_FLAG_HIDDEN | N2H_FILESYSTEM_ATTRIBUTE_FLAG_HIDDEN)) { target = N2_TRUE; } }
+	if ((context->mode_ & 4) == 0) { target = !target; }
+	if (target)
+	{
+		n2_str_append(state, context->filepaths_, entry->entryname_, SIZE_MAX);
+		n2_str_append(state, context->filepaths_, "\n", SIZE_MAX);
+		++context->filepaths_count_;
+	}
+	return N2_TRUE;
+}
+
+static int n2i_bifunc_dirlist(const n2_funcarg_t* arg)
+{
+	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	if (arg_num < 2 || arg_num > 3) { n2e_funcarg_raise(arg, "dirlist：引数の数（%d）が期待（%d - %d）と違います", arg_num, 2, 3); return -1; }
+	n2_value_t* varval = n2e_funcarg_getarg(arg, 0);
+	if (varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "dirlist：対象の引数が変数ではありません"); return -1; }
+	const n2_value_t* filemaskval = n2e_funcarg_getarg(arg, 1);
+	const n2_valstr_t* filemask = n2e_funcarg_eval_str_and_push(arg, filemaskval);
+	const n2_value_t* modeval = n2e_funcarg_getarg(arg, 2);
+	const n2_valint_t mode = (modeval && modeval->type_ != N2_VALUE_NIL) ? n2e_funcarg_eval_int(arg, modeval) : 0;
+	n2_valstr_t* filepaths = n2e_funcarg_pushs(arg, "");
+	n2_value_t* filepathsval = n2e_funcarg_get(arg, -1);
+	N2_ASSERT(filepathsval && &filepathsval->field_.svalue_ == filepaths);
+
+	n2i_bifunc_dirlist_context_t context;
+	context.arg_ = arg;
+	context.filepaths_ = filepaths;
+	context.filepaths_count_ = 0;
+	context.mode_ = mode;
+	n2h_systemfiledevice_dirent(arg->state_, ".", filemask->str_, n2h_bifunc_dirlist_callback_func, &context, 0);
+
+	n2_variable_set(arg->state_, arg->fiber_, varval->field_.varvalue_.var_, varval->field_.varvalue_.aptr_, filepathsval);
+
+	n2e_funcarg_pushi(arg, N2_SCAST(n2_valint_t, context.filepaths_count_));
 	return 1;
 }
 
@@ -27506,6 +27684,7 @@ static void n2i_environment_bind_basic_builtins(n2_state_t* state, n2_pp_context
 		{"exist",				n2i_bifunc_exist,				N2_FALSE},
 		{"delete",				n2i_bifunc_delete,				N2_FALSE},
 		{"dirinfo",				n2i_bifunc_dirinfo,				N2_FALSE},
+		{"dirlist",				n2i_bifunc_dirlist,				N2_FALSE},
 		{"chdir",				n2i_bifunc_chdir,				N2_FALSE},
 		{"mkdir",				n2i_bifunc_mkdir,				N2_FALSE},
 		{"notesel",				n2i_bifunc_notesel,				N2_FALSE},

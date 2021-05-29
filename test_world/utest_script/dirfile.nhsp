@@ -19,15 +19,23 @@ if (1) {
 	exist filepath
 	mes `filesize(${filepath}) = ${strsize}`
 	if (strsize < 0) { raise }
+	filesize = strsize
 	tofilepath = `${fileroot}/out/btestcopy`
 	bcopy filepath, tofilepath
 	exist tofilepath
 	mes `tofilesize(${tofilepath}) = ${strsize}`
 	if (strsize < 0) { raise }
+	tofilesize = strsize
+	if (filesize != tofilesize) { raise }
 
-	if (0) {
+	if (1) {
 		delete tofilepath
 		exist tofilepath
 		if (strsize >= 0) { raise }
 	}
+}
+
+if (1) {
+	dirlist files, "*.*", 6
+	mes `dirlist(${stat})\n[[${files}]]`
 }
