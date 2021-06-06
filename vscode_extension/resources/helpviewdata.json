@@ -3668,25 +3668,136 @@
 				}
 			],
 			"description": [
-				"modeによって指定されたモードに応じて現在時刻を整数値として返します。",
+				"modeによって指定されたモードに応じて現在時刻を値として返します。",
 				"modeの値によって取得できる内容は次の表の通りです。$",
 				"$",
-				"|mode|取得する内容|$",
-				"|:--|:--|$",
-				"|0|年（2020など）|$",
-				"|1|月（[1, 12]）|$",
-				"|2|曜日（[0, 6]で0が日曜、6が土曜）|$",
-				"|3|日（[1, 31]）|$",
-				"|4|時（[0, 23]）|$",
-				"|5|分（[0, 59]）|$",
-				"|6|秒（[0, 59]）|$",
-				"|7|ミリ秒<br>プラットフォームによってはサポートされない場合があり、その場合は`0`|$",
-				"|-1|UTCとローカル時刻の差[秒]<br>HSP3との互換性のため、将来的に動作互換性がない場合があります。|$",
+				"|mode|マクロ|取得する内容|$",
+				"|:--|:--|:--|$",
+				"|0|-|年（2020など）|$",
+				"|1|-|月（[1, 12]）|$",
+				"|2|-|曜日（[0, 6]で0が日曜、6が土曜）|$",
+				"|3|-|日（[1, 31]）|$",
+				"|4|-|時（[0, 23]）|$",
+				"|5|-|分（[0, 59]）|$",
+				"|6|-|秒（[0, 59]）|$",
+				"|7|-|ミリ秒<br>プラットフォームによってはサポートされない場合があり、その場合は`0`|$",
+				"|-|$ref(gettime_localtime@n2)|LocalTime<br>UnixTimeにローカル時刻のUTCオフセット[秒]を加算した数値です。<br>この値は実数として返され、小数点以下の値はミリ秒を保持します。|$",
+				"|-|$ref(gettime_unixtime@n2)|UnixTime<br>この値は実数として返され、小数点以下の値はミリ秒を保持します。|$",
+				"|-|$ref(gettime_utcoffset@n2)|UTCとローカル時刻の差[秒]|$",
 				"$",
 				"表に書かれている以外の値をmodeとして渡した場合、0が返ります。"
 			],
 			"relationGroup": [
 				"timeCommon"
+			]
+		},
+		"exttime@n2": {
+			"type": "function",
+			"summary": "指定した時刻の取得",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "mode",
+					"description": "取得するモード"
+				},
+				{
+					"name": "time",
+					"description": "時刻"
+				},
+				{
+					"name": "timeMode",
+					"description": "時刻の値",
+					"omitted": "timemode_localtime@n2"
+				}
+			],
+			"description": [
+				"modeによって指定されたモードに応じてtimeによって指定した時刻を値として返します。",
+				"modeの値によって取得できる内容は$ref(gettime)と同じなので、そちらを参照してください。",
+				"",
+				"timeとして渡す値はtimeModeで指定した尺度の値になります。",
+				"timeModeで指定できる値は次の通りです。$",
+				"$",
+				"|timeMode|内容|$",
+				"|:--|:--|$",
+				"|$ref(timemode_localtime@n2)|LocalTime<br>UnixTimeにローカル時刻のUTCオフセット[秒]を加算したもの。|$",
+				"|$ref(timemode_unixtime@n2)|UnixTime|$",
+				"$",
+				"※この関数によって得られる日付は、ローカル時刻で計算した日付になります。",
+				"そのため、正確に渡した時刻をUnixTimeと評価したい場合、timeにUnixTimeを渡してtimeModeをtimemode_localtime@n2とすればその時刻をタイムゾーンを無視して評価できます。"
+			],
+			"relationGroup": [
+				"timeCommon"
+			]
+		},
+		"gettime_localtime@n2": {
+			"type": "constant",
+			"summary": "LocalTime取得モード",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"$ref(gettime)や$ref(exttime@n2)における取得する値（LocalTime）を示す整数の定数です。"
+			],
+			"relationGroup": [
+				"timeConstantCommon"
+			]
+		},
+		"gettime_unixtime@n2": {
+			"type": "constant",
+			"summary": "UnixTime取得モード",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"$ref(gettime)や$ref(exttime@n2)における取得する値（UnixTime）を示す整数の定数です。"
+			],
+			"relationGroup": [
+				"timeConstantCommon"
+			]
+		},
+		"gettime_utcoffset@n2": {
+			"type": "constant",
+			"summary": "UTC Offsetモード",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"$ref(gettime)や$ref(exttime@n2)における取得する値（UTC Offset）を示す整数の定数です。"
+			],
+			"relationGroup": [
+				"timeConstantCommon"
+			]
+		},
+		"timemode_localtime@n2": {
+			"type": "constant",
+			"summary": "LocalTimeモード",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"$ref(exttime@n2)における時刻指定モード（LocalTime）を示す整数の定数です。"
+			],
+			"relationGroup": [
+				"timeConstantCommon"
+			]
+		},
+		"timemode_unixtime@n2": {
+			"type": "constant",
+			"summary": "UnixTimeモード",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"$ref(exttime@n2)における時刻指定モード（UnixTime）を示す整数の定数です。"
+			],
+			"relationGroup": [
+				"timeConstantCommon"
 			]
 		},
 

@@ -1811,6 +1811,9 @@ struct n2h_unixtime_t
 N2_API int64_t n2h_unixtime_localdiff_seconds();
 N2_API n2h_unixtime_t n2h_unixtime_now(n2_bool_t is_localtime);
 
+N2_API double n2h_unixtime_to_monofloat(n2h_unixtime_t unixtime);
+N2_API n2h_unixtime_t n2h_unixtime_from_monofloat(double unixtime);
+
 typedef struct n2h_datetime_t n2h_datetime_t;
 struct n2h_datetime_t
 {
@@ -1826,7 +1829,7 @@ struct n2h_datetime_t
 };
 
 N2_API n2h_datetime_t n2h_unixtime_to_datetime(n2h_unixtime_t unixtime);
-N2_API n2h_unixtime_t n2h_datetime_tounixtime(n2h_datetime_t datetime);
+N2_API n2h_unixtime_t n2h_datetime_to_unixtime(n2h_datetime_t datetime);
 
 // イメージ
 N2_DECLARE_ENUM(n2_image_file_e);
@@ -3876,6 +3879,19 @@ enum n2_ease_e
 enum
 {
 	N2_EASE_OPT_LOOP = 4096
+};
+
+enum
+{
+	N2_GETTIME_LOCALTIME = -1,
+	N2_GETTIME_UNIXTIME = -2,
+	N2_GETTIME_UTCOFFSET = -3,
+};
+
+enum
+{
+	N2_TIMEMODE_LOCALTIME = 0,
+	N2_TIMEMODE_UNIXTIME,
 };
 
 //=============================================================================

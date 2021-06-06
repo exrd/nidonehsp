@@ -4458,6 +4458,19 @@ N2_API n2h_unixtime_t n2h_unixtime_now(n2_bool_t is_localtime)
 	return unixtime;
 }
 
+N2_API double n2h_unixtime_to_monofloat(n2h_unixtime_t unixtime)
+{
+	return N2_SCAST(double, unixtime.seconds_) + N2_SCAST(double, unixtime.nanoseconds_) / 1000000000;
+}
+
+N2_API n2h_unixtime_t n2h_unixtime_from_monofloat(double unixtime)
+{
+	n2h_unixtime_t ut;
+	ut.seconds_ = N2_SCAST(int64_t, unixtime);
+	ut.nanoseconds_ = N2_SCAST(int32_t, (unixtime - N2_SCAST(double, ut.seconds_)) * 1000000000);
+	return ut;
+}
+
 N2_API n2h_datetime_t n2h_unixtime_to_datetime(n2h_unixtime_t unixtime)
 {
 	n2h_datetime_t datetime;
@@ -4496,7 +4509,7 @@ N2_API n2h_datetime_t n2h_unixtime_to_datetime(n2h_unixtime_t unixtime)
 	return datetime;
 }
 
-N2_API n2h_unixtime_t n2h_datetime_tounixtime(n2h_datetime_t datetime)
+N2_API n2h_unixtime_t n2h_datetime_to_unixtime(n2h_datetime_t datetime)
 {
 	n2h_unixtime_t unixtime;
 	unixtime.nanoseconds_ = datetime.nanosecond_;
@@ -27233,13 +27246,20 @@ static int n2i_bifunc_dirinfo(const n2_funcarg_t* arg)
 	switch (mode)
 	{
 	case 0:
-		n2h_systemfiledevice_cwd(arg->state_, dirpath);
+		if (!n2h_systemfiledevice_cwd(arg->state_, dirpath))
+		{
+			n2_str_clear(dirpath);
+		}
 		break;
 	case 1:
 		if (n2h_systemfiledevice_selfpath(arg->state_, dirpath))
 		{
 			n2_valstr_t* dirpart = n2e_funcarg_pushs(arg, "");
 			n2_path_split(arg->state_, dirpart, NULL, NULL, dirpath);
+		}
+		else
+		{
+			n2_str_clear(dirpath);
 		}
 		break;
 	default:
@@ -27631,14 +27651,10 @@ static int n2i_bifunc_delmod(const n2_funcarg_t* arg)
 	return 0;
 }
 
-static int n2i_bifunc_gettime(const n2_funcarg_t* arg)
+static int n2i_bifunc_exttime_common(const n2_funcarg_t* arg, const char* label, n2h_unixtime_t localtime, n2_valint_t f)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
-	if (arg_num > 1) { n2e_funcarg_raise(arg, "gettime：引数の数（%d）が期待（0 - %d）と違います", arg_num, 1); return -1; }
-	const n2_value_t* fval = n2e_funcarg_getarg(arg, 0);
-	const n2_valint_t f = fval && fval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, fval) : 0;
-	const n2h_unixtime_t unixtime = n2h_unixtime_now(N2_TRUE);
-	const n2h_datetime_t datetime = n2h_unixtime_to_datetime(unixtime);
+	N2_UNUSE(label);
+	const n2h_datetime_t datetime = n2h_unixtime_to_datetime(localtime);
 	switch (f)
 	{
 	case 0:		n2e_funcarg_pushi(arg, datetime.year_); break;
@@ -27649,11 +27665,43 @@ static int n2i_bifunc_gettime(const n2_funcarg_t* arg)
 	case 5:		n2e_funcarg_pushi(arg, datetime.minute_); break;
 	case 6:		n2e_funcarg_pushi(arg, datetime.seccond_); break;
 	case 7:		n2e_funcarg_pushi(arg, datetime.nanosecond_ / 1000000); break;
-	// n2 extension
-	case -1:	n2e_funcarg_pushi(arg, n2h_unixtime_localdiff_seconds()); break;
+		// n2 extension
+	case N2_GETTIME_LOCALTIME:	n2e_funcarg_pushf(arg, N2_SCAST(n2_valfloat_t, n2h_unixtime_to_monofloat(localtime))); break;
+	case N2_GETTIME_UNIXTIME:	n2e_funcarg_pushf(arg, N2_SCAST(n2_valfloat_t, n2h_unixtime_to_monofloat(localtime) - n2h_unixtime_localdiff_seconds())); break;
+	case N2_GETTIME_UTCOFFSET:	n2e_funcarg_pushi(arg, N2_SCAST(n2_valint_t, n2h_unixtime_localdiff_seconds())); break;
 	default:	n2e_funcarg_pushi(arg, 0); break;
 	}
 	return 1;
+}
+
+static int n2i_bifunc_gettime(const n2_funcarg_t* arg)
+{
+	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	if (arg_num > 1) { n2e_funcarg_raise(arg, "gettime：引数の数（%d）が期待（0 - %d）と違います", arg_num, 1); return -1; }
+	const n2_value_t* fval = n2e_funcarg_getarg(arg, 0);
+	const n2_valint_t f = fval && fval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, fval) : 0;
+	const n2h_unixtime_t lcoaltime = n2h_unixtime_now(N2_TRUE);
+	return n2i_bifunc_exttime_common(arg, "gettime", lcoaltime, f);
+}
+
+static int n2i_bifunc_exttime_n2(const n2_funcarg_t* arg)
+{
+	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	if (arg_num < 2 || arg_num > 3) { n2e_funcarg_raise(arg, "exttime：引数の数（%d）が期待（%d - %d）と違います", arg_num, 2, 3); return -1; }
+	const n2_value_t* fval = n2e_funcarg_getarg(arg, 0);
+	const n2_valint_t f = fval && fval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, fval) : 0;
+	const n2_value_t* tval = n2e_funcarg_getarg(arg, 1);
+	n2_valfloat_t t = tval && tval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, tval) : 0;
+	const n2_value_t* tmodeval = n2e_funcarg_getarg(arg, 2);
+	const n2_valint_t tmode = tmodeval && tmodeval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, tmodeval) : N2_TIMEMODE_LOCALTIME;
+	switch (tmode)
+	{
+	case N2_TIMEMODE_LOCALTIME: break;
+	case N2_TIMEMODE_UNIXTIME: t += n2h_unixtime_localdiff_seconds(); break;
+	default: n2e_funcarg_raise(arg, "exttime：時刻モード（" N2_VALINT_PRI "）が不正です", tmode); return -1;
+	}
+	const n2h_unixtime_t lcoaltime = n2h_unixtime_from_monofloat(N2_SCAST(double, t));
+	return n2i_bifunc_exttime_common(arg, "exttime", lcoaltime, f);
 }
 
 static int n2i_bifunc_bload(const n2_funcarg_t* arg)
@@ -27871,6 +27919,7 @@ static void n2i_environment_bind_basic_builtins(n2_state_t* state, n2_pp_context
 		{"newmod",				n2i_bifunc_newmod,				N2_FALSE},
 		{"delmod",				n2i_bifunc_delmod,				N2_FALSE},
 		{"gettime",				n2i_bifunc_gettime,				N2_FALSE},
+		{"exttime@n2",			n2i_bifunc_exttime_n2,			N2_FALSE},
 		{"bload",				n2i_bifunc_bload,				N2_FALSE},
 		{"bsave",				n2i_bifunc_bsave,				N2_FALSE},
 		{"bcopy",				n2i_bifunc_bcopy,				N2_FALSE},
@@ -27893,6 +27942,13 @@ static void n2i_environment_bind_basic_builtins(n2_state_t* state, n2_pp_context
 	{
 		n2i_pp_context_register_macro_raw(state, ppc, "dir_cur", "dirinfo(0)");
 		n2i_pp_context_register_macro_raw(state, ppc, "dir_exe", "dirinfo(1)");
+
+		n2i_pp_context_register_macro_rawi(state, ppc, "gettime_localtime@n2", N2_GETTIME_LOCALTIME);
+		n2i_pp_context_register_macro_rawi(state, ppc, "gettime_unixtime@n2", N2_GETTIME_UNIXTIME);
+		n2i_pp_context_register_macro_rawi(state, ppc, "gettime_utcoffset@n2", N2_GETTIME_UTCOFFSET);
+
+		n2i_pp_context_register_macro_rawi(state, ppc, "timemode_localtime@n2", N2_TIMEMODE_LOCALTIME);
+		n2i_pp_context_register_macro_rawi(state, ppc, "timemode_unixtime@n2", N2_TIMEMODE_UNIXTIME);
 	}
 
 	e->is_basics_bounded_ = N2_TRUE;
