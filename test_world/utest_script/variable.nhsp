@@ -46,6 +46,9 @@ a = 0, 1, 2, 3 : if (varsize(a(3)) != 8) { raise }
 
 mes "length"
 a = "0" : a = 0 : if (length(a) != 1) { raise }
+a(1) = 1 : if (length(a) != 2) { raise }// 自動拡張
+a(16) = 16 : if (length(a) != 17) { raise }// 1次元なら大きく拡張するのもＯＫ
+//b = a(33)// 存在しないのを参照するのはダメ
 dim a, 12 : if (length(a) != 12) { raise }
 
 // varuseの方はモジュールのテストでやってるので省略

@@ -2769,12 +2769,21 @@ enum n2_ast_node_e
 	N2_MAX_AST_NODE
 };
 
+N2_DECLARE_ENUM(n2_ast_node_varflag_e);
+enum n2_ast_node_varflag_e
+{
+	N2_AST_NODE_VARFLAG_APTR_UNCHECK,
+
+	N2_MAX_AST_NODE_VARFLAG,
+};
+
 typedef struct n2_ast_node_t n2_ast_node_t;
 struct n2_ast_node_t
 {
 	n2_ast_node_e node_;
 	const n2_token_t* token_;
 	n2_ast_node_t *left_, *right_;
+	size_t varflags_;
 	size_t exflags_;
 };
 
@@ -3284,6 +3293,7 @@ enum n2_opcode_e
 	N2_OPCODE_STORE_STACK,
 
 	N2_OPCODE_SET_VARIABLE_APTR,
+	N2_OPCODE_SET_VARIABLE_APTR_UNCHECK,
 
 	N2_OPCODE_ASSIGN,
 	N2_OPCODE_ASSIGN_BULK,

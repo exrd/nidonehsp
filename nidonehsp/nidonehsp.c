@@ -8534,6 +8534,7 @@ N2_API n2_ast_node_t* n2_ast_node_alloc(n2_state_t* state, n2_ast_node_e tag, n2
 	node->token_ = NULL;
 	node->left_ = left;
 	node->right_ = right;
+	node->varflags_ = 0;
 	node->exflags_ = 0;
 	return node;
 }
@@ -8545,6 +8546,7 @@ N2_API n2_ast_node_t* n2_ast_node_alloc_token(n2_state_t* state, n2_ast_node_e t
 	node->token_ = token;
 	node->left_ = left;
 	node->right_ = NULL;
+	node->varflags_ = 0;
 	node->exflags_ = 0;
 	return node;
 }
@@ -9950,11 +9952,12 @@ static n2_ast_node_t* n2i_parser_parse_assign_safe(n2_state_t* state, n2_parser_
 	const n2_token_t* next = n2_parser_read_token(state, p);
 
 	n2_ast_node_e node = N2_AST_NODE_UNDEF;
+	n2_bool_t aptr_uncheck = N2_FALSE;
 	n2_bool_t can_bulk = N2_FALSE;
 	n2_bool_t has_expr = N2_TRUE;
 	switch (next->token_)
 	{
-	case N2_TOKEN_ASSIGN:			node = N2_AST_NODE_ASSIGN; can_bulk = N2_TRUE; break;
+	case N2_TOKEN_ASSIGN:			node = N2_AST_NODE_ASSIGN; can_bulk = N2_TRUE; aptr_uncheck = N2_TRUE; break;
 	case N2_TOKEN_LOR_ASSIGN:		node = N2_AST_NODE_LOR_ASSIGN; break;
 	case N2_TOKEN_LAND_ASSIGN:		node = N2_AST_NODE_LAND_ASSIGN; break;
 	case N2_TOKEN_BOR_ASSIGN:		node = N2_AST_NODE_BOR_ASSIGN; break;
@@ -9990,6 +9993,9 @@ static n2_ast_node_t* n2i_parser_parse_assign_safe(n2_state_t* state, n2_parser_
 		}
 		if (!expr) { n2_ast_node_free(state, variable); pc->error_ = N2_TRUE; return NULL; }
 	}
+
+	if (aptr_uncheck) { variable->varflags_ |= (1 << N2_AST_NODE_VARFLAG_APTR_UNCHECK); }
+
 	n2_ast_node_t* assign = n2_ast_node_alloc(state, node, variable, expr);
 	assign->token_ = next;
 	return assign;
@@ -11258,11 +11264,11 @@ N2_API n2_bool_t n2_variable_set(n2_state_t* state, n2_fiber_t* f, n2_variable_t
 		return N2_FALSE;
 	}
 	// 自動拡張を試す
-	if (N2_SCAST(size_t, aptr) == var->element_num_ && var->length_[1] == 0)// 1次元のみ
+	if (N2_SCAST(size_t, aptr) >= var->element_num_ && var->length_[1] == 0)// 1次元のみ
 	{
 		size_t length[N2_VARIABLE_DIM];
 		for (size_t i = 0; i < N2_VARIABLE_DIM; ++i) { length[i] = var->length_[i]; }
-		++length[0];
+		length[0] = N2_SCAST(size_t, aptr) + 1;
 		n2_variable_redim(state, var, length);
 	}
 	if (N2_SCAST(size_t, aptr) >= var->element_num_)
@@ -13129,6 +13135,7 @@ static n2_pc_t n2i_opcode_dump(n2_state_t* state, int indent, const n2_codeimage
 		"PUSH_STACK_REL",
 		"STORE_STACK",
 		"SET_VARIABLE_APTR",
+		"SET_VARIABLE_APTR_UNCHECK",
 
 		"ASSIGN",
 		"ASSIGN_BULK",
@@ -13333,6 +13340,7 @@ static n2_pc_t n2i_opcode_dump(n2_state_t* state, int indent, const n2_codeimage
 		break;
 
 	case N2_OPCODE_SET_VARIABLE_APTR:
+	case N2_OPCODE_SET_VARIABLE_APTR_UNCHECK:
 		{
 			const n2_opcode_t arg_num = opcodes[pc + 1];
 			++offset;
@@ -22134,6 +22142,8 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 
 			n2_bool_t accepted = N2_FALSE;
 
+			const n2_bool_t aptr_uncheck = (n->varflags_ & (1 << N2_AST_NODE_VARFLAG_APTR_UNCHECK)) ? N2_TRUE : N2_FALSE;
+
 			// ローカル変数
 			if (!accepted)
 			{
@@ -22220,7 +22230,7 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 				n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, varindex));
 				if (arg_num > 0)
 				{
-					n2_opcodearray_pushv(state, opcodes, N2_OPCODE_SET_VARIABLE_APTR);
+					n2_opcodearray_pushv(state, opcodes, aptr_uncheck ? N2_OPCODE_SET_VARIABLE_APTR_UNCHECK : N2_OPCODE_SET_VARIABLE_APTR);
 					n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, arg_num));
 				}
 				accepted = N2_TRUE;
@@ -24209,7 +24219,10 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 			break;
 
 		case N2_OPCODE_SET_VARIABLE_APTR:
+		case N2_OPCODE_SET_VARIABLE_APTR_UNCHECK:
 			{
+				const n2_bool_t is_uncheck = op == N2_OPCODE_SET_VARIABLE_APTR_UNCHECK;
+
 				const n2_opcode_t arg_num = c[*pc + 1];
 				N2_ASSERT(arg_num >= 0 && arg_num < N2_VARIABLE_DIM);
 				int aptr = -1;
@@ -24236,10 +24249,24 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 					{
 						const n2_value_t* valindex = n2_valuearray_peekv(f->values_, base + i, NULL);
 						const n2_valint_t arg_index = n2_value_eval_int(state, f, valindex);
-						if (arg_index < 0 || arg_index >= N2_SCAST(n2_valint_t, var->length_[i]))
+						if (is_uncheck)
 						{
-							n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "配列変数（%s）の%d次元目の添え字（%d）がその次元の最大長（%zu）を超えています", var->name_, i + 1, N2_SCAST(int, arg_index), var->length_[i]);
-							return N2_FALSE;
+							// 次元しか見ない（代入時などの特殊処理）
+							N2_UNUSE(arg_index);
+							if (var->length_[i] == 0)
+							{
+								n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "配列変数（%s）の%d次元目の添え字（%d）評価中、変数が持つ次元数（%d）を超えています", var->name_, i + 1, N2_SCAST(int, arg_index), i + 1);
+								return N2_FALSE;
+							}
+						}
+						else
+						{
+							// 厳密チェック
+							if (arg_index < 0 || arg_index >= N2_SCAST(n2_valint_t, var->length_[i]))
+							{
+								n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "配列変数（%s）の%d次元目の添え字（%d）がその次元の最大長（%zu）を超えています", var->name_, i + 1, N2_SCAST(int, arg_index), var->length_[i]);
+								return N2_FALSE;
+							}
 						}
 						if (i > 0) { aptr *= N2_SCAST(int, var->length_[i]); };
 						aptr += N2_SCAST(int, arg_index);
