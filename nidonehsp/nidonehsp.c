@@ -2649,7 +2649,7 @@ static void n2i_array_insertionsort(n2_array_t* a, n2_array_element_cmp_func cmp
 	}
 }
 
-static void n2i_array_introsort_impl(n2_array_t* a, n2_array_element_cmp_func cmp, const void* key, int l, int r, int depth)
+static void n2i_array_introsort(n2_array_t* a, n2_array_element_cmp_func cmp, const void* key, int l, int r, int depth)
 {
 	const int n = r - l;
 	if (n < 2) { return; }
@@ -2681,13 +2681,8 @@ static void n2i_array_introsort_impl(n2_array_t* a, n2_array_element_cmp_func cm
 	if (lp != mp && cmp(a, lp, mp, key) < 0) { n2_swap(lp, mp, a->element_size_); }
 
 	const int m = N2_SCAST(int, n2_ptr_diff(lp, sp) / a->element_size_) + l;
-	n2i_array_introsort_impl(a, cmp, key, l, m, depth + 1);
-	n2i_array_introsort_impl(a, cmp, key, m, r, depth + 1);
-}
-
-static void n2i_array_introsort(n2_array_t* a, n2_array_element_cmp_func cmp, const void* key)
-{
-	n2i_array_introsort_impl(a, cmp, key, 0, N2_SCAST(int, a->size_), 0);
+	n2i_array_introsort(a, cmp, key, l, m, depth + 1);
+	n2i_array_introsort(a, cmp, key, m, r, depth + 1);
 }
 
 N2_API void n2_array_setup(n2_state_t* state, n2_array_t* a, size_t element_size, size_t initial_buffer_size, size_t expand_step, n2_array_element_free_func freefunc)
@@ -2903,9 +2898,18 @@ N2_API void* n2_array_replace(n2_state_t* state, n2_array_t* a, int index, const
 N2_API void n2_array_sort(n2_array_t* a, n2_array_element_cmp_func cmp, const void* key)
 {
 #if 1
-	n2i_array_introsort(a, cmp, key);
+	n2i_array_introsort(a, cmp, key, 0, N2_SCAST(int, a->size_), 0);
 #else
 	n2i_array_heapsort(a, cmp, key, 0, N2_SCAST(int, a->size_));
+#endif
+}
+
+N2_API void n2_array_sort_range(n2_array_t* a, n2_array_element_cmp_func cmp, const void* key, int l, int r)
+{
+#if 1
+	n2i_array_introsort(a, cmp, key, l, r, 0);
+#else
+	n2i_array_heapsort(a, cmp, key, l, r);
 #endif
 }
 

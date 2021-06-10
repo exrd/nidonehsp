@@ -1100,6 +1100,7 @@ N2_API n2_bool_t n2_array_erase(n2_state_t* state, n2_array_t* a, int index);
 N2_API size_t n2_array_erase_num(n2_state_t* state, n2_array_t* a, int index, size_t num);
 N2_API void* n2_array_replace(n2_state_t* state, n2_array_t* a, int index, const void* element);
 N2_API void n2_array_sort(n2_array_t* a, n2_array_element_cmp_func cmp, const void* key);
+N2_API void n2_array_sort_range(n2_array_t* a, n2_array_element_cmp_func cmp, const void* key, int l, int r);
 
 N2_API void* n2_array_push(n2_state_t* state, n2_array_t* a, const void* element);
 N2_API size_t n2_array_pop(n2_state_t* state, n2_array_t* a, size_t num);
@@ -1188,6 +1189,7 @@ N2_API size_t n2_sorted_array_erase(n2_state_t* state, n2_sorted_array_t* a, con
 	extn size_t prefix##_erase_num(n2_state_t* state, prefix##_t* a, int index, size_t num); \
 	extn type* prefix##_replace(n2_state_t* state, prefix##_t* a, int index, const type* element); \
 	extn void prefix##_sort(prefix##_t* a, n2_array_element_cmp_func cmp, const void* key); \
+	extn void prefix##_sort_range(prefix##_t* a, n2_array_element_cmp_func cmp, const void* key, int l, int r); \
 	extn type* prefix##_push(n2_state_t* state, prefix##_t* a, const type* element); \
 	extn type* prefix##_pushv(n2_state_t* state, prefix##_t* a, const type element); \
 	extn size_t prefix##_pop(n2_state_t* state, prefix##_t* a, size_t num); \
@@ -1305,6 +1307,10 @@ N2_API size_t n2_sorted_array_erase(n2_state_t* state, n2_sorted_array_t* a, con
 	extn void prefix##_sort(prefix##_t* a, n2_array_element_cmp_func cmp, const void* key) \
 	{ \
 		n2_array_sort(a, cmp, key); \
+	} \
+	extn void prefix##_sort_range(prefix##_t* a, n2_array_element_cmp_func cmp, const void* key, int l, int r) \
+	{ \
+		n2_array_sort_range(a, cmp, key, l, r); \
 	} \
 	extn type* prefix##_push(n2_state_t* state, prefix##_t* a, const type* element) \
 	{ \
