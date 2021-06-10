@@ -93,6 +93,13 @@ static void n2u_print_error(void* print_user, n2_state_t* state, const char* str
 	fprintf(stderr, "%s", str);
 }
 
+static int n2u_int_cmpfunc(const n2_array_t* a, const void* lkey, const void* rkey, const void* key)
+{
+	N2_UNUSE(a);
+	N2_UNUSE(key);
+	return N2_THREE_WAY_CMP(*N2_RCAST(const int*, lkey), *N2_RCAST(const int*, rkey));
+}
+
 int main(int argc, char* argv[])
 {
 	N2_UNUSE(argc);
@@ -114,35 +121,35 @@ int main(int argc, char* argv[])
 			n2_str_init(&path);
 
 			n2_str_set(state, &path, "path/to/file", SIZE_MAX);
-			n2_path_normalize(state, &path);
+			n2_path_normalize(state, &path, N2_PATH_SEPARATOR_SLASH);
 			N2_ASSERT(N2_STRCMP(path.str_, "path/to/file") == 0);
 
 			n2_str_set(state, &path, "path/to/../file", SIZE_MAX);
-			n2_path_normalize(state, &path);
+			n2_path_normalize(state, &path, N2_PATH_SEPARATOR_SLASH);
 			N2_ASSERT(N2_STRCMP(path.str_, "path/file") == 0);
 
 			n2_str_set(state, &path, "path/to/../file/..", SIZE_MAX);
-			n2_path_normalize(state, &path);
+			n2_path_normalize(state, &path, N2_PATH_SEPARATOR_SLASH);
 			N2_ASSERT(N2_STRCMP(path.str_, "path/file/..") == 0);
 
 			n2_str_set(state, &path, "path/to/../file/../../", SIZE_MAX);
-			n2_path_normalize(state, &path);
+			n2_path_normalize(state, &path, N2_PATH_SEPARATOR_SLASH);
 			N2_ASSERT(N2_STRCMP(path.str_, "") == 0);
 
 			n2_str_set(state, &path, "path/to/../file/../../../", SIZE_MAX);
-			n2_path_normalize(state, &path);
+			n2_path_normalize(state, &path, N2_PATH_SEPARATOR_SLASH);
 			N2_ASSERT(N2_STRCMP(path.str_, "../") == 0);
 
 			n2_str_set(state, &path, "path/to/./file", SIZE_MAX);
-			n2_path_normalize(state, &path);
+			n2_path_normalize(state, &path, N2_PATH_SEPARATOR_SLASH);
 			N2_ASSERT(N2_STRCMP(path.str_, "path/to/file") == 0);
 
 			n2_str_set(state, &path, "path/./././to/././file/./", SIZE_MAX);
-			n2_path_normalize(state, &path);
+			n2_path_normalize(state, &path, N2_PATH_SEPARATOR_SLASH);
 			N2_ASSERT(N2_STRCMP(path.str_, "path/to/file/") == 0);
 
 			n2_str_set(state, &path, "path\\.\\.\\./to/.\\./file/.\\", SIZE_MAX);
-			n2_path_normalize(state, &path);
+			n2_path_normalize(state, &path, N2_PATH_SEPARATOR_SLASH);
 			N2_ASSERT(N2_STRCMP(path.str_, "path/to/file/") == 0);
 
 			n2_str_teardown(state, &path);
@@ -162,6 +169,51 @@ int main(int argc, char* argv[])
 				N2_ASSERT(g == rgb.g_);
 				N2_ASSERT(b == rgb.b_);
 			}
+		}
+
+		// sort
+		if (1)
+		{
+			printf("sort\n");
+
+			n2h_random_t rd;
+			n2h_random_init(&rd, 0x12345678ULL);
+
+			n2_intarray_t at;
+			n2_intarray_setup(state, &at, 1024, 0);
+
+			for (size_t i = 0; i < 16 * 1024; ++i)
+			{
+#if 0
+				const size_t anum = n2h_random_next_range(&rd, 128);
+				const size_t ause = 1024;
+#else
+				size_t anum = n2h_random_next_range(&rd, 16 * 1024);
+				//const size_t ause = 1024;
+				const size_t ause = 16 * 1024;
+				switch (i)
+				{
+				case 0: anum = 0; break;
+				case 1: anum = 4; break;
+				case 2: anum = 7; break;
+				default: break;
+				}
+#endif
+
+				//printf("  sortTest%zu <= %zu\n", i, anum);
+				if (i % 100 == 0) { printf("%zu, ", i); }
+
+				n2_intarray_clear(state, &at);
+				for (size_t j = 0; j < anum; ++j) { n2_intarray_pushv(state, &at, N2_SCAST(int, n2h_random_next_range(&rd, ause) - 1024)); }
+
+				//if (anum < 128) { printf("  BEFORE : "); for (size_t j = 0; j < anum; ++j) { printf("%d, ", n2_intarray_peekcv(&at, N2_SCAST(int, j), 0)); } printf("\n"); }
+				n2_array_sort(&at, n2u_int_cmpfunc, NULL);
+				//if (anum < 128) { printf("  AFTER  : "); for (size_t j = 0; j < anum; ++j) { printf("%d, ", n2_intarray_peekcv(&at, N2_SCAST(int, j), 0)); } printf("\n"); }
+
+				for (size_t j = 1; j < anum; ++j) { N2_ASSERT(n2_intarray_peekv(&at, N2_SCAST(int, j - 1), 0) <= n2_intarray_peekv(&at, N2_SCAST(int, j), 0)); }
+			}
+
+			n2_intarray_teardown(state, &at);
 		}
 
 		n2_state_free(state);

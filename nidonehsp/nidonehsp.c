@@ -2604,7 +2604,7 @@ N2_API size_t n2_list_update(n2_list_t* list)
 //=============================================================================
 // 配列ユーティリティ
 
-static void n2i_array_heapify(n2_array_t* a, n2_array_element_cmp_func cmp, const void* key, int i, int n)
+static void n2i_array_heapify(n2_array_t* a, n2_array_element_cmp_func cmp, const void* key, int b, int i, int n)
 {
 	do
 	{
@@ -2612,27 +2612,82 @@ static void n2i_array_heapify(n2_array_t* a, n2_array_element_cmp_func cmp, cons
 		const int r = i * 2 + 2;
 
 		int root = i;
-		if (l < n && cmp(a, n2_ptr_offset(a->elements_, a->element_size_ * N2_SCAST(size_t, root)), n2_ptr_offset(a->elements_, a->element_size_ * N2_SCAST(size_t, l)), key) < 0) { root = l; }
-		if (r < n && cmp(a, n2_ptr_offset(a->elements_, a->element_size_ * N2_SCAST(size_t, root)), n2_ptr_offset(a->elements_, a->element_size_ * N2_SCAST(size_t, r)), key) < 0) { root = r; }
+		if (l < n && cmp(a, n2_ptr_offset(a->elements_, a->element_size_ * N2_SCAST(size_t, b + root)), n2_ptr_offset(a->elements_, a->element_size_ * N2_SCAST(size_t, b + l)), key) < 0) { root = l; }
+		if (r < n && cmp(a, n2_ptr_offset(a->elements_, a->element_size_ * N2_SCAST(size_t, b + root)), n2_ptr_offset(a->elements_, a->element_size_ * N2_SCAST(size_t, b + r)), key) < 0) { root = r; }
 		if (root == i) { break; }
-		n2_swap(n2_ptr_offset(a->elements_, a->element_size_ * N2_SCAST(size_t, i)), n2_ptr_offset(a->elements_, a->element_size_ * N2_SCAST(size_t, root)), a->element_size_);
+		n2_swap(n2_ptr_offset(a->elements_, a->element_size_ * N2_SCAST(size_t, b + i)), n2_ptr_offset(a->elements_, a->element_size_ * N2_SCAST(size_t, b + root)), a->element_size_);
 		i = root;
 	} while (i < n);
 }
 
-static void n2i_array_heapsort(n2_array_t* a, n2_array_element_cmp_func cmp, const void* key)
+static void n2i_array_heapsort(n2_array_t* a, n2_array_element_cmp_func cmp, const void* key, int l, int r)
 {
-	if (a->size_ < 2) { return; }
+	const int n = r - l;
+	if (n < 2) { return; }
 
-	for (size_t i = 0, l = a->size_ / 2; i < l; ++i)
+	for (int i = 0; i < n / 2; ++i)
 	{
-		n2i_array_heapify(a, cmp, key, N2_SCAST(int, l - i - 1), N2_SCAST(int, a->size_));
+		n2i_array_heapify(a, cmp, key, l, n / 2 - i - 1, n);
 	}
-	for (size_t i = a->size_ - 1; i > 0; --i)
+	for (int i = n - 1; i > 0; --i)
 	{
-		n2_swap(a->elements_, n2_ptr_offset(a->elements_, a->element_size_ * i), a->element_size_);
-		n2i_array_heapify(a, cmp, key, 0, N2_SCAST(int, i));
+		n2_swap(n2_ptr_offset(a->elements_, a->element_size_ * N2_SCAST(size_t, l)), n2_ptr_offset(a->elements_, a->element_size_ * N2_SCAST(size_t, l + i)), a->element_size_);
+		n2i_array_heapify(a, cmp, key, l, 0, i);
 	}
+}
+
+static void n2i_array_insertionsort(n2_array_t* a, n2_array_element_cmp_func cmp, const void* key, int l, int r)
+{
+	for (int i = l + 1; i < r; ++i)
+	{
+		int j = i - 1;
+		while (j >= l && cmp(a, n2_ptr_offset(a->elements_, a->element_size_ * N2_SCAST(size_t, j)), n2_ptr_offset(a->elements_, a->element_size_ * N2_SCAST(size_t, j + 1)), key) > 0)
+		{
+			n2_swap(n2_ptr_offset(a->elements_, a->element_size_ * N2_SCAST(size_t, j)), n2_ptr_offset(a->elements_, a->element_size_ * N2_SCAST(size_t, j + 1)), a->element_size_);
+			--j;
+		}
+	}
+}
+
+static void n2i_array_introsort_impl(n2_array_t* a, n2_array_element_cmp_func cmp, const void* key, int l, int r, int depth)
+{
+	const int n = r - l;
+	if (n < 2) { return; }
+	if (n < 40) { n2i_array_insertionsort(a, cmp, key, l, r); return; }
+	if (depth > 16) { n2i_array_heapsort(a, cmp, key, l, r); return; }
+
+	void* sp = n2_ptr_offset(a->elements_, a->element_size_ * N2_SCAST(size_t, l));
+	void* lp = n2_ptr_offset(a->elements_, a->element_size_ * N2_SCAST(size_t, l));
+	void* rp = n2_ptr_offset(a->elements_, a->element_size_ * N2_SCAST(size_t, r - 1));
+	void* mp = n2_ptr_offset(a->elements_, a->element_size_ * N2_SCAST(size_t, (l + r) / 2));
+
+	if (cmp(a, mp, lp, key) < 0) { n2_swap(mp, lp, a->element_size_); }
+	if (cmp(a, rp, mp, key) < 0) { n2_swap(rp, mp, a->element_size_); }
+	if (cmp(a, mp, lp, key) < 0) { n2_swap(mp, lp, a->element_size_); }
+
+	if (lp < rp)
+	{
+		for (;;)
+		{
+			while (cmp(a, lp, mp, key) < 0) { lp = n2_ptr_offset(lp, a->element_size_); }
+			while (cmp(a, mp, rp, key) < 0) { rp = n2_ptr_offset(rp, -N2_SCAST(ptrdiff_t, a->element_size_)); }
+			if (lp >= rp) { break; }
+			n2_swap(lp, rp, a->element_size_);
+			if (lp == mp) { mp = rp; } else if (rp == mp) { mp = lp; }
+			lp = n2_ptr_offset(lp, a->element_size_);
+			rp = n2_ptr_offset(rp, -N2_SCAST(ptrdiff_t, a->element_size_));
+		}
+	}
+	if (lp != mp && cmp(a, lp, mp, key) < 0) { n2_swap(lp, mp, a->element_size_); }
+
+	const int m = N2_SCAST(int, n2_ptr_diff(lp, sp) / a->element_size_) + l;
+	n2i_array_introsort_impl(a, cmp, key, l, m, depth + 1);
+	n2i_array_introsort_impl(a, cmp, key, m, r, depth + 1);
+}
+
+static void n2i_array_introsort(n2_array_t* a, n2_array_element_cmp_func cmp, const void* key)
+{
+	n2i_array_introsort_impl(a, cmp, key, 0, N2_SCAST(int, a->size_), 0);
 }
 
 N2_API void n2_array_setup(n2_state_t* state, n2_array_t* a, size_t element_size, size_t initial_buffer_size, size_t expand_step, n2_array_element_free_func freefunc)
@@ -2847,7 +2902,11 @@ N2_API void* n2_array_replace(n2_state_t* state, n2_array_t* a, int index, const
 
 N2_API void n2_array_sort(n2_array_t* a, n2_array_element_cmp_func cmp, const void* key)
 {
-	n2i_array_heapsort(a, cmp, key);
+#if 1
+	n2i_array_introsort(a, cmp, key);
+#else
+	n2i_array_heapsort(a, cmp, key, 0, N2_SCAST(int, a->size_));
+#endif
 }
 
 N2_API void* n2_array_push(n2_state_t* state, n2_array_t* a, const void* element)
@@ -26354,7 +26413,7 @@ static int n2i_bifunc_sort_common(const n2_funcarg_t* arg, const char* label, n2
 	n2i_variable_sort_ctx_t ctx;
 	ctx.is_reverse_ = is_reverse;
 	ctx.var_ = var;
-	n2i_array_heapsort(indices, n2i_variable_sort_cmpfunc, &ctx);
+	n2_array_sort(indices, n2i_variable_sort_cmpfunc, &ctx);
 
 	// 直接中身を差し替える
 	uint8_t tmp[N2_MAX_VARIABLE_ELEMENT_SIZE];
@@ -26468,7 +26527,7 @@ static int n2i_bifunc_sortnote(const n2_funcarg_t* arg)
 	n2i_sortnote_ctx_t ctx;
 	ctx.is_reverse_ = is_reverse;
 	ctx.lines_ = lines;
-	n2i_array_heapsort(indices, n2i_sortnote_cmpfunc, &ctx);
+	n2_array_sort(indices, n2i_sortnote_cmpfunc, &ctx);
 
 	// 新しく生成しなおして、新しく作り、中身を直接交換
 	{
@@ -26875,6 +26934,16 @@ static int n2i_bifunc_getstr(const n2_funcarg_t* arg)
 	n2_variable_set(arg->state_, arg->fiber_, tovarval->field_.varvalue_.var_, tovarval->field_.varvalue_.aptr_, n2e_funcarg_get(arg, -1));
 
 	return 0;
+}
+
+static int n2i_bifunc_split(const n2_funcarg_t* arg)
+{
+	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	if (arg_num < 3) { n2e_funcarg_raise(arg, "split：引数の数（%d）が期待（%d - ）と違います", arg_num, 3); return -1; }
+	// @todo
+	N2_ASSERT(0);
+	n2e_funcarg_raise(arg, "split：未実装です");
+	return -1;
 }
 
 static int n2i_bifunc_strrep(const n2_funcarg_t* arg)
@@ -27913,6 +27982,7 @@ static void n2i_environment_bind_basic_builtins(n2_state_t* state, n2_pp_context
 		{"ease@n2",				n2i_bifunc_ease_n2,				N2_TRUE},
 		{"strlen",				n2i_bifunc_strlen,				N2_TRUE},
 		{"getstr",				n2i_bifunc_getstr,				N2_TRUE},
+		{"split",				n2i_bifunc_split,				N2_FALSE},
 		{"strrep",				n2i_bifunc_strrep,				N2_FALSE},
 		{"instr",				n2i_bifunc_instr,				N2_TRUE},
 		{"strmid",				n2i_bifunc_strmid,				N2_FALSE},
