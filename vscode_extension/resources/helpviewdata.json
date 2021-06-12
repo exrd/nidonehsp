@@ -6403,6 +6403,36 @@
 				"stdWidgetCommon"
 			]
 		},
+		"objenable": {
+			"type": "function",
+			"summary": "オブジェクトを有効化／無効化",
+			"group": ["standard"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "objectID",
+					"description": "対象のオブジェクトID",
+					"omitted": "0"
+				},
+				{
+					"name": "enable",
+					"description": "有効か無効か",
+					"omitted": "1"
+				}
+			],
+			"description": [
+				"現在の操作先ウィンドウのobjectIDに対応するオブジェクトの有効／無効を変更します。",
+				"該当のオブジェクトが存在しない場合エラーになります。",
+				"",
+				"enableが0なら無効、0以外なら有効に設定されます。",
+				"無効に設定されたオブジェクトは$ref(button)ならば押しても反応がない、$ref(input)ならば新しく文字が入力できない、などの状態になります。",
+				"",
+				"全てのオブジェクトに対して有効／無効の設定が可能です。"
+			],
+			"relationGroup": [
+				"stdWidgetCommon"
+			]
+		},
 		"clrobj": {
 			"type": "function",
 			"summary": "オブジェクトの削除",

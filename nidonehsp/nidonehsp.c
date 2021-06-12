@@ -18969,6 +18969,61 @@ N2_DEFINE_TSORTED_ARRAY(n2s_widget_t, void, size_t, n2s_widgetset, N2_API, n2si_
 N2_DEFINE_TARRAY(n2s_window_event_t, n2s_windoweventarray, N2_API, n2i_setupfunc_nothing, n2i_freefunc_nothing);
 
 #if N2_CONFIG_USE_GUI_LIB
+static n2_bool_t n2si_gui_constants_initialized = N2_FALSE;
+static struct nk_color n2si_gui_constant_colortable[NK_COLOR_COUNT];
+static struct nk_color n2si_gui_constant_disabled_colortable[NK_COLOR_COUNT];
+
+static void n2si_gui_constants_init()
+{
+	if (n2si_gui_constants_initialized) { return; }
+
+	{
+		n2si_gui_constant_colortable[NK_COLOR_TEXT] = nk_rgba(0, 0, 0, 255);
+		n2si_gui_constant_colortable[NK_COLOR_WINDOW] = nk_rgba(202, 212, 214, 215);
+		n2si_gui_constant_colortable[NK_COLOR_HEADER] = nk_rgba(137, 182, 224, 220);
+		n2si_gui_constant_colortable[NK_COLOR_BORDER] = nk_rgba(140, 159, 173, 255);
+		n2si_gui_constant_colortable[NK_COLOR_BUTTON] = nk_rgba(215, 215, 215, 255);
+		n2si_gui_constant_colortable[NK_COLOR_BUTTON_HOVER] = nk_rgba(229, 241, 251, 255);
+		n2si_gui_constant_colortable[NK_COLOR_BUTTON_ACTIVE] = nk_rgba(204, 228, 255, 255);
+		n2si_gui_constant_colortable[NK_COLOR_TOGGLE] = nk_rgba(115, 115, 115, 255);
+		n2si_gui_constant_colortable[NK_COLOR_TOGGLE_HOVER] = nk_rgba(181, 181, 181, 255);
+		n2si_gui_constant_colortable[NK_COLOR_TOGGLE_CURSOR] = nk_rgba(204, 228, 174, 255);
+		n2si_gui_constant_colortable[NK_COLOR_SELECT] = nk_rgba(177, 210, 210, 255);
+		n2si_gui_constant_colortable[NK_COLOR_SELECT_ACTIVE] = nk_rgba(137, 182, 224, 255);
+		n2si_gui_constant_colortable[NK_COLOR_SLIDER] = nk_rgba(177, 210, 210, 255);
+		n2si_gui_constant_colortable[NK_COLOR_SLIDER_CURSOR] = nk_rgba(137, 182, 224, 245);
+		n2si_gui_constant_colortable[NK_COLOR_SLIDER_CURSOR_HOVER] = nk_rgba(142, 188, 229, 255);
+		n2si_gui_constant_colortable[NK_COLOR_SLIDER_CURSOR_ACTIVE] = nk_rgba(147, 193, 234, 255);
+		n2si_gui_constant_colortable[NK_COLOR_PROPERTY] = nk_rgba(210, 210, 210, 255);
+		n2si_gui_constant_colortable[NK_COLOR_EDIT] = nk_rgba(210, 210, 210, 225);
+		n2si_gui_constant_colortable[NK_COLOR_EDIT_CURSOR] = nk_rgba(20, 20, 20, 255);
+		n2si_gui_constant_colortable[NK_COLOR_COMBO] = nk_rgba(210, 210, 210, 255);
+		n2si_gui_constant_colortable[NK_COLOR_CHART] = nk_rgba(210, 210, 210, 255);
+		n2si_gui_constant_colortable[NK_COLOR_CHART_COLOR] = nk_rgba(137, 182, 224, 255);
+		n2si_gui_constant_colortable[NK_COLOR_CHART_COLOR_HIGHLIGHT] = nk_rgba( 255, 0, 0, 255);
+		n2si_gui_constant_colortable[NK_COLOR_SCROLLBAR] = nk_rgba(241, 241, 241, 255);
+		n2si_gui_constant_colortable[NK_COLOR_SCROLLBAR_CURSOR] = nk_rgba(215, 215, 215, 255);
+		n2si_gui_constant_colortable[NK_COLOR_SCROLLBAR_CURSOR_HOVER] = nk_rgba(250, 250, 250, 255);
+		n2si_gui_constant_colortable[NK_COLOR_SCROLLBAR_CURSOR_ACTIVE] = nk_rgba(204, 204, 204, 255);
+		n2si_gui_constant_colortable[NK_COLOR_TAB_HEADER] = nk_rgba(156, 193, 220, 255);
+	}
+
+	{
+		N2_MEMCPY(n2si_gui_constant_disabled_colortable, n2si_gui_constant_colortable, sizeof(n2si_gui_constant_disabled_colortable));
+		n2si_gui_constant_disabled_colortable[NK_COLOR_TEXT] = nk_rgba(32, 32, 32, 255);
+		n2si_gui_constant_disabled_colortable[NK_COLOR_BUTTON] = nk_rgba(170, 170, 170, 255);
+		n2si_gui_constant_disabled_colortable[NK_COLOR_BUTTON_HOVER] = nk_rgba(190, 190, 190, 255);
+		n2si_gui_constant_disabled_colortable[NK_COLOR_BUTTON_ACTIVE] = nk_rgba(150, 150, 150, 255);
+		n2si_gui_constant_disabled_colortable[NK_COLOR_TOGGLE] = nk_rgba(100, 100, 100, 255);
+		n2si_gui_constant_disabled_colortable[NK_COLOR_TOGGLE_HOVER] = nk_rgba(150, 150, 150, 255);
+		n2si_gui_constant_disabled_colortable[NK_COLOR_TOGGLE_CURSOR] = nk_rgba(130, 150, 120, 255);
+		n2si_gui_constant_disabled_colortable[NK_COLOR_EDIT] = nk_rgba(160, 160, 160, 225);
+		n2si_gui_constant_disabled_colortable[NK_COLOR_EDIT_CURSOR] = nk_rgba(20, 20, 20, 255);
+		n2si_gui_constant_disabled_colortable[NK_COLOR_COMBO] = nk_rgba(170, 170, 170, 255);
+	}
+
+	n2si_gui_constants_initialized = N2_TRUE;
+}
 static void n2si_gui_clipboard_paste(nk_handle user, struct nk_text_edit* edit)
 {
 	N2_UNUSE(user);
@@ -19197,36 +19252,8 @@ static n2s_window_t* n2si_window_alloc(n2_state_t* state, n2s_environment_t* se,
 	nk_buffer_init(w->nk_idx_buf_, &nk_alloc, 1024);
 
 	{
-		struct nk_color coltable[NK_COLOR_COUNT];
-		coltable[NK_COLOR_TEXT] = nk_rgba(0, 0, 0, 255);
-		coltable[NK_COLOR_WINDOW] = nk_rgba(202, 212, 214, 215);
-		coltable[NK_COLOR_HEADER] = nk_rgba(137, 182, 224, 220);
-		coltable[NK_COLOR_BORDER] = nk_rgba(140, 159, 173, 255);
-		coltable[NK_COLOR_BUTTON] = nk_rgba(215, 215, 215, 255);
-		coltable[NK_COLOR_BUTTON_HOVER] = nk_rgba(229, 241, 251, 255);
-		coltable[NK_COLOR_BUTTON_ACTIVE] = nk_rgba(204, 228, 247, 255);
-		coltable[NK_COLOR_TOGGLE] = nk_rgba(115, 115, 115, 255);
-		coltable[NK_COLOR_TOGGLE_HOVER] = nk_rgba(181, 181, 181, 255);
-		coltable[NK_COLOR_TOGGLE_CURSOR] = nk_rgba(204, 228, 474, 255);
-		coltable[NK_COLOR_SELECT] = nk_rgba(177, 210, 210, 255);
-		coltable[NK_COLOR_SELECT_ACTIVE] = nk_rgba(137, 182, 224, 255);
-		coltable[NK_COLOR_SLIDER] = nk_rgba(177, 210, 210, 255);
-		coltable[NK_COLOR_SLIDER_CURSOR] = nk_rgba(137, 182, 224, 245);
-		coltable[NK_COLOR_SLIDER_CURSOR_HOVER] = nk_rgba(142, 188, 229, 255);
-		coltable[NK_COLOR_SLIDER_CURSOR_ACTIVE] = nk_rgba(147, 193, 234, 255);
-		coltable[NK_COLOR_PROPERTY] = nk_rgba(210, 210, 210, 255);
-		coltable[NK_COLOR_EDIT] = nk_rgba(210, 210, 210, 225);
-		coltable[NK_COLOR_EDIT_CURSOR] = nk_rgba(20, 20, 20, 255);
-		coltable[NK_COLOR_COMBO] = nk_rgba(210, 210, 210, 255);
-		coltable[NK_COLOR_CHART] = nk_rgba(210, 210, 210, 255);
-		coltable[NK_COLOR_CHART_COLOR] = nk_rgba(137, 182, 224, 255);
-		coltable[NK_COLOR_CHART_COLOR_HIGHLIGHT] = nk_rgba( 255, 0, 0, 255);
-		coltable[NK_COLOR_SCROLLBAR] = nk_rgba(241, 241, 241, 255);
-		coltable[NK_COLOR_SCROLLBAR_CURSOR] = nk_rgba(215, 215, 215, 255);
-		coltable[NK_COLOR_SCROLLBAR_CURSOR_HOVER] = nk_rgba(250, 250, 250, 255);
-		coltable[NK_COLOR_SCROLLBAR_CURSOR_ACTIVE] = nk_rgba(204, 204, 204, 255);
-		coltable[NK_COLOR_TAB_HEADER] = nk_rgba(156, 193, 220, 255);
-		nk_style_from_table(w->nk_context_, coltable);
+		n2si_gui_constants_init();
+		nk_style_from_table(w->nk_context_, n2si_gui_constant_colortable);
 
 		struct nk_style* style = &w->nk_context_->style;
 		style->button.rounding = 0.f;
@@ -20529,20 +20556,47 @@ static n2_bool_t n2si_environment_present_widgets(n2_state_t* state, n2s_environ
 		for (size_t wi = 0, wl = n2s_widgetset_size(w->widgets_); wi < wl; ++wi)
 		{
 			n2s_widget_t* widget = n2s_widgetset_peek(w->widgets_, N2_SCAST(int, wi));
+			const n2_bool_t is_enable = widget->enable_;
 
 			switch (widget->type_)
 			{
 			case N2S_WIDGET_BUTTON:
-				nk_layout_space_push(c, nk_rect(widget->position_.x_, widget->position_.y_, widget->size_.x_, widget->size_.y_));
-				n2_str_fmt_to(state, &widgetlabel, "%s", widget->label_.str_);
-				if (nk_button_label(c, widgetlabel.str_)) { N2SI_WIDGET_DIRTY(widget); }
+				{
+					nk_layout_space_push(c, nk_rect(widget->position_.x_, widget->position_.y_, widget->size_.x_, widget->size_.y_));
+					n2_str_fmt_to(state, &widgetlabel, "%s", widget->label_.str_);
+					const struct nk_style_button oldstyle = c->style.button;// ここで宣言する必要がないし無駄なのだが、フロー解析が弱いコンパイラでワーニングになるので代入する、最適化で削れると思いたい
+					if (!is_enable)
+					{
+						c->style.button.text_normal = n2si_gui_constant_disabled_colortable[NK_COLOR_TEXT];
+						c->style.button.text_hover = n2si_gui_constant_disabled_colortable[NK_COLOR_TEXT];
+						c->style.button.text_active = n2si_gui_constant_disabled_colortable[NK_COLOR_TEXT];
+						c->style.button.normal = nk_style_item_color(n2si_gui_constant_disabled_colortable[NK_COLOR_BUTTON]);
+						c->style.button.hover = nk_style_item_color(n2si_gui_constant_disabled_colortable[NK_COLOR_BUTTON_HOVER]);
+						c->style.button.active = nk_style_item_color(n2si_gui_constant_disabled_colortable[NK_COLOR_BUTTON_ACTIVE]);
+					}
+					if (nk_button_label(c, widgetlabel.str_) && widget->enable_) { N2SI_WIDGET_DIRTY(widget); }
+					if (!is_enable) { c->style.button = oldstyle; }
+				}
 				break;
 			case N2S_WIDGET_CHECKBOX:
 				{
 					nk_layout_space_push(c, nk_rect(widget->position_.x_, widget->position_.y_, widget->size_.x_, widget->size_.y_));
 					n2_str_fmt_to(state, &widgetlabel, "%s", widget->label_.str_);
 					nk_bool active = widget->ivalue_ ? nk_true : nk_false;
-					if (nk_checkbox_label(c, widgetlabel.str_, &active)) { N2SI_WIDGET_DIRTY(widget); widget->ivalue_ = !widget->ivalue_; }
+					const struct nk_style_toggle oldstyle = c->style.checkbox;
+					if (!is_enable)
+					{
+						c->style.checkbox.text_normal = n2si_gui_constant_disabled_colortable[NK_COLOR_TEXT];
+						c->style.checkbox.text_hover = n2si_gui_constant_disabled_colortable[NK_COLOR_TEXT];
+						c->style.checkbox.text_active = n2si_gui_constant_disabled_colortable[NK_COLOR_TEXT];
+						c->style.checkbox.normal = nk_style_item_color(n2si_gui_constant_disabled_colortable[NK_COLOR_TOGGLE]);
+						c->style.checkbox.hover = nk_style_item_color(n2si_gui_constant_disabled_colortable[NK_COLOR_TOGGLE_HOVER]);
+						c->style.checkbox.active = nk_style_item_color(n2si_gui_constant_disabled_colortable[NK_COLOR_TOGGLE_HOVER]);
+						c->style.checkbox.cursor_normal = nk_style_item_color(n2si_gui_constant_disabled_colortable[NK_COLOR_TOGGLE_CURSOR]);
+						c->style.checkbox.cursor_hover = nk_style_item_color(n2si_gui_constant_disabled_colortable[NK_COLOR_TOGGLE_CURSOR]);
+					}
+					if (nk_checkbox_label(c, widgetlabel.str_, &active) && widget->enable_) { N2SI_WIDGET_DIRTY(widget); widget->ivalue_ = !widget->ivalue_; }
+					if (!is_enable) { c->style.checkbox = oldstyle; }
 				}
 				break;
 			case N2S_WIDGET_INPUT:
@@ -20552,7 +20606,20 @@ static n2_bool_t n2si_environment_present_widgets(n2_state_t* state, n2s_environ
 					nk_layout_space_push(c, nk_rect(widget->position_.x_, widget->position_.y_, widget->size_.x_, widget->size_.y_));
 					n2_str_fmt_to(state, &widgetlabel, "%s", widget->label_.str_);
 					int len = N2_SCAST(int, widget->strvalue_.size_);
-					const nk_flags action = nk_edit_string(c, is_multiline ? NK_EDIT_BOX : NK_EDIT_FIELD, widget->strvalue_.str_, &len, N2_SCAST(int, widget->strvalue_.buffer_size_), NULL);
+					const struct nk_style_edit oldstyle = c->style.edit;
+					if (!is_enable)
+					{
+						c->style.edit.text_normal = n2si_gui_constant_disabled_colortable[NK_COLOR_TEXT];
+						c->style.edit.text_hover = n2si_gui_constant_disabled_colortable[NK_COLOR_TEXT];
+						c->style.edit.text_active = n2si_gui_constant_disabled_colortable[NK_COLOR_TEXT];
+						c->style.edit.normal = nk_style_item_color(n2si_gui_constant_disabled_colortable[NK_COLOR_EDIT]);
+						c->style.edit.hover = nk_style_item_color(n2si_gui_constant_disabled_colortable[NK_COLOR_EDIT]);
+						c->style.edit.active = nk_style_item_color(n2si_gui_constant_disabled_colortable[NK_COLOR_EDIT]);
+						c->style.edit.cursor_normal = n2si_gui_constant_disabled_colortable[NK_COLOR_EDIT_CURSOR];
+						c->style.edit.cursor_hover = n2si_gui_constant_disabled_colortable[NK_COLOR_EDIT_CURSOR];
+					}
+					const nk_flags action = nk_edit_string(c, (is_multiline ? NK_EDIT_BOX : NK_EDIT_FIELD) | (widget->enable_ ? 0 : NK_EDIT_READ_ONLY), widget->strvalue_.str_, &len, N2_SCAST(int, widget->strvalue_.buffer_size_), NULL);
+					if (!is_enable) { c->style.edit = oldstyle; }
 					widget->strvalue_.size_ = N2_SCAST(size_t, len);
 					widget->strvalue_.str_[widget->strvalue_.size_] = '\0';
 					const nk_flags comit_flags = NK_EDIT_DEACTIVATED;
@@ -30028,7 +30095,7 @@ static int n2si_bifunc_objenable(const n2_funcarg_t* arg)
 	const n2_value_t* idval = n2e_funcarg_getarg(arg, 0);
 	const n2_valint_t id = idval && idval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, idval) : 0;
 	const n2_value_t* enableval = n2e_funcarg_getarg(arg, 1);
-	const n2_valint_t enable = enableval && enableval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, idval) : 1;
+	const n2_valint_t enable = enableval && enableval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, enableval) : 1;
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);

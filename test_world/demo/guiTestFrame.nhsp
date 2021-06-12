@@ -16,19 +16,34 @@
 	buttonPushed = 0
 	checked = 0
 	masterFrame = 0
+	enableDisable = 1
 	// GUI初期化
 	gsel 0 : cls
+	objsize 160, 20 : pos 510, 120 : button gosub "ウィジェットの無効化", *implToggleEnable
+	widgetIDFirst = stat
 	objsize 200, 20 : pos 20, 120 : button gosub "ボタンをおしてください", *implPushButton
 	objsize 200, 20 : pos 20, 150 : chkbox "チェックボックスのテスト", checked
 	objsize 200, 20 : pos 20, 180 : input textInput
 	pos 20, 210 : mesbox multiTextInput, 200, 60
 	objsize 100, 20 : pos 20, 280 : chkbox "斜体", gIsFontItalic : pos 130, 280 : chkbox "シャドウ", gIsFontShadow : pos 250, 280 : chkbox "アウトライン", gIsFontOutline
-	objsize 60, 20 : pos 600, 400 : button gosub "終わる", *implReturnTo
+	widgetIDLast = stat
+	objsize 60, 20 : pos 610, 400 : button gosub "終わる", *implReturnTo
 	return
 
 #deffunc global guiTestFramePush
 	guiTestFrameInit; ともあれ初期化
 	framePush "guiTestFrame", *guiTestFrameCompute, *guiTestFrameDraw, 0
+	return
+
+*implToggleEnable
+	gsel 0
+	enableDisable = !enableDisable
+	title `changed enableDisable to ${enableDisable}: first=${widgetIDFirst} last=${widgetIDLast}`
+	repeat widgetIDLast - widgetIDFirst
+		widgetID = widgetIDFirst + cnt + 1
+		objenable widgetID, enableDisable
+	loop
+	objprm widgetIDFirst, `ウィジェットの${enableDisable then "無効" else "有効"}化`
 	return
 
 *implPushButton
