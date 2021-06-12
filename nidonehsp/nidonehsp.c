@@ -24313,7 +24313,7 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 		case N2_OPCODE_SET_VARIABLE_APTR:
 		case N2_OPCODE_SET_VARIABLE_APTR_UNCHECK:
 			{
-				const n2_bool_t is_uncheck = op == N2_OPCODE_SET_VARIABLE_APTR_UNCHECK;
+				const n2_bool_t aptr_uncheck = op == N2_OPCODE_SET_VARIABLE_APTR_UNCHECK;
 
 				const n2_opcode_t arg_num = c[*pc + 1];
 				N2_ASSERT(arg_num >= 0 && arg_num < N2_VARIABLE_DIM);
@@ -24341,10 +24341,15 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 					{
 						const n2_value_t* valindex = n2_valuearray_peekv(f->values_, base + i, NULL);
 						const n2_valint_t arg_index = n2_value_eval_int(state, f, valindex);
-						if (is_uncheck)
+
+						if (arg_index < 0)
 						{
-							// 次元しか見ない（代入時などの特殊処理）
-							N2_UNUSE(arg_index);
+							n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "配列変数（%s）の%d次元目の添え字（%d）が負の値です", var->name_, i + 1, N2_SCAST(int, arg_index));
+							return N2_FALSE;
+						}
+						if (aptr_uncheck)
+						{
+							// 最大はチェックしない（代入時などの特殊処理で、自動拡張を有効）
 							if (var->length_[i] == 0)
 							{
 								n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "配列変数（%s）の%d次元目の添え字（%d）評価中、変数が持つ次元数（%d）を超えています", var->name_, i + 1, N2_SCAST(int, arg_index), i + 1);
@@ -24354,7 +24359,7 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 						else
 						{
 							// 厳密チェック
-							if (arg_index < 0 || arg_index >= N2_SCAST(n2_valint_t, var->length_[i]))
+							if (arg_index >= N2_SCAST(n2_valint_t, var->length_[i]))
 							{
 								n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "配列変数（%s）の%d次元目の添え字（%d）がその次元の最大長（%zu）を超えています", var->name_, i + 1, N2_SCAST(int, arg_index), var->length_[i]);
 								return N2_FALSE;
