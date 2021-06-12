@@ -120,16 +120,15 @@ fontload@n2 "Stick", "Stick-Regular.ttf", 64
 
 buffer SID_ICON
 picload "icon.png", -1
+texfilter@n2 SID_ICON, texfilter_bilinear@n2; アルファ値を元々持っているのでバイリニア補間へ
 
 buffer SID_MAT
 picload "mat.png"
 celdiv SID_MAT, 32, 32, 16, 16
-texfilter@n2 SID_MAT, texfilter_nearest@n2; ドット絵なのでニアレスト補間
 
 buffer SID_BLOCKMAT
 picload "blockmat.png"
 celdiv SID_BLOCKMAT, 32, 32, 16, 16
-texfilter@n2 SID_BLOCKMAT, texfilter_nearest@n2; ドット絵なのでニアレスト補間
 
 buffer SID_BACK, SCREEN_SIZEX, SCREEN_SIZEY
 buffer SID_TMP, SCREEN_SIZEX, SCREEN_SIZEY

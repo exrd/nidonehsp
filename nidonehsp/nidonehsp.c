@@ -19015,6 +19015,8 @@ static void n2si_window_reset_state(n2_state_t* state, n2s_environment_t* se, n2
 	w->gfilter_ = N2S_GFILTER_NONE;
 	w->gmode_copy_width_ = 32; w->gmode_copy_height_ = 32;
 
+	if (w->texturebuffer_) { n2s_texture_set_samplerfilter(state, &w->texturebuffer_->texture_, N2S_SAMPLERFILTER_NEAREST); }
+
 	w->draw_font_ = se->default_font_;
 	w->draw_font_height_ = state->config_.standard_font_default_draw_height_;
 	w->draw_font_style_ = 0;
