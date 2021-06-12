@@ -20552,7 +20552,7 @@ static n2_bool_t n2si_environment_present_widgets(n2_state_t* state, n2s_environ
 					nk_layout_space_push(c, nk_rect(widget->position_.x_, widget->position_.y_, widget->size_.x_, widget->size_.y_));
 					n2_str_fmt_to(state, &widgetlabel, "%s", widget->label_.str_);
 					int len = N2_SCAST(int, widget->strvalue_.size_);
-					const nk_flags action = nk_edit_string(c, (is_multiline ? NK_EDIT_EDITOR : NK_EDIT_FIELD), widget->strvalue_.str_, &len, N2_SCAST(int, widget->strvalue_.buffer_size_), NULL);
+					const nk_flags action = nk_edit_string(c, is_multiline ? NK_EDIT_BOX : NK_EDIT_FIELD, widget->strvalue_.str_, &len, N2_SCAST(int, widget->strvalue_.buffer_size_), NULL);
 					widget->strvalue_.size_ = N2_SCAST(size_t, len);
 					widget->strvalue_.str_[widget->strvalue_.size_] = '\0';
 					const nk_flags comit_flags = NK_EDIT_DEACTIVATED;
@@ -30207,9 +30207,9 @@ static int n2si_bifunc_mesbox(const n2_funcarg_t* arg)
 	n2_valstr_t* varstr = n2_variable_get_str(varval->field_.varvalue_.var_, varval->field_.varvalue_.aptr_);
 	if (!varstr) { n2e_funcarg_raise(arg, "mesbox：対象の変数の文字列の値を取り出せませんでした。配列長＝%zu、指定した配列インデックス＝%d", varval->field_.varvalue_.var_->element_num_, varval->field_.varvalue_.aptr_); return -1; }
 	const n2_value_t* xval = n2e_funcarg_getarg(arg, 1);
-	const n2_valint_t x = xval && xval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, xval) : nw->objx_;
+	const n2_valint_t x = xval && xval->type_ != N2_VALUE_NIL ? N2_MAX(n2e_funcarg_eval_int(arg, xval), 0) : nw->objx_;
 	const n2_value_t* yval = n2e_funcarg_getarg(arg, 2);
-	const n2_valint_t y = yval && yval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, yval) : nw->objy_;
+	const n2_valint_t y = yval && yval->type_ != N2_VALUE_NIL ? N2_MAX(n2e_funcarg_eval_int(arg, yval), 0) : nw->objy_;
 	//const n2_value_t* styleval = n2e_funcarg_getarg(arg, 3);
 	//const n2_valint_t style = styleval && styleval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, styleval) : 1;
 	const n2_value_t* sizeval = n2e_funcarg_getarg(arg, 4);
@@ -30230,7 +30230,7 @@ static int n2si_bifunc_mesbox(const n2_funcarg_t* arg)
 	widget.capture_aptr_ = varval->field_.varvalue_.aptr_;
 	n2s_widgetset_insert(arg->state_, nw->widgets_, &widget, NULL);
 
-	n2si_bifunc_widget_posinc_y(nw, nw->objy_);
+	n2si_bifunc_widget_posinc_y(nw, y);
 
 	n2e_funcarg_pushi(arg, N2_SCAST(n2_valint_t, next_id));
 	return 1;

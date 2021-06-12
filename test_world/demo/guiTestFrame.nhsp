@@ -8,6 +8,8 @@
 	if (!gIsInitialized) {
 		gIsInitialized = 1
 		gIsFontItalic = 0 : gIsFontShadow = 0 : gIsFontOutline = 0 : gIsFontHeight = 32.0
+		textInput = "サンプル入力"
+		multiTextInput = "サンプル複数\n行入力"
 	}
 	// ローカル初期化
 	toReturn = 0
@@ -19,7 +21,8 @@
 	objsize 200, 20 : pos 20, 120 : button gosub "ボタンをおしてください", *implPushButton
 	objsize 200, 20 : pos 20, 150 : chkbox "チェックボックスのテスト", checked
 	objsize 200, 20 : pos 20, 180 : input textInput
-	objsize 100, 20 : pos 20, 210 : chkbox "斜体", gIsFontItalic : pos 130, 210 : chkbox "シャドウ", gIsFontShadow : pos 250, 210 : chkbox "アウトライン", gIsFontOutline
+	pos 20, 210 : mesbox multiTextInput, 200, 60
+	objsize 100, 20 : pos 20, 280 : chkbox "斜体", gIsFontItalic : pos 130, 280 : chkbox "シャドウ", gIsFontShadow : pos 250, 280 : chkbox "アウトライン", gIsFontOutline
 	objsize 60, 20 : pos 600, 400 : button gosub "終わる", *implReturnTo
 	return
 
@@ -68,10 +71,11 @@
 		pos 240, 120 : mes buttonPushed > 0 then `ボタンが ${buttonPushed} 回押されました` else ""
 		pos 240, 150 : mes `チェック状態 ${checked}`
 		pos 240, 180 : mes `テキスト入力 ${textInput}`
+		pos 240, 210 : mes `複数行入力\n${multiTextInput}`
 
 		font "Stick", gIsFontHeight, (gIsFontItalic then 2 else 0)
 		color 255, 0, 255 : objcolor 255, 255, 0
-		tsx = 380 : tsy = 180
+		tsx = 380 : tsy = 280
 		pos tsx, tsy : mes `nidonehspのテキスト表示テスト\n入力＝${textInput}`, (gIsFontShadow then mesopt_shadow else 0) | (gIsFontOutline then mesopt_outline else 0)
 		color 0, 255, 255
 		pos tsx, tsy : line tsx + ginfo_mesx, tsy : line tsx + ginfo_mesx, tsy + ginfo_mesy : line tsx, tsy + ginfo_mesy : line tsx, tsy
