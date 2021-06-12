@@ -37,6 +37,12 @@
 
 nidonehsp 本体は NYSL でライセンスされます。
 
+nidonehsp のライセンス全文は `LICENSE` ファイルを参照してください。
+
+このリポジトリには nidonehsp 以外のライブラリやファイルも含まれています。
+
+ディレクトリ構成とそれらのライセンスは次の表のとおりです。
+
 |ディレクトリ|内容|ライセンス|
 |:--|:--|:--|
 |`build`|nidonehsp 自身のビルド時に必要なリソースが格納されます|NYSL|
@@ -49,4 +55,3 @@ nidonehsp 本体は NYSL でライセンスされます。
 |`vscode_extension`|nidonehsp 用のVSCode拡張|NYSL|
 |`./*`|CMake 用のファイルなど|NYSL|
 
-nidonehsp のライセンス全文は `LICENSE` ファイルを参照してください。
