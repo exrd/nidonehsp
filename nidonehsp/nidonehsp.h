@@ -3096,7 +3096,6 @@ struct n2_variable_t
 	size_t element_num_;// 次元事の数を全て掛けたもの、実際に保持している数
 	size_t element_size_;// 一つのエレメントのサイズ＝ストライド
 	size_t granule_size_;// 初期化時の粒度サイズ
-	int module_id_;// MODULE時のモジュールのID
 	void* data_;// 実際のデータの先頭ポインタ
 	size_t data_buffer_size_;// 確保したデータのサイズ
 #if N2_CONFIG_USE_DEBUGGING
@@ -3651,6 +3650,7 @@ struct n2_modinstance_t
 	n2_vartable_t* localvars_;
 	int reference_count_;
 	size_t flags_;
+	void* user_;
 };
 
 N2_API void n2_modinstance_init(n2_state_t* state, n2_fiber_t* f, n2_module_t* emodule, n2_modinstance_t* instance);
@@ -5204,6 +5204,7 @@ struct n2_environment_t
 
 	// コア機能のモジュール
 	int module_core_modclass_id_;
+	int module_core_placeholderclass_id_;
 
 	// 基本機能がバインドされているか
 	n2_bool_t is_basics_bounded_;
@@ -5522,6 +5523,7 @@ N2_API n2_bool_t n2e_funcarg_pushstack(const n2_funcarg_t* arg, int index);
 N2_API void n2e_funcarg_pushi(const n2_funcarg_t* arg, n2_valint_t v);
 N2_API void n2e_funcarg_pushf(const n2_funcarg_t* arg, n2_valfloat_t v);
 N2_API n2_valstr_t* n2e_funcarg_pushs(const n2_funcarg_t* arg, const char* s);
+N2_API n2_modinstance_t* n2e_funcarg_createmodinst(const n2_funcarg_t* arg, n2_module_t* emodule);
 N2_API void n2e_funcarg_pushmodinst(const n2_funcarg_t* arg, n2_modinstance_t* instance);
 N2_API int n2e_funcarg_callfunc(const n2_funcarg_t* arg, const n2_func_t* func, size_t arg_num);
 

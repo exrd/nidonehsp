@@ -925,7 +925,7 @@ N2_API void n2_buffer_set(n2_state_t* state, n2_buffer_t* buffer, const void* cb
 
 	n2_buffer_reserve(state, buffer, length);
 
-	N2_MEMCPY(buffer->data_, cbuffer, length);
+	if (length > 0) { N2_MEMCPY(buffer->data_, cbuffer, length); }
 	buffer->size_ = length;
 }
 
@@ -1861,7 +1861,7 @@ N2_API void n2_str_set(n2_state_t* state, n2_str_t* str, const char* cstr, size_
 	if (length == SIZE_MAX) { length = N2_STRLEN(cstr); }
 	n2_str_reserve(state, str, length + 1);
 
-	N2_MEMCPY(str->str_, cstr, sizeof(char) * length);
+	if (length > 0) { N2_MEMCPY(str->str_, cstr, sizeof(char) * length); }
 	str->str_[length] = '\0';
 	str->size_ = length;
 }
@@ -11037,7 +11037,6 @@ static void n2i_variable_setup(n2_state_t* state, n2_environment_t* e, n2_variab
 	var->element_num_ = 0;
 	var->element_size_ = 0;
 	var->granule_size_ = 0;
-	var->module_id_ = -1;
 #if N2_CONFIG_USE_DEBUGGING
 	var->debugvarpool_ = NULL;
 	var->debugvarroot_ = NULL;
@@ -14205,6 +14204,7 @@ N2_API void n2_modinstance_init(n2_state_t* state, n2_fiber_t* f, n2_module_t* e
 	}
 	instance->reference_count_ = 1;
 	instance->flags_ = 0;
+	instance->user_ = NULL;
 }
 
 N2_API void n2_modinstance_teardown(n2_state_t* state, n2_modinstance_t* instance)
@@ -14305,6 +14305,34 @@ static void n2i_crmodule_modclass_free(n2_state_t* state, n2_fiber_t* f, n2_modu
 	N2_UNUSE(f);
 	N2_UNUSE(emodule);
 	N2_UNUSE(instance);
+}
+
+typedef struct n2i_crplaceholderclass_instance_t n2i_crplaceholderclass_instance_t;
+
+typedef void (*n2i_crplaceholderclass_freefunc_t)(n2_state_t* state, n2_fiber_t* f, n2i_crplaceholderclass_instance_t* instance);
+
+struct n2i_crplaceholderclass_instance_t
+{
+	n2_modinstance_t instance_;
+	void* instance_exuser_;
+	n2i_crplaceholderclass_freefunc_t instance_freefunc_;
+};
+
+static n2_modinstance_t* n2i_crmodule_placeholderclass_alloc(n2_state_t* state, n2_fiber_t* f, n2_module_t* emodule)
+{
+	n2i_crplaceholderclass_instance_t* phinstance = N2_TMALLOC(n2i_crplaceholderclass_instance_t, state);
+	phinstance->instance_exuser_ = NULL;
+	phinstance->instance_freefunc_ = NULL;
+	n2_modinstance_t* instance = N2_RCAST(n2_modinstance_t*, phinstance);
+	n2_modinstance_init(state, f, emodule, instance);
+	return instance;
+}
+
+static void n2i_crmodule_placeholderclass_free(n2_state_t* state, n2_fiber_t* f, n2_module_t* emodule, n2_modinstance_t* instance)
+{
+	N2_UNUSE(emodule);
+	n2i_crplaceholderclass_instance_t* phinstance = N2_SCAST(n2i_crplaceholderclass_instance_t*, instance);
+	if (phinstance->instance_freefunc_) { phinstance->instance_freefunc_(state, f, phinstance); }
 }
 
 //=============================================================================
@@ -21121,6 +21149,7 @@ N2_API n2_environment_t* n2_environment_alloc(n2_state_t* state)
 	e->last_error_ = n2_str_alloc(state, 0);
 	e->is_core_bounded_ = N2_FALSE;
 	e->module_core_modclass_id_ = -1;
+	e->module_core_placeholderclass_id_ = -1;
 	e->is_basics_bounded_ = N2_FALSE;
 	e->is_consoles_bounded_ = N2_FALSE;
 	e->is_standards_bounded_ = N2_FALSE;
@@ -25836,6 +25865,11 @@ N2_API n2_valstr_t* n2e_funcarg_pushs(const n2_funcarg_t* arg, const char* s)
 	return &(*val)->field_.svalue_;
 }
 
+N2_API n2_modinstance_t* n2e_funcarg_createmodinst(const n2_funcarg_t* arg, n2_module_t* emodule)
+{
+	return n2i_modinstance_create(arg->state_, arg->fiber_, emodule);
+}
+
 N2_API void n2e_funcarg_pushmodinst(const n2_funcarg_t* arg, n2_modinstance_t* instance)
 {
 	n2_valuearray_pushv(arg->state_, arg->fiber_->values_, n2_value_allocmodinst(arg->state_, instance));
@@ -25953,6 +25987,15 @@ static void n2i_environment_bind_core_builtins(n2_state_t* state, n2_environment
 		N2_ASSERT(e->module_core_modclass_id_ >= 0);
 		emodule->alloc_callback_ = n2i_crmodule_modclass_alloc;
 		emodule->free_callback_ = n2i_crmodule_modclass_free;
+	}
+
+	{
+		N2_ASSERT(e->module_core_placeholderclass_id_ < 0);
+		n2_module_t* emodule = n2_moduletable_register(state, e->moduletable_, "$_placeholderclass");
+		e->module_core_placeholderclass_id_ = emodule->module_id_;
+		N2_ASSERT(e->module_core_placeholderclass_id_ >= 0);
+		emodule->alloc_callback_ = n2i_crmodule_placeholderclass_alloc;
+		emodule->free_callback_ = n2i_crmodule_placeholderclass_free;
 	}
 
 	e->is_core_bounded_ = N2_TRUE;
@@ -26940,14 +26983,93 @@ static int n2i_bifunc_getstr(const n2_funcarg_t* arg)
 	return 0;
 }
 
+typedef struct n2i_bifunc_split_phcontext_t n2i_bifunc_split_phcontext_t;
+struct n2i_bifunc_split_phcontext_t
+{
+	n2_szarray_t separators_;
+};
+
+static void n2i_bifunc_split_phmodinst_freefunc(n2_state_t* state, n2_fiber_t* f, n2i_crplaceholderclass_instance_t* instance)
+{
+	N2_UNUSE(f);
+	n2i_bifunc_split_phcontext_t* phcontext  = N2_RCAST(n2i_bifunc_split_phcontext_t*, instance->instance_exuser_);
+	n2_szarray_teardown(state, &phcontext->separators_);
+	n2_free(state, phcontext);
+}
+
 static int n2i_bifunc_split(const n2_funcarg_t* arg)
 {
 	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
 	if (arg_num < 3) { n2e_funcarg_raise(arg, "split：引数の数（%d）が期待（%d - ）と違います", arg_num, 3); return -1; }
-	// @todo
-	N2_ASSERT(0);
-	n2e_funcarg_raise(arg, "split：未実装です");
-	return -1;
+	n2_value_t* targetval = n2e_funcarg_getarg(arg, 0);
+	//n2_valstr_t* target = targetval ? n2_value_get_str(targetval) : NULL;
+	n2_valstr_t* target = targetval ? n2e_funcarg_eval_str_and_push(arg, targetval) : NULL;
+	if (!target) { n2e_funcarg_raise(arg, "split：最初の引数が文字列ではありません。splitの対象は文字列である必要があります。"); return -1; }
+	//n2_str_update_size(target);
+	const n2_value_t* separatorval = n2e_funcarg_getarg(arg, 1);
+	const n2_valstr_t* separator = n2e_funcarg_eval_str_and_push(arg, separatorval);
+	// 残りの引数の変数チェック
+	const int outvar_argbias = 2;
+	n2_valstr_t* tstr = n2e_funcarg_pushs(arg, "");// 後々の一時変数としても使うが、初期値は空の必要性がある（出力変数への値の初期値設定で使う）
+	const n2_value_t* tstrval = n2e_funcarg_get(arg, -1);
+	N2_ASSERT(tstrval && &tstrval->field_.svalue_ == tstr);
+	int outputvarnum = 0;
+	for (int i = outvar_argbias; i < arg_num; ++i)
+	{
+		n2_value_t* outputvar = n2e_funcarg_getarg(arg, i);
+		if (!outputvar || outputvar->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "split：%d番目の代入先（%d番目の引数）が変数ではありません", i - outvar_argbias, i); return -1; }
+		// どうせ文字列型にするので、先に空文字を代入しておく
+		n2_variable_set(arg->state_, arg->fiber_, outputvar->field_.varvalue_.var_, outputvar->field_.varvalue_.aptr_, tstrval);
+		++outputvarnum;
+	}
+	// 一時処理データの為にプレースホルダを作る
+	n2_module_t* phmodule = n2_moduletable_peek(arg->fiber_->environment_->moduletable_, arg->fiber_->environment_->module_core_placeholderclass_id_);
+	N2_ASSERT(phmodule);
+	n2_modinstance_t* modinst = n2e_funcarg_createmodinst(arg, phmodule);
+	n2i_crplaceholderclass_instance_t* phinst = N2_RCAST(n2i_crplaceholderclass_instance_t*, modinst);
+	n2i_bifunc_split_phcontext_t* phcontext  = N2_TMALLOC(n2i_bifunc_split_phcontext_t, arg->state_);
+	n2_szarray_setup(arg->state_, &phcontext->separators_, 32, 32);
+	phinst->instance_exuser_ = phcontext;
+	phinst->instance_freefunc_ = n2i_bifunc_split_phmodinst_freefunc;
+	n2e_funcarg_pushmodinst(arg, modinst);
+	// 実際の処理
+	if (separator->size_ <= 0)
+	{
+		// セパレータが空文字なら、文字列全体（分割なし）
+		n2_szarray_pushv(arg->state_, &phcontext->separators_, target->size_);
+	}
+	else
+	{
+		int pos = 0;
+		for (;;)
+		{
+			int npos = n2_str_find(target, separator->str_, separator->size_, N2_SCAST(size_t, pos));
+			n2_szarray_pushv(arg->state_, &phcontext->separators_, npos < 0 ? target->size_ : N2_SCAST(size_t, npos));
+			if (npos < 0) { break; }
+			pos = npos + N2_SCAST(int, separator->size_);
+		}
+	}
+	const int splitnum = N2_SCAST(int, n2_szarray_size(&phcontext->separators_));
+	// 出力先変数へ分ける
+	size_t opos = 0;
+	for (int i = 0; i < splitnum; ++i)
+	{
+		const int iarg = i + outvar_argbias;
+		n2_value_t* outputvar = NULL;
+		int outputaptr_bias = 0;
+		if (iarg >= arg_num) { outputvar = n2e_funcarg_getarg(arg, -1); outputaptr_bias = iarg - arg_num + 1; }
+		else { outputvar = n2e_funcarg_getarg(arg, iarg); }
+		if (!outputvar) { continue; }
+		if (outputvar->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "split：内部エラー発生（%d番目の出力先が変数ではない）", i); return -1; }
+		size_t npos = n2_szarray_peekcv(&phcontext->separators_, i, 0);
+		N2_ASSERT(npos >= opos);
+		n2_str_set(arg->state_, tstr, target->str_ + opos, npos - opos);
+		opos = npos + separator->size_;
+		n2_variable_set(arg->state_, arg->fiber_, outputvar->field_.varvalue_.var_, outputaptr_bias > 0 ? N2_MAX(outputvar->field_.varvalue_.aptr_, 0) + outputaptr_bias : outputvar->field_.varvalue_.aptr_, tstrval);
+	}
+	// 分割数を返す
+	n2e_funcarg_pushi(arg, N2_SCAST(n2_valint_t, splitnum));
+	return 1;
 }
 
 static int n2i_bifunc_strrep(const n2_funcarg_t* arg)
@@ -27703,7 +27825,7 @@ static int n2i_bifunc_newmod(const n2_funcarg_t* arg)
 	n2_module_t* createmodule = n2_moduletable_peek(arg->fiber_->environment_->moduletable_, modclassinst->refer_module_id_);
 	N2_ASSERT(createmodule);
 	// 作って色々
-	n2_modinstance_t* created = n2i_modinstance_create(arg->state_, arg->fiber_, createmodule);
+	n2_modinstance_t* created = n2e_funcarg_createmodinst(arg, createmodule);
 	n2_valmodinst_t* inst = N2_RCAST(n2_valmodinst_t*, n2_ptr_offset(var->data_, var->element_size_ * setindex));
 	inst->instance_ = created;
 	// modinit

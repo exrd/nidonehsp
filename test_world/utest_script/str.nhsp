@@ -52,6 +52,32 @@ if (strf("%g", 20.22) != "20.22") { raise }
 if (strf("%G", 20.22) != "20.22") { raise }
 if ( strf("%s", "mystr") != "mystr") { raise }
 
+mes "split"
+f = -1
+split "a,b,c,d,e", ",", a, b, c, d, e, f
+if (stat != 5) { raise }
+if (a != "a" || b != "b" || c != "c" || d != "d" || e != "e" || f != "") { raise }
+split "a, b, c", ", ", a, b, c
+if (stat != 3) { raise }
+if (a != "a" || b != "b" || c != "c") { raise }
+split "a, b, c", "test", a, b, c
+if (stat != 1) { raise }
+if (a != "a, b, c" || b != "" || c != "") { raise }
+t = "a, b, c"
+split t, "", a, b, c
+if (stat != 1) { raise }
+if (a != "a, b, c" || b != "" || c != "") { raise }
+split "", "", a, b, c
+if (stat != 1) { raise }
+if (a != "" || b != "" || c != "") { raise }
+a = -1
+split "a,b,c,d,e", ",", a
+if (stat != 5) { raise }
+if (a(0) != "a" || a(1) != "b" || a(2) != "c" || a(3) != "d" || a(4) != "e") { raise }
+split "a,b,c,d,e", ",", a, b, c
+if (stat != 5) { raise }
+if (a != "a" || b != "b" || c(0) != "c" || c(1) != "d" || c(2) != "e") { raise }
+
 mes "strcodepoints"
 strcodepoints@n2 cps, "ABC"
 	if (strsize != 3) { raise }
