@@ -66,6 +66,16 @@
 #define CUTE_ASEPRITE_MEMSET	N2_MEMSET
 #define CUTE_ASEPRITE_ASSERT	N2_ASSERT
 #define CUTE_ASEPRITE_IMPLEMENTATION
+// stdioをスカす
+#define CUTE_ASEPRITE_STDIO
+#define CUTE_ASEPRITE_SEEK_SET 0
+#define CUTE_ASEPRITE_SEEK_END 1
+#define CUTE_ASEPRITE_FILE void
+#define CUTE_ASEPRITE_FOPEN(...) NULL
+#define CUTE_ASEPRITE_FSEEK(...) 
+#define CUTE_ASEPRITE_FREAD(...) 
+#define CUTE_ASEPRITE_FTELL(...) 0
+#define CUTE_ASEPRITE_FCLOSE(...)
 #include "embed/cute_aseprite.h"
 #endif
 
