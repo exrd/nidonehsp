@@ -7539,7 +7539,7 @@ static void n2i_vraise_fiber_exception(n2_state_t* state, n2_fiber_t* f, n2_erro
 						{
 							n2_str_clear(&tstr);
 							n2i_str_cutoff_append(state, &tstr, codeline->line_head_, 64, '\n', "...");
-							n2_str_append_fmt(state, &subdescstr, "(%s:%d) %s", codeline->package_, codeline->line_, tstr.str_);
+							n2_str_append_fmt(state, &subdescstr, "(%s:%d) %s", codeline->package_, codeline->line_ + N2_LINE_BASE, tstr.str_);
 						}
 						else
 						{
