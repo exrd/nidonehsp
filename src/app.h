@@ -261,7 +261,7 @@ static void n2t_leakcheck_context_teardown(n2t_leakcheck_context_t* ctx)
 	n2_list_init(&ctx->list_);
 }
 
-static void n2t_leakcheck_context_report(n2t_leakcheck_context_t* ctx)
+static size_t n2t_leakcheck_context_report(n2t_leakcheck_context_t* ctx)
 {
 	if (ctx->list_.size_ > 0)
 	{
@@ -271,6 +271,7 @@ static void n2t_leakcheck_context_report(n2t_leakcheck_context_t* ctx)
 			printf("  %p\n", n2_ptr_offset(node, sizeof(n2_list_node_t)));
 		);
 	}
+	return ctx->list_.size_;
 }
 
 static void* n2t_leakcheck_allocfunc(void* alloc_user, size_t new_size, void* old_ptr, size_t old_size)

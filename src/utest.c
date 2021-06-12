@@ -971,10 +971,7 @@ int main(int argc, char* argv[])
 				passed = N2_FALSE;
 			}
 
-			++test_num;
-			if (passed) { ++passed_test_num; }
-
-			// ダンプ
+			// ここまでで失敗していたら実行エラーなので詳細ダンプ
 			if (!passed)
 			{
 				if (!thistest_predump_ppsrc)
@@ -995,8 +992,12 @@ int main(int argc, char* argv[])
 			n2_state_free(state);
 
 			// リークチェック
-			n2t_leakcheck_context_report(&ac);
+			if (n2t_leakcheck_context_report(&ac) > 0) { passed = N2_FALSE; }
 			n2t_leakcheck_context_teardown(&ac);
+
+			// ここで成功判定
+			++test_num;
+			if (passed) { ++passed_test_num; }
 
 			// 次
 			cur_utest = cur_utest->next;
