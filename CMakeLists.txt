@@ -444,6 +444,9 @@ if(N2_BUILD_RUNTIME_STANDARD AND N2_BUILD_SDL AND N2_APP_STD_BUILD)
 				# CONSOLEサブシステムに（printf等を見せる）
 				set_target_properties(n2r_std PROPERTIES LINK_FLAGS /SUBSYSTEM:CONSOLE)
 			endif()
+
+			# リソース
+			target_sources(n2r_std PRIVATE ${CMAKE_SOURCE_DIR}/build/msvc/n2r.rc)
 		endif()
 	endif()
 endif()

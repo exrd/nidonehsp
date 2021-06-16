@@ -1,13 +1,6 @@
 
 /////////////////////////////////////////////////////////////////////////////
 //
-// Icon
-//
-
-APPICON                 ICON                    "icon.ico"
-
-/////////////////////////////////////////////////////////////////////////////
-//
 // Version
 //
 
@@ -28,10 +21,10 @@ BEGIN
     BEGIN
         BLOCK "041104b0"
         BEGIN
-            VALUE "FileDescription", "n2studio"
+            VALUE "FileDescription", "nidonehsp"
             VALUE "FileVersion", "0.1.2.0"
-            VALUE "InternalName", "n2studio.exe"
-            VALUE "OriginalFilename", "n2studio.exe"
+            VALUE "InternalName", "nidonehsp"
+            VALUE "OriginalFilename", "nidonehsp"
             VALUE "ProductVersion", "0.1.2.0"
         END
     END
