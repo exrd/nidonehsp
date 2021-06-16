@@ -26,6 +26,7 @@
 	objsize 200, 20 : pos 20, 180 : input textInput
 	pos 20, 210 : mesbox multiTextInput, 200, 60
 	objsize 100, 20 : pos 20, 280 : chkbox "斜体", gIsFontItalic : pos 130, 280 : chkbox "シャドウ", gIsFontShadow : pos 250, 280 : chkbox "アウトライン", gIsFontOutline
+	objsize 170, 20 : pos 20, 310 : button gosub "ダイアログ（OK）", *implDialogOk : pos 200, 310 : button gosub "ダイアログ（はい・いいえ）", *implDialogYesNo
 	widgetIDLast = stat
 	objsize 60, 20 : pos 610, 400 : button gosub "終わる", *implReturnTo
 	return
@@ -52,6 +53,14 @@
 
 *implReturnTo
 	toReturn = 1
+	return
+
+*implDialogOk
+	dialog `OKを押してください。\n入力＝${textInput}`, 0, "ダイアログ（ＯＫ）のタイトル"
+	return
+
+*implDialogYesNo
+	dialog `ボタンを押してください。\n入力＝${textInput}`, 1 + 2, "ダイアログ（はい、いいえ）のタイトル"
 	return
 
 *guiTestFrameCompute

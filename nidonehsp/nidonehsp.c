@@ -28965,6 +28965,56 @@ static int n2si_bifunc_title(const n2_funcarg_t* arg)
 	return 0;
 }
 
+static int n2si_bifunc_dialog(const n2_funcarg_t* arg)
+{
+	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	if (arg_num > 3) { n2e_funcarg_raise(arg, "dialog：引数の数（%d）が期待（0 - %d）と違います", arg_num, 3); return -1; }
+	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
+	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
+	N2_ASSERT(nw);
+	const n2_value_t* strval = n2e_funcarg_getarg(arg, 0);
+	const n2_valstr_t* str = strval && strval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_str_and_push(arg, strval) : n2e_funcarg_pushs(arg, "");
+	const n2_value_t* modeval = n2e_funcarg_getarg(arg, 1);
+	const n2_valint_t mode = modeval && modeval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, modeval) : 0;
+	const n2_value_t* titleval = n2e_funcarg_getarg(arg, 2);
+	const n2_valstr_t* title = titleval && titleval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_str_and_push(arg, titleval) : n2e_funcarg_pushs(arg, "");
+	n2_bool_t has_result = N2_FALSE;
+	int buttonid = 0;
+	switch (mode)
+	{
+	case 0:
+	case 1:
+	case 2:
+	case 3:
+		{
+			static const SDL_MessageBoxButtonData buttons[][2] = {
+				{
+					{ SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, "OK" },
+				},
+				{
+					{ SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 7, "いいえ" },
+					{ SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 6, "はい" },
+				},
+			};
+			const SDL_MessageBoxData messageboxdata = {
+				(mode & 1) ? SDL_MESSAGEBOX_WARNING : SDL_MESSAGEBOX_INFORMATION,
+				nw->window_,
+				title->str_,
+				str->str_,
+				(mode & 1) ? 2 : 1,
+				buttons[mode & 1],
+				NULL
+			};
+			SDL_ShowMessageBox(&messageboxdata, &buttonid);
+			n2e_funcarg_pushi(arg, N2_SCAST(n2_valint_t, buttonid));
+			has_result = N2_TRUE;
+		}
+		break;
+	default: break;
+	}
+	return has_result ? 1 : 0;
+}
+
 static int n2si_bifunc_wait(const n2_funcarg_t* arg)
 {
 	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
@@ -30445,6 +30495,7 @@ static void n2i_environment_bind_standards_builtins(n2_state_t* state, n2_pp_con
 			{"buffer",				n2si_bifunc_buffer},
 			{"cls",					n2si_bifunc_cls},
 			{"title",				n2si_bifunc_title},
+			{"dialog",				n2si_bifunc_dialog},
 			{"wait",				n2si_bifunc_wait},
 			{"await",				n2si_bifunc_await},
 			{"systimer@n2",			n2si_bifunc_systimer_n2},
