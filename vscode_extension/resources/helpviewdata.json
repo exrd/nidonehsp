@@ -5590,6 +5590,66 @@
 				"stdDrawPrimitive"
 			]
 		},
+		"gsquare": {
+			"type": "function",
+			"summary": "ウィンドウ内容を自由変形コピー描画",
+			"group": ["standard"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "srcScreenID",
+					"description": "コピー元スクリーンID",
+					"omitted": "0"
+				},
+				{
+					"name": "drawPosXs",
+					"description": "コピー先のX座標配列"
+				},
+				{
+					"name": "drawPosYs",
+					"description": "コピー先のY座標配列"
+				},
+				{
+					"name": "srcXs",
+					"description": "コピー元のX座標配列またはカラーコード配列"
+				},
+				{
+					"name": "srcYs",
+					"description": "コピー元のY座標配列"
+				}
+			],
+			"description": [
+				"現在の操作先ウィンドウに対して、srcScreenIDで指定したウィンドウの内容の一部を自由変形コピー描画します。",
+				"srcScreenIDに現在の操作先ウィンドウと同じIDを指定した場合エラーになります。",
+				"",
+				"この命令ではコピー先およびコピー元の座標をdrawPosXsとdrawPosYs、srcXsとsrcYsに分けて格納し指定します。",
+				"座標は左上、右上、右下、左下の順番に格納されていると解釈します。",
+				"つまり、drawPosXzやdrawPosYsなどは4要素の配列で、整数値または実数値の配列であると想定されます。",
+				"",
+				"srcScreenIDに-1から-256の値を指定した場合、ウィンドウ内容のコピーではなく$ref(color)で設定した単色塗りつぶしが行われます。",
+				"この際、srcXsとsrcYsは使わないため、省略することが可能です。",
+				"",
+				"srcScreenIDに-257（マクロでは$ref(gsquared_grad)）を指定した場合、ウィンドウ内容のコピーではなくグラデーション塗りつぶしが行われます。",
+				"各頂点のカラーはsrcXsに整数値で格納し、その値は`0xrrggbb`というRGB値を1つの整数にまとめた値と解釈します。"
+			],
+			"relationGroup": [
+				"stdDrawPrimitive"
+			]
+		},
+		"gsquared_grad": {
+			"type": "constant",
+			"summary": "gsquareのグラデーション塗りつぶし",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"$ref(gsquare)における描画オプション（グラデーション塗りつぶし）を示す整数の定数です。"
+			],
+			"relationGroup": [
+				"stdConstantDrawPrimitive"
+			]
+		},
 
 		"mes": {
 			"type": "function",

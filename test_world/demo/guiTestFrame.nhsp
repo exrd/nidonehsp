@@ -103,6 +103,14 @@
 		pos tsx, tsy : mes `nidonehspのテキスト表示テスト\n入力＝${textInput}`, (gIsFontShadow then mesopt_shadow else 0) | (gIsFontOutline then mesopt_outline else 0)
 		color 0, 255, 255
 		pos tsx, tsy : line tsx + ginfo_mesx, tsy : line tsx + ginfo_mesx, tsy + ginfo_mesy : line tsx, tsy + ginfo_mesy : line tsx, tsy
+
+		tsx = 20 : tsy = 350
+		trad = deg2rad(0.5 * masterFrame)
+		color 255, 255, 222 : grect tsx + 20, tsy + 20, trad, 32, 32
+		pos tsx + 60, tsy + 20 : gmode 3, 64, 64, 192 : grotate SID_ICON, 0, 0, trad, 32, 32
+		repeat 4 : tr = cnt < 2 then 2.5 else 1.0 : dxs(cnt) = tsx + 100 - 12.0 * cos(trad + deg2rad(90 * cnt)) * tr : dys(cnt) = tsy + 20 - 12.0 * sin(trad + deg2rad(90 * cnt)) * tr : loop : color 222, 255, 255 : gsquare -1, dxs, dys
+		scs = 0xff0000, 0x00ff00, 0x0000ff, 0xffffff : repeat 4 : dxs(cnt) += 40.0 : sxs(cnt) = scs(cnt) : loop : gmode 0 : gsquare -257, dxs, dys, sxs
+		repeat 4 : dxs(cnt) += 40.0 : sxs(cnt) = cnt == 1 || cnt == 2 then 64 else 0 : sys(cnt) = cnt < 2 then 0 else 64 : loop : gmode 0 : gsquare SID_ICON, dxs, dys, sxs, sys
 	return
 
 #global

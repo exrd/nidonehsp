@@ -7072,9 +7072,9 @@ N2_API n2_bool_t n2h_systemfiledevice_selfpath(n2_state_t* state, n2_str_t* dst_
 	n2_str_swap(dst_path, &tw);
 	n2_str_teardown(state, &tw);
 	return N2_TRUE;
-#elif N2_PLATFORM_IS_EMSCRIPTEN || N2_PLATFORM_IS_UNIX
+#elif N2_PLATFORM_IS_UNIX
 	if (!n2_str_reserve(state, dst_path, N2_MAX_PATH)) { return N2_FALSE; }
-	const ssize_t written = readlink("/proc/self/exe", dst_path->str_, dst_path->buffer_size_);// POSIX ...?
+	const ssize_t written = readlink("/proc/self/exe", dst_path->str_, dst_path->buffer_size_);// POSIX...?
 	if (written < 0 || written >= N2_SCAST(ssize_t, dst_path->buffer_size_)) { return N2_FALSE; }
 	n2_str_update_size(dst_path);
 	return N2_TRUE;
@@ -29170,7 +29170,7 @@ static int n2si_bifunc_grect(const n2_funcarg_t* arg)
 	const n2_value_t* hval = n2e_funcarg_getarg(arg, 4);
 	n2_valint_t h = hval && n2_value_get_type(hval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, hval) : 0;
 	if (!wval || !hval) { n2e_funcarg_raise(arg, "grect：矩形のX・Yサイズが指定されていません"); return -1; }
-	if (w <= 0 || h < 0) { return 0; }
+	if (w <= 0 || h <= 0) { return 0; }
 	n2si_environment_checkout_draw_commandbuffer(arg->state_, se);
 	const n2s_u8color_t c = n2s_u8color(nw->ginfo_r_, nw->ginfo_g_, nw->ginfo_b_, nw->ginfo_a_);
 	const n2_fvec3_t center = n2_fvec3(N2_SCAST(float, sx), N2_SCAST(float, sy), 0);
@@ -29301,6 +29301,62 @@ static int n2si_bifunc_grotate(const n2_funcarg_t* arg)
 	n2_fvec2_t uv0 = n2_fvec2(N2_SCAST(float, sx) / N2_SCAST(float, srcw->width_), N2SI_FLIP_V(N2_SCAST(float, sy) / N2_SCAST(float, srcw->height_)));
 	n2_fvec2_t uv1 = n2_fvec2(N2_SCAST(float, sx + sw) / N2_SCAST(float, srcw->width_), N2SI_FLIP_V(N2_SCAST(float, sy + sh) / N2_SCAST(float, srcw->height_)));
 	n2s_commandbuffer_d2rect_textured_rot(arg->state_, se->commandbuffer_, n2_fvec3(N2_SCAST(float, psx), N2_SCAST(float, psy), 0), n2_fvec2(0.5f, 0.5f), n2_fvec2(N2_SCAST(float, w * wsign), N2_SCAST(float, h * hsign)), mulc, &srcw->texturebuffer_->texture_, uv0, uv1, N2_SCAST(float, rot), srcw->width_, srcw->height_);
+	return 0;
+}
+
+static int n2si_bifunc_gsquare(const n2_funcarg_t* arg)
+{
+	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
+	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
+	N2_ASSERT(nw);
+	const n2_value_t* idval = n2e_funcarg_getarg(arg, 0);
+	n2_valint_t id = idval && n2_value_get_type(idval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, idval) : 0;
+	const n2_bool_t fill = id < 0;
+	const n2_bool_t fillgrad = id == -257;
+	const int arg_required = fill ? (fillgrad ? 4 : 3) : 5;
+	if (arg_num < arg_required || arg_num > 5) { n2e_funcarg_raise(arg, "gsquare：引数の数（%d）が期待（%d - %d）と違います", arg_num, arg_required, 5); return -1; }
+	if (id > N2_SCAST(n2_valint_t, n2s_windowarray_size(se->windows_))) { n2e_funcarg_raise(arg, "gsquare：スクリーンID（%" N2_VALINT_PRI "）が範囲外（%zu - %zu）です", id, 0, n2s_windowarray_size(se->windows_)); return -1; }
+	if (id == se->selected_window_index_) { n2e_funcarg_raise(arg, "gsquare：自分自身のスクリーンID（" N2_VALINT_PRI "）をコピー元に指定することはできません", id); return -1; }
+	n2s_window_t* srcw = fill ? NULL : n2s_windowarray_peekv(se->windows_, N2_SCAST(int, id), NULL);
+	if (!fill && !srcw) { n2e_funcarg_raise(arg, "grotate：コピー元のスクリーンID（" N2_VALINT_PRI "）がまだ初期化されていません", id); return -1; }
+	const n2_value_t* dsxysvals[4] = {NULL};
+	for (int i = 0; i < 4; ++i)
+	{
+		dsxysvals[i] = n2e_funcarg_getarg(arg, i + 1);
+		if (i + 1 < arg_required && (!dsxysvals[i] || dsxysvals[i]->type_ != N2_VALUE_VARIABLE)) { n2e_funcarg_raise(arg, "gsquare:%d番目の引数が変数ではありません", i + 1); }
+	}
+	n2_fvec3_t dpos[4], spos[4];
+	n2s_u8color_t cs[4];
+	const n2s_u8color_t c = fill ? n2s_u8color(nw->ginfo_r_, nw->ginfo_g_, nw->ginfo_b_, nw->ginfo_a_) : n2s_u8color(nw->ginfo_mulr_, nw->ginfo_mulg_, nw->ginfo_mulb_, nw->ginfo_a_);
+	for (int i = 0; i < 4; ++i)
+	{
+		dpos[i].x_ = N2_SCAST(float, n2_variable_eval_float(arg->state_, arg->fiber_, dsxysvals[0]->field_.varvalue_.var_, N2_MAX(dsxysvals[0]->field_.varvalue_.aptr_, 0) + i));
+		dpos[i].y_ = N2_SCAST(float, n2_variable_eval_float(arg->state_, arg->fiber_, dsxysvals[1]->field_.varvalue_.var_, N2_MAX(dsxysvals[1]->field_.varvalue_.aptr_, 0) + i));
+		dpos[i].z_ = 0;
+		if (fill)
+		{
+			spos[i].x_ = 0;
+			spos[i].y_ = 0;
+		}
+		else
+		{
+			spos[i].x_ = N2_SCAST(float, n2_variable_eval_float(arg->state_, arg->fiber_, dsxysvals[2]->field_.varvalue_.var_, N2_MAX(dsxysvals[2]->field_.varvalue_.aptr_, 0) + i));
+			spos[i].y_ = N2_SCAST(float, n2_variable_eval_float(arg->state_, arg->fiber_, dsxysvals[3]->field_.varvalue_.var_, N2_MAX(dsxysvals[3]->field_.varvalue_.aptr_, 0) + i));
+		}
+		spos[i].z_ = 0;
+		if (fillgrad)
+		{
+			const n2_valint_t ccode = n2_variable_eval_int(arg->state_, arg->fiber_, dsxysvals[2]->field_.varvalue_.var_, N2_MAX(dsxysvals[2]->field_.varvalue_.aptr_, 0) + i);
+			cs[i] = n2s_u8color((ccode >> 16) & 0xff, (ccode >> 8) & 0xff, (ccode) & 0xff, 255);
+		}
+		else { cs[i] = c; }
+	}
+	n2si_environment_checkout_draw_commandbuffer(arg->state_, se);
+	n2_fvec2_t uvs[4];
+	for (int i = 0; i < 4; ++i) { uvs[i] = fill ? n2_fvec2(0, 0) : n2_fvec2(spos[i].x_ / N2_SCAST(float, srcw->width_), N2SI_FLIP_V(spos[i].y_ / N2_SCAST(float, srcw->height_))); }
+	n2s_commandbuffer_d2triangle_textured_colored(arg->state_, se->commandbuffer_, dpos[0], dpos[2], dpos[1], fill ? NULL : &srcw->texturebuffer_->texture_, uvs[0], uvs[2], uvs[1], cs[0], cs[2], cs[1]);
+	n2s_commandbuffer_d2triangle_textured_colored(arg->state_, se->commandbuffer_, dpos[0], dpos[3], dpos[2], fill ? NULL : &srcw->texturebuffer_->texture_, uvs[0], uvs[3], uvs[2], cs[0], cs[3], cs[2]);
 	return 0;
 }
 
@@ -30393,6 +30449,8 @@ static void n2i_environment_bind_standards_builtins(n2_state_t* state, n2_pp_con
 		n2i_pp_context_register_macro_rawi(state, ppc, "gmode_sub", N2S_GMODE_BLEND_SUB);
 		n2i_pp_context_register_macro_rawi(state, ppc, "gmode_pixela", N2S_GMODE_BLEND_RALPHA);
 
+		n2i_pp_context_register_macro_rawi(state, ppc, "gsquare_grad", -257);
+
 		n2i_pp_context_register_macro_rawi(state, ppc, "picmesopt_alphablend@n2", N2S_PICMESOPT_FLAG_ALPHA_BLEND);
 
 		n2i_pp_context_register_macro_rawi(state, ppc, "celbitmap_rgb", 0);
@@ -30510,6 +30568,7 @@ static void n2i_environment_bind_standards_builtins(n2_state_t* state, n2_pp_con
 			{"gcopy",				n2si_bifunc_gcopy},
 			{"gzoom",				n2si_bifunc_gzoom},
 			{"grotate",				n2si_bifunc_grotate},
+			{"gsquare",				n2si_bifunc_gsquare},
 			{"mes",					n2si_bifunc_mes},
 			{"font",				n2si_bifunc_font},
 			{"sysfont",				n2si_bifunc_sysfont},
