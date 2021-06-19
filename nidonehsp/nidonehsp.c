@@ -29360,6 +29360,51 @@ static int n2si_bifunc_gsquare(const n2_funcarg_t* arg)
 	return 0;
 }
 
+static int n2si_bifunc_gradf(const n2_funcarg_t* arg)
+{
+	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	if (arg_num > 7) { n2e_funcarg_raise(arg, "gradf：引数の数（%d）が期待（0 - %d）と違います", arg_num, 7); return -1; }
+	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
+	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
+	N2_ASSERT(nw);
+	const n2_value_t* sxval = n2e_funcarg_getarg(arg, 0);
+	const n2_valint_t sx = sxval && n2_value_get_type(sxval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, sxval) : 0;
+	const n2_value_t* syval = n2e_funcarg_getarg(arg, 1);
+	const n2_valint_t sy = syval && n2_value_get_type(syval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, syval) : 0;
+	const n2_value_t* wval = n2e_funcarg_getarg(arg, 2);
+	n2_valint_t w = wval && n2_value_get_type(wval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, wval) : N2_SCAST(n2_valint_t, nw->width_);
+	const n2_value_t* hval = n2e_funcarg_getarg(arg, 3);
+	n2_valint_t h = hval && n2_value_get_type(hval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, hval) : N2_SCAST(n2_valint_t, nw->height_);
+	const n2_value_t* gradval = n2e_funcarg_getarg(arg, 4);
+	const n2_valint_t grad = gradval && n2_value_get_type(gradval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, gradval) : 0;
+	const n2_value_t* ccol0val = n2e_funcarg_getarg(arg, 5);
+	const n2_valint_t ccol0 = ccol0val && n2_value_get_type(ccol0val) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, ccol0val) : (nw->ginfo_r_ << 16) | (nw->ginfo_g_ << 8) | (nw->ginfo_b_);
+	const n2_value_t* ccol1val = n2e_funcarg_getarg(arg, 6);
+	const n2_valint_t ccol1 = ccol1val && n2_value_get_type(ccol1val) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, ccol1val) : (nw->ginfo_r_ << 16) | (nw->ginfo_g_ << 8) | (nw->ginfo_b_);
+	if (w <= 0 || h <= 0) { return 0; }
+	const n2s_u8color_t col0 = n2s_u8color((ccol0 >> 16) & 0xff, (ccol0 >> 8) & 0xff, (ccol0) & 0xff, 255);
+	const n2s_u8color_t col1 = n2s_u8color((ccol1 >> 16) & 0xff, (ccol1 >> 8) & 0xff, (ccol1) & 0xff, 255);
+	n2s_u8color_t cs[4];
+	switch (grad)
+	{
+	case 0: cs[0] = cs[3] = col0; cs[1] = cs[2] = col1; break;
+	case 1: cs[0] = cs[1] = col0; cs[2] = cs[3] = col1; break;
+	default: n2e_funcarg_raise(arg, "gradf：グラデーションのモード（%" N2_VALINT_PRI "）が不正です", grad); return -1;
+	}
+	n2_fvec3_t dpos[4];
+	dpos[0] = n2_fvec3(N2_SCAST(float, sx), N2_SCAST(float, sy), 0);
+	dpos[1] = n2_fvec3(N2_SCAST(float, sx + w), N2_SCAST(float, sy), 0);
+	dpos[2] = n2_fvec3(N2_SCAST(float, sx + w), N2_SCAST(float, sy + h), 0);
+	dpos[3] = n2_fvec3(N2_SCAST(float, sx), N2_SCAST(float, sy + h), 0);
+	const n2_fvec2_t uv = n2_fvec2(0, 0);
+	n2si_environment_checkout_draw_commandbuffer(arg->state_, se);
+	const n2_bool_t independent_gmode = N2_TRUE;
+	if (independent_gmode) { n2s_commandbuffer_set_program(arg->state_, se->commandbuffer_, N2S_GPROGRAM_2D); n2s_commandbuffer_set_renderstate(arg->state_, se->commandbuffer_, N2S_RENDERSTATE_2D_NOBLEND); }
+	n2s_commandbuffer_d2triangle_textured_colored(arg->state_, se->commandbuffer_, dpos[0], dpos[2], dpos[1], NULL, uv, uv, uv, cs[0], cs[2], cs[1]);
+	n2s_commandbuffer_d2triangle_textured_colored(arg->state_, se->commandbuffer_, dpos[0], dpos[3], dpos[2], NULL, uv, uv, uv, cs[0], cs[3], cs[2]);
+	return 0;
+}
+
 static int n2si_bifunc_mes(const n2_funcarg_t* arg)
 {
 	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
@@ -30569,6 +30614,7 @@ static void n2i_environment_bind_standards_builtins(n2_state_t* state, n2_pp_con
 			{"gzoom",				n2si_bifunc_gzoom},
 			{"grotate",				n2si_bifunc_grotate},
 			{"gsquare",				n2si_bifunc_gsquare},
+			{"gradf",				n2si_bifunc_gradf},
 			{"mes",					n2si_bifunc_mes},
 			{"font",				n2si_bifunc_font},
 			{"sysfont",				n2si_bifunc_sysfont},

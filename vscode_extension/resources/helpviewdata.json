@@ -5650,6 +5650,65 @@
 				"stdConstantDrawPrimitive"
 			]
 		},
+		"gradf": {
+			"type": "function",
+			"summary": "グラデーション矩形を描画",
+			"group": ["standard"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "lefTopX",
+					"description": "左上X座標",
+					"omitted": "0"
+				},
+				{
+					"name": "leftTopY",
+					"description": "左上Y座標",
+					"omitted": "0"
+				},
+				{
+					"name": "sizeX",
+					"description": "描画するXサイズ",
+					"omitted": "現在のウィンドウ幅"
+				},
+				{
+					"name": "sizeY",
+					"description": "描画するYサイズ",
+					"omitted": "現在のウィンドウ高さ"
+				},
+				{
+					"name": "gradDir",
+					"description": "グラデーションの方向",
+					"omitted": "0"
+				},
+				{
+					"name": "gradColor0",
+					"description": "カラー0",
+					"omitted": "現在のカラー"
+				},
+				{
+					"name": "gradColor1",
+					"description": "カラー1",
+					"omitted": "現在のカラー"
+				}
+			],
+			"description": [
+				"現在の操作先ウィンドウに対してグラデーション矩形の描画を行います。",
+				"",
+				"gradDirに0を指定すると横方向のグラデーション、1を指定すると縦方向のグラデーションになります。",
+				"",
+				"gradColor0およびgradColor1には、RGB値を`0xrrggbb`のように1つの整数値として解釈されます",
+				"",
+				"描画で使用されるパラメータは次の表の通りです。$",
+				"$",
+				"|内容|使用される値|$",
+				"|:--|:--|$",
+				"|描画モード|常にアルファブレンドしない|$"
+			],
+			"relationGroup": [
+				"stdDrawPrimitive"
+			]
+		},
 
 		"mes": {
 			"type": "function",
