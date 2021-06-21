@@ -5157,6 +5157,70 @@
 			]
 		},
 
+		"pget": {
+			"type": "function",
+			"summary": "ピクセルの色を取得",
+			"group": ["standard"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "posX",
+					"description": "X座標",
+					"omitted": "カレントポジションX"
+				},
+				{
+					"name": "posY",
+					"description": "Y座標",
+					"omitted": "カレントポジションY"
+				}
+			],
+			"description": [
+				"現在の操作先ウィンドウのposX、posYで指定したピクセルの色を読み取ります。",
+				"",
+				"読み取られた色はカレントカラーに設定されます。",
+				"そのため、この命令後に$ref(ginfo_r)などのシステム変数から、読み取った色を取得できます。",
+				"",
+				"この命令は対象のウィンドウのテクスチャをCPUから読み込むため、GPUのパイプラインストールを引き起こします。",
+				"画面内のピクセル全てを読み取る場合などは$ref(celbitmap)などの命令を使って、一度に取得した方が処理が軽い場合があります。"
+			],
+			"relationGroup": [
+				"stdDrawCommon"
+			]
+		},
+		"pset": {
+			"type": "function",
+			"summary": "点を描画",
+			"group": ["standard"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "posX",
+					"description": "X座標",
+					"omitted": "カレントポジションX"
+				},
+				{
+					"name": "posY",
+					"description": "Y座標",
+					"omitted": "カレントポジションY"
+				}
+			],
+			"description": [
+				"現在の操作先ウィンドウに対して点の描画を行います。",
+				"posX、posYがそれぞれ省略された時は、カレントポジションが使用されます。",
+				"",
+				"描画で使用されるパラメータは次の表の通りです。$",
+				"$",
+				"|内容|使用される値|$",
+				"|:--|:--|$",
+				"|色|カレントカラー（$ref(color)等で設定したもの）|$",
+				"|描画モード|常にアルファブレンドしない|$",
+				"$",
+				""
+			],
+			"relationGroup": [
+				"stdDrawPrimitive"
+			]
+		},
 		"line": {
 			"type": "function",
 			"summary": "ラインを描画",
@@ -5704,6 +5768,64 @@
 				"|内容|使用される値|$",
 				"|:--|:--|$",
 				"|描画モード|常にアルファブレンドしない|$"
+			],
+			"relationGroup": [
+				"stdDrawPrimitive"
+			]
+		},
+		"gradf@n2": {
+			"type": "function",
+			"summary": "グラデーション矩形を描画",
+			"group": ["standard"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "lefTopX",
+					"description": "左上X座標",
+					"omitted": "0"
+				},
+				{
+					"name": "leftTopY",
+					"description": "左上Y座標",
+					"omitted": "0"
+				},
+				{
+					"name": "sizeX",
+					"description": "描画するXサイズ",
+					"omitted": "現在のウィンドウ幅"
+				},
+				{
+					"name": "sizeY",
+					"description": "描画するYサイズ",
+					"omitted": "現在のウィンドウ高さ"
+				},
+				{
+					"name": "gradDir",
+					"description": "グラデーションの方向",
+					"omitted": "0"
+				},
+				{
+					"name": "gradColor0",
+					"description": "カラー0",
+					"omitted": "現在のカラー"
+				},
+				{
+					"name": "gradColor1",
+					"description": "カラー1",
+					"omitted": "現在のカラー"
+				}
+			],
+			"description": [
+				"現在の操作先ウィンドウに対してグラデーション矩形の描画を行います。",
+				"$ref(gradf)の描画モードが適用されるバージョンです。",
+				"",
+				"描画で使用されるパラメータは次の表の通りです。$",
+				"$",
+				"|内容|使用される値|$",
+				"|:--|:--|$",
+				"|描画モード|$ref(gmode)で設定したモード|$",
+				"$",
+				""
 			],
 			"relationGroup": [
 				"stdDrawPrimitive"

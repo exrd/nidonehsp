@@ -81,6 +81,9 @@
 	// 描画内容
 	gsel 0
 		tMouseX = mousex : tMouseY = mousey
+#if 0// pget
+		pget tMouseX, tMouseY : tColR = ginfo_r : tColG = ginfo_g : tColB = ginfo_b
+#endif
 	gsel SID_BACK
 		color 128, 128, 128 : boxf
 		font "", 20
@@ -92,6 +95,9 @@
 			//ut = gettime(gettime_unixtime@n2) : lt = gettime(gettime_localtime@n2) : mes `time(lt=${lt}, ut=${ut}, ${exttime@n2(0, lt)}/${exttime@n2(1, lt)}/${exttime@n2(3, lt)}(${wdays(exttime@n2(2, lt))}) ${exttime@n2(4, lt)}:${exttime@n2(5, lt)}:${exttime@n2(6, lt)}.${exttime@n2(7, lt)})`
 			mes `cwd(${dir_cur})`
 			mes `exe(${dir_exe})`
+#if 0// pget
+			mes `mouse RGB=(${tColR}, ${tColG}, ${tColB})`
+#endif
 		pos 240, 120 : mes buttonPushed > 0 then `ボタンが ${buttonPushed} 回押されました` else ""
 		pos 240, 150 : mes `チェック状態 ${checked}`
 		pos 240, 180 : mes `テキスト入力 ${textInput}`
@@ -113,6 +119,26 @@
 		repeat 4 : tr = cnt < 2 then 2.5 else 1.0 : dxs(cnt) = tsx + 180 - 12.0 * cos(trad + deg2rad(90 * cnt)) * tr : dys(cnt) = tsy + 20 - 12.0 * sin(trad + deg2rad(90 * cnt)) * tr : loop : color 222, 255, 255 : gsquare -1, dxs, dys
 		scs = 0xff0000, 0x00ff00, 0x0000ff, 0xffffff : repeat 4 : dxs(cnt) += 40.0 : loop : gmode 0 : gsquare -257, dxs, dys, scs
 		repeat 4 : dxs(cnt) += 40.0 : sxs(cnt) = cnt == 1 || cnt == 2 then 64 else 0 : sys(cnt) = cnt < 2 then 0 else 64 : loop : gmode 0 : gsquare SID_ICON, dxs, dys, sxs, sys
+
+		tsx = 300 : tsy = 350
+		dim tpixels, 5, 5
+		tpixels(0, 0) = 0, 0, 1, 0, 0
+		tpixels(1, 0) = 0, 1, 1, 1, 0
+		tpixels(2, 0) = 1, 1, 1, 1, 1
+		tpixels(3, 0) = 1, 0, 1, 0, 1
+		tpixels(4, 0) = 0, 1, 0, 1, 0
+		color 255, 0, 255
+		repeat 5 : txcnt = cnt : repeat 5 : tycnt = cnt
+			if(tpixels(tycnt, txcnt)) : pset tsx + txcnt, tsy + tycnt
+		loop : loop
+		tblock = 5
+		repeat 5 : txcnt = cnt : repeat 5 : tycnt = cnt
+			if (tpixels(tycnt, txcnt)) {
+				repeat tblock : tix = cnt : repeat tblock : tiy = cnt
+					pset tsx + txcnt * tblock + tix, 20 + tsy + tycnt * tblock + tiy
+				loop : loop
+			}
+		loop : loop
 	return
 
 #global

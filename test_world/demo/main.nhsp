@@ -254,7 +254,7 @@ repeat
 		}
 		font "Stick", 28
 		tfps = fpsdisplay < 0 then "----FPS" else strf("%02.01fFPS", fpsdisplay)
-		pos SCREEN_SIZEX - 100, SCREEN_SIZEY - 35 : color 180, 190, 255 : mes tfps, mesopt_shadow
+		pos SCREEN_SIZEX - 100, SCREEN_SIZEY - 35 : color 180, 190, 255 : objcolor 0, 0, 0 : mes tfps, mesopt_shadow
 		// フレームインターバル追加
 		telapsed = ttimer - fpslasttimer
 		fpsbuf(fpsbufcurr) = telapsed

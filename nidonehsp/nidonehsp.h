@@ -4025,6 +4025,7 @@ N2_API void n2s_texture_dirty_clear(n2s_texture_t* tx);
 N2_API void n2s_texture_dirty_all(n2s_texture_t* tx);
 N2_API void n2s_texture_dirty_range(n2s_texture_t* tx, size_t begin_y, size_t end_y);
 N2_API void n2s_texture_fill_color(n2s_texture_t* tx, n2s_u8color_t color);
+N2_API n2_bool_t n2s_texture_get_color(n2s_u8color_t* dst, n2s_texture_t* tx, int x, int y);
 N2_API void n2s_texture_render_buffer(n2s_texture_t* tx, const n2_buffer_t* rendertxbuf, size_t rendertxwidth, size_t rendertxheight, int renderx, int rendery, n2s_u8color_t mulcolor);
 N2_API void n2s_texture_render(n2s_texture_t* tx, const n2s_texture_t* rendertx, int renderx, int rendery, n2s_u8color_t mulcolor);
 N2_API void n2s_texture_copy_buffer(n2s_texture_t* tx, const n2_buffer_t* srctxbuf, size_t srctxwidth, size_t srctxheight, int renderx, int rendery);
