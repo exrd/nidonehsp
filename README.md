@@ -51,7 +51,7 @@ nidonehsp のライセンス全文は `LICENSE` ファイルを参照してく�
 |`nidonehsp/*` および<br>`nidonehsp/inline/*`|nidonehsp 本体と付随するサブコード|NYSL|
 |`nidonehsp/embed/*`|組み込みライブラリのソースコード|各ファイル内のライセンス記述に従います|
 |`src`|コマンドラインツールやユニットテストのコード|NYSL|
-|`test_world`|テストコード|NYSL|
+|`test_world`|テストコード|スクリプトはNYSL<br>一部リソース（フォントなど）は同ディレクトリ内に格納されているライセンスに従います|
 |`vscode_extension`|nidonehsp 用のVSCode拡張|NYSL|
 |`./*`|CMake 用のファイルなど|NYSL|
 
