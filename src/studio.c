@@ -975,6 +975,8 @@ int main(int argc, char* argv[])
 				n2_str_set(state, &relpath, "../demo", SIZE_MAX);
 				n2h_systemfiledevice_chdir(state, relpath.str_, relpath.size_);
 				n2_str_teardown(state, &relpath);
+
+				opts.export_runtime_root_ = "../runtime";
 			}
 #endif
 
@@ -1236,7 +1238,7 @@ int main(int argc, char* argv[])
 						{
 							n2_str_fmt_to(state, &runtime_path, "%s/%s", opts.export_runtime_root_, "n2r_std" N2RI_PLATFORM_EXE_SUFFIX);
 
-							// 書き込み
+							// まずは先へコピー
 							{
 								FILE* runtimefile = fopen(runtime_path.str_, "rb");
 								if (!runtimefile)
@@ -1259,8 +1261,6 @@ int main(int argc, char* argv[])
 									fwrite(tmpbuf.data_, 1, read, outfile);
 								}
 
-								fwrite(ebin.data_, 1, ebin.size_, outfile);
-
 								fclose(runtimefile);
 								fclose(outfile);
 							}
@@ -1268,50 +1268,118 @@ int main(int argc, char* argv[])
 							// アイコン
 							if (state->pp_context_->packopt_.icon_.size_ > 0)
 							{
+								fprintf(stdout, "アイコンファイル（%.*s）が指定されているので書き換えを試行します。\n", state->pp_context_->packopt_.icon_.size_, state->pp_context_->packopt_.icon_.str_);
+
 								n2_buffer_t iconfile = n2ri_load_raw_file(state, &state->pp_context_->packopt_.icon_);
 
 								if (iconfile.size_ > 0)
 								{
-#if N2_PLATFORM_IS_WINDOWS && 0
-									// @todo
-									n2_bool_t icon_rewrite_success = N2_FALSE;
-									n2_str_t outsys;
-									n2_str_init(&outsys);
-									if (n2ri_win_to_system_string(state, &outsys, &output_path))
+#if N2_PLATFORM_IS_WINDOWS
+									n2h_ico_header_t ico_header;
+									n2h_ico_parse_context_t ico_parse_context;
+									if (n2h_ico_verify(iconfile.data_, iconfile.size_, &ico_header) && ico_header.type_ == N2H_ICO_TYPE_ICON && n2h_ico_parse_begin(state, &ico_parse_context, iconfile.data_, iconfile.size_))
 									{
-										HANDLE reshandle = BeginUpdateResourceW(N2_RCAST(LPCWSTR, outsys.str_), FALSE);
-										if (reshandle != NULL)
+										n2_bool_t icon_rewrite_success = N2_FALSE;
+										n2_str_t outsys;
+										n2_str_init(&outsys);
+										if (n2ri_win_to_system_string(state, &outsys, &output_path))
 										{
-											icon_rewrite_success = N2_TRUE;
-											if (!UpdateResourceW(reshandle, N2_RCAST(LPCWSTR, RT_GROUP_ICON), L"MAINICON", MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), iconfile.data_, N2_SCAST(DWORD, iconfile.size_)))
+											HANDLE reshandle = BeginUpdateResourceW(N2_RCAST(LPCWSTR, outsys.str_), FALSE);
+											if (reshandle != NULL)
 											{
-												icon_rewrite_success = N2_FALSE;
-											}
-											if (!EndUpdateResourceW(reshandle, FALSE))
-											{
-												icon_rewrite_success = N2_FALSE;
+												icon_rewrite_success = N2_TRUE;
+
+												{// グループアイコン
+													n2_buffer_t group_icon_buffer;
+													n2_buffer_init(&group_icon_buffer);
+
+													// グループアイコンはアイコンのディレクトリをちょっと圧縮したバージョン
+													static const size_t N2RI_GROUP_ICO_ENTRY_SIZE = 14;
+													const size_t group_icon_size = N2RI_GROUP_ICO_ENTRY_SIZE * ico_header.image_num_ + N2H_ICO_HEADER_SIZE;
+													n2_buffer_reserve(state, &group_icon_buffer, group_icon_size + 4);
+
+													{
+														n2_buffer_append(state, &group_icon_buffer, iconfile.data_, N2H_ICO_HEADER_SIZE);
+														for (size_t i = 0; i < ico_header.image_num_; ++i)
+														{
+															// 最後の2バイトがIDになるが、それ以外をコピー
+															n2_buffer_append(state, &group_icon_buffer, n2_cptr_offset(iconfile.data_, N2H_ICO_IMAGE_DIRECTORY_SIZE * i + N2H_ICO_HEADER_SIZE), N2RI_GROUP_ICO_ENTRY_SIZE - 2);
+															// IDを詰める
+															const uint8_t w[2] = {(i + 1) & 0xff, ((i + 1) >> 8) & 0xff};
+															n2_buffer_append(state, &group_icon_buffer, w, 2);
+														}
+													}
+
+													if (!UpdateResourceW(reshandle, N2_RCAST(LPCWSTR, RT_GROUP_ICON), L"MAINICON", MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), group_icon_buffer.data_, N2_SCAST(DWORD, group_icon_buffer.size_)))
+													{
+														icon_rewrite_success = N2_FALSE;
+													}
+
+													n2_buffer_teardown(state, &group_icon_buffer);
+												}
+
+												// アイコンの画像データを詰める
+												n2h_ico_image_t ico_image;
+												do
+												{
+													if (!n2h_ico_parse_image(&ico_image, &ico_parse_context))
+													{
+														icon_rewrite_success = N2_FALSE;
+														break;
+													}
+
+													if (!UpdateResourceW(reshandle, N2_RCAST(LPCWSTR, RT_ICON), MAKEINTRESOURCEW(ico_parse_context.image_index_ + 1), MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), N2_CCAST(LPVOID, ico_image.image_data_), N2_SCAST(DWORD, ico_image.image_data_size_)))
+													{
+														icon_rewrite_success = N2_FALSE;
+														break;
+													}
+												} while (n2h_ico_parse_next(&ico_parse_context));
+
+												// 失敗しているなら、破棄する
+												if (!EndUpdateResourceW(reshandle, icon_rewrite_success ? FALSE : TRUE))
+												{
+													icon_rewrite_success = N2_FALSE;
+												}
 											}
 										}
 
-										icon_rewrite_success = N2_TRUE;
-									}
+										n2h_ico_parse_end(&ico_parse_context);
 
-									if (icon_rewrite_success)
-									{
-										fprintf(stdout, "アイコンファイルの書き換えに成功。\n");
+										if (icon_rewrite_success)
+										{
+											fprintf(stdout, "  アイコンファイルの書き換えに成功。\n");
+										}
+										else
+										{
+											fprintf(stdout, "  アイコンファイルの書き換えに失敗、アイコン書き換えをスキップ。\n");
+										}
 									}
 									else
 									{
-										fprintf(stdout, "アイコンファイルの書き換えに失敗、アイコン書き換えをスキップ。\n");
+										fprintf(stdout, "  アイコンファイルの読み込みに失敗（不正なアイコンファイルです）、アイコン書き換えをスキップ。\n");
 									}
 #else
-									fprintf(stdout, "アイコンファイルの書き換えに対応していないプラットフォームのため、アイコン書き換えをスキップ。\n");
+									fprintf(stdout, "  アイコンファイルの書き換えに対応していないプラットフォームのため、アイコン書き換えをスキップ。\n");
 #endif
 								}
 								else
 								{
-									fprintf(stderr, "アイコンファイルの書き換えに失敗：アイコンファイル（%s）が読み込めません。\n", state->pp_context_->packopt_.icon_.str_);
+									fprintf(stderr, "  アイコンファイルの書き換えに失敗：アイコンファイル（%s）が読み込めません、アイコン書き換えをスキップ。\n", state->pp_context_->packopt_.icon_.str_);
 								}
+							}
+
+							// 末尾にデータを書き込み
+							{
+								FILE* outfile = fopen(output_path.str_, "ab");
+								if (!outfile)
+								{
+									n2ai_show_error(&opts, "出力先ファイル（%s）の再オープンに失敗しました。", output_path.str_);
+									exit(n2ri_error_exit_code);
+								}
+
+								fwrite(ebin.data_, 1, ebin.size_, outfile);
+
+								fclose(outfile);
 							}
 
 							{

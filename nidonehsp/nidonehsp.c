@@ -6347,6 +6347,73 @@ N2_API n2_bool_t n2h_zip_writedown_and_close(n2_state_t* state, n2h_zip_t* zip, 
 }
 #endif
 
+// ico
+N2_API n2_bool_t n2h_ico_verify(const void* src, size_t src_size, n2h_ico_header_t* header)
+{
+	if (src_size < N2H_ICO_HEADER_SIZE) { return N2_FALSE; }
+	const uint8_t* data = N2_RCAST(const uint8_t*, src);
+	if (data[0] != 0 || data[1] != 0) { return N2_FALSE; }
+	const int type = data[2] | (data[3] << 8);
+	if (type != 1 && type != 2) { return N2_FALSE; }
+	if (header)
+	{
+		header->type_ = type == 1 ? N2H_ICO_TYPE_ICON : type == 2 ? N2H_ICO_TYPE_CURSOR : N2H_ICO_TYPE_UNKNOWN;
+		header->image_num_ = data[4] | (data[5] << 8);
+	}
+	return N2_TRUE;
+}
+
+N2_API n2_bool_t n2h_ico_parse_begin(n2_state_t* state, n2h_ico_parse_context_t* context, const void* src, size_t src_size)
+{
+	N2_UNUSE(state);
+	n2h_ico_header_t header;
+	if (!n2h_ico_verify(src, src_size, &header)) { return N2_FALSE; }
+	N2_ASSERT(context);
+	if (!context) { return N2_FALSE; }
+	context->src_ = src;
+	context->src_size_ = src_size;
+	context->cursor_ = N2H_ICO_HEADER_SIZE;
+	context->image_index_ = 0;
+	context->image_num_ = header.image_num_;
+	return N2_TRUE;
+}
+
+N2_API void n2h_ico_parse_end(n2h_ico_parse_context_t* context)
+{
+	N2_UNUSE(context);
+}
+
+N2_API n2_bool_t n2h_ico_parse_image(n2h_ico_image_t* image, const n2h_ico_parse_context_t* context)
+{
+	N2_ASSERT(context);
+	if (!context) { return N2_FALSE; }
+	if (context->cursor_ + N2H_ICO_IMAGE_DIRECTORY_SIZE > context->src_size_) { return N2_FALSE; }
+	const uint8_t* data = N2_RCAST(const uint8_t*, n2_cptr_offset(context->src_, context->cursor_));
+	const size_t image_size = data[8] | (data[9] << 8) | (data[10] << 16) | (data[11] << 24);
+	const size_t image_offset = data[12] | (data[13] << 8) | (data[14] << 16) | (data[15] << 24);
+	if (image_size + image_offset > context->src_size_) { return N2_FALSE; }
+	if (image)
+	{
+		image->width_ = data[0] == 0 ? 256 : data[0];
+		image->height_ = data[1] == 0 ? 256 : data[1];
+		image->pallete_color_num_ = data[3];
+		image->ico_color_plane_num_ = image->cur_hotspot_x_ = data[4] | (data[5] << 8);
+		image->ico_pixel_bit_size_ = image->cur_hotspot_y_ = data[6] | (data[7] << 8);
+		image->image_data_ = n2_cptr_offset(context->src_, image_offset);
+		image->image_data_size_ = image_size;
+	}
+	return N2_TRUE;
+}
+
+N2_API n2_bool_t n2h_ico_parse_next(n2h_ico_parse_context_t* context)
+{
+	if (!context) { return N2_FALSE; }
+	if (context->image_index_ + 1 >= context->image_num_) { return N2_FALSE; }
+	++context->image_index_;
+	context->cursor_ += N2H_ICO_IMAGE_DIRECTORY_SIZE;
+	return N2_TRUE;
+}
+
 // ファイルシステム
 N2_API void n2h_filesystem_filestat_init(n2h_filesystem_filestat_t* filestat)
 {

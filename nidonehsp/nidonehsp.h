@@ -2143,6 +2143,64 @@ N2_API n2_bool_t n2h_zip_add_to(n2_state_t* state, n2h_zip_t* zip, const char* f
 N2_API n2_bool_t n2h_zip_writedown_and_close(n2_state_t* state, n2h_zip_t* zip, n2_buffer_t* dst);
 #endif
 
+// ico
+N2_DECLARE_ENUM(n2h_ico_type_e);
+enum n2h_ico_type_e
+{
+	N2H_ICO_TYPE_UNKNOWN = -1,
+	N2H_ICO_TYPE_ICON = 0,
+	N2H_ICO_TYPE_CURSOR,
+
+	N2H_MAX_ICO_TYPE
+};
+
+enum
+{
+	N2H_ICO_HEADER_SIZE = 6,
+	N2H_ICO_IMAGE_DIRECTORY_SIZE = 16,
+};
+
+typedef struct n2h_ico_header_t n2h_ico_header_t;
+struct n2h_ico_header_t
+{
+	n2h_ico_type_e type_;
+	int image_num_;
+};
+
+typedef struct n2h_ico_parse_context_t n2h_ico_parse_context_t;
+struct n2h_ico_parse_context_t
+{
+	const void* src_;
+	size_t src_size_;
+	size_t cursor_;
+	size_t image_index_;
+	size_t image_num_;
+};
+
+typedef struct n2h_ico_image_t n2h_ico_image_t;
+struct n2h_ico_image_t
+{
+	size_t width_;
+	size_t height_;
+	size_t pallete_color_num_;
+
+	size_t ico_color_plane_num_;
+	size_t ico_pixel_bit_size_;
+
+	int cur_hotspot_x_;
+	int cur_hotspot_y_;
+
+	const void* image_data_;
+	size_t image_data_size_;
+};
+
+N2_API n2_bool_t n2h_ico_verify(const void* src, size_t src_size, n2h_ico_header_t* header);
+
+N2_API n2_bool_t n2h_ico_parse_begin(n2_state_t* state, n2h_ico_parse_context_t* context, const void* src, size_t src_size);
+N2_API void n2h_ico_parse_end(n2h_ico_parse_context_t* context);
+N2_API n2_bool_t n2h_ico_parse_image(n2h_ico_image_t* image, const n2h_ico_parse_context_t* context);
+N2_API n2_bool_t n2h_ico_parse_next(n2h_ico_parse_context_t* context);
+
 // ファイルシステム
 N2_DECLARE_ENUM(n2h_filesystem_e);
 enum n2h_filesystem_e
