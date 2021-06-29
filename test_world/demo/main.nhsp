@@ -4,6 +4,7 @@
 // オプション系
 #packopt name "n2demo"
 #packopt hide 1
+#packopt icon "icon.ico"
 #pack "icon.png"
 #pack "mat.png"
 #pack "blockmat.png"
