@@ -1669,6 +1669,9 @@ int main(int argc, char* argv[])
 			// dap待ち受け
 			if (n2r_dap_open(dap, opts.da_port_))
 			{
+				fprintf(stdout, "DAP: begin listen port(%d) ...\n", opts.da_port_);
+				fflush(stdout);
+
 				for (;;)
 				{
 					// ステージング更新
@@ -1728,6 +1731,7 @@ int main(int argc, char* argv[])
 						if (elapsed_msec_from_launched > N2_SCAST(Uint64, opts.da_timeout_msec_))
 						{
 							fprintf(stdout, "server accept TIMEOUT, closing listen port ...\n");
+							fflush(stdout);
 							dap->servertoclose_ = N2_TRUE;
 						}
 					}

@@ -102,10 +102,10 @@ export class DebugAdapterServerDescriptorFactory
   private _pinstance?: cp.ChildProcessWithoutNullStreams;
 
   // デバッグセッションの開始
-  public createDebugAdapterDescriptor(
+  public async createDebugAdapterDescriptor(
     session: vscode.DebugSession,
     executable: vscode.DebugAdapterExecutable | undefined
-  ): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
+  ): Promise<vscode.ProviderResult<vscode.DebugAdapterDescriptor>> {
     // 前回のセッションを閉じる
     this.closeInstance();
 
@@ -148,6 +148,9 @@ export class DebugAdapterServerDescriptorFactory
           console.log(data.toString());
         });
       }
+
+      // ちょっとだけ待つ（プロセス開始を待つ）
+      await new Promise(r => setTimeout(r, 500));
     }
 
     // そのポートへ
