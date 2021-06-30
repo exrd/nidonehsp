@@ -493,7 +493,7 @@
 #define N2_VSNPRINTF(buf, size, s, args)	vsnprintf(buf, size, s, args)
 #endif
 
-#define N2_VERSION		(0x00000102)// reserved(1byte)-major(1byte)-minor(1byte)-patch(1byte)
+#define N2_VERSION		(0x00000103)// reserved(1byte)-major(1byte)-minor(1byte)-patch(1byte)
 
 #define N2_STRINGIZE_IMPL(s)	#s
 #define N2_STRINGIZE(s)			N2_STRINGIZE_IMPL(s)
