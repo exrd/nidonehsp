@@ -5608,8 +5608,6 @@ N2_API int n2e_funcarg_callfunc(const n2_funcarg_t* arg, const n2_func_t* func, 
 		大事。というかライブラリとして使う場合に貧弱なAPI…。
 	・32bit互換を考える
 		コンパイルは通したので、あとは判断のみ
-	・アイコン書き換え
-		icoパース
 	・Vulkan対応
 		WebGPUがきてから
 	・3D対応
