@@ -29060,6 +29060,16 @@ static int n2si_bifunc_dialog(const n2_funcarg_t* arg)
 	int buttonid = 0;
 	switch (mode)
 	{
+#if N2_PLATFORM_IS_EMSCRIPTEN
+	case 0:
+	case 1:
+		{
+			SDL_ShowSimpleMessageBox((mode & 1) ? SDL_MESSAGEBOX_WARNING : SDL_MESSAGEBOX_INFORMATION, title->str_, str->str_, nw->window_);
+			n2e_funcarg_pushi(arg, 1);
+			has_result = N2_TRUE;
+		}
+		break;
+#else
 	case 0:
 	case 1:
 	case 2:
@@ -29088,6 +29098,7 @@ static int n2si_bifunc_dialog(const n2_funcarg_t* arg)
 			has_result = N2_TRUE;
 		}
 		break;
+#endif
 	default: break;
 	}
 	return has_result ? 1 : 0;
