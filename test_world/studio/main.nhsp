@@ -14,7 +14,7 @@ font "n2default", 36 : pos 100, 200 : mes "test" : mes "test2"
 wait 100
 font "n2default", 18
 
-screen 0, 720, 480
+bgscr 0, 720, 480
 title "マイアプリケーション"
 pos 100, 50
 button "gogogo", *gogogo

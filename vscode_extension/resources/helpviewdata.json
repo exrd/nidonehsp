@@ -4867,6 +4867,38 @@
 				"stdWindowCommon"
 			]
 		},
+		"bgscr": {
+			"type": "function",
+			"summary": "枠なしウィンドウの初期化・生成",
+			"group": ["standard"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "screenID",
+					"description": "対象のスクリーンID",
+					"limit": "[0, 0]"
+				},
+				{
+					"name": "width",
+					"description": "ウィンドウの幅",
+					"omitted": "640",
+					"limit": "[8, 16384]"
+				},
+				{
+					"name": "height",
+					"description": "ウィンドウの高さ",
+					"omitted": "480",
+					"limit": "[8, 16384]"
+				}
+			],
+			"description": [
+				"screenIDで指定したIDのウィンドウを生成・初期化し、操作対象とします。",
+				"$ref(screen)の枠なしウィンドウ生成版です。"
+			],
+			"relationGroup": [
+				"stdWindowCommon"
+			]
+		},
 		"buffer": {
 			"type": "function",
 			"summary": "仮想ウィンドウの初期化・生成",

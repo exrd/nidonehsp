@@ -28916,20 +28916,20 @@ static int n2si_bifunc_imgpack_n2(const n2_funcarg_t* arg)
 #endif// N2_CONFIG_USE_IMAGE_WRITE_LIB
 
 #if N2_CONFIG_USE_SDL_LIB
-static int n2si_bifunc_screen(const n2_funcarg_t* arg)
+static int n2si_bifunc_screen_common(const n2_funcarg_t* arg, const char* label, n2_bool_t bgscr)
 {
 	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
-	if (arg_num > 3) { n2e_funcarg_raise(arg, "screen：引数の数（%d）が期待（0 - %d）より多いです", arg_num, 3); return -1; }
+	if (arg_num > 3) { n2e_funcarg_raise(arg, "%s：引数の数（%d）が期待（0 - %d）より多いです", label, arg_num, 3); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	const n2_value_t* idval = n2e_funcarg_getarg(arg, 0);
 	const n2_valint_t id = idval && idval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, idval) : 0;
-	if (id < 0 || id > N2_SCAST(n2_valint_t, n2s_windowarray_size(se->windows_))) { n2e_funcarg_raise(arg, "screen：スクリーンID（%" N2_VALINT_PRI "）が範囲外（%zu - %zu）です", id, 0, n2s_windowarray_size(se->windows_)); return -1; }
-	if (id != 0) { n2e_funcarg_raise(arg, "screen：スクリーンID（%" N2_VALINT_PRI "）は0以外使えません", id); return -1; }
+	if (id < 0 || id > N2_SCAST(n2_valint_t, n2s_windowarray_size(se->windows_))) { n2e_funcarg_raise(arg, "%s：スクリーンID（%" N2_VALINT_PRI "）が範囲外（%zu - %zu）です", label, id, 0, n2s_windowarray_size(se->windows_)); return -1; }
+	if (id != 0) { n2e_funcarg_raise(arg, "%s：スクリーンID（%" N2_VALINT_PRI "）は0以外使えません", label, id); return -1; }
 	const n2_value_t* wval = n2e_funcarg_getarg(arg, 1);
 	const n2_valint_t w = wval && n2_value_get_type(wval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, wval) : N2_SCAST(n2_valint_t, arg->state_->config_.standard_window_default_width_);
 	const n2_value_t* hval = n2e_funcarg_getarg(arg, 2);
 	const n2_valint_t h = hval && n2_value_get_type(hval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, hval) : N2_SCAST(n2_valint_t, arg->state_->config_.standard_window_default_height_);
-	if (w < N2S_WINDOW_SIZE_MIN || w > N2S_WINDOW_SIZE_MAX || h < N2S_WINDOW_SIZE_MIN || h > N2S_WINDOW_SIZE_MAX) { n2e_funcarg_raise(arg, "screen：ウィンドウの大きさの指定（x=%" N2_VALINT_PRI ", y=%" N2_VALINT_PRI "）が不正（サポートされてないサイズ）です", w, h); return -1; }
+	if (w < N2S_WINDOW_SIZE_MIN || w > N2S_WINDOW_SIZE_MAX || h < N2S_WINDOW_SIZE_MIN || h > N2S_WINDOW_SIZE_MAX) { n2e_funcarg_raise(arg, "%s：ウィンドウの大きさの指定（x=%" N2_VALINT_PRI ", y=%" N2_VALINT_PRI "）が不正（サポートされてないサイズ）です", label, w, h); return -1; }
 	n2si_environment_flush_commandbuffer(arg->state_, se);// コマンドはフラッシュしておく
 	n2s_window_t* mw = n2s_windowarray_peekv(se->windows_, 0, NULL);
 	N2_ASSERT(mw);
@@ -28966,17 +28966,31 @@ static int n2si_bifunc_screen(const n2_funcarg_t* arg)
 	else
 	{
 		nw = n2si_window_alloc(arg->state_, se, N2S_WINDOW_SCREEN, N2_SCAST(size_t, w), N2_SCAST(size_t, h), 0, N2_FALSE);
-		if (!nw) { n2e_funcarg_raise(arg, "screen：ウィンドウ生成に失敗しました（サイズx=%" N2_VALINT_PRI "、y=%" N2_VALINT_PRI "）", w, h); return -1; }
+		if (!nw) { n2e_funcarg_raise(arg, "%s：ウィンドウ生成に失敗しました（サイズx=%" N2_VALINT_PRI "、y=%" N2_VALINT_PRI "）", label, w, h); return -1; }
 		n2si_window_register(arg->state_, se, nw, N2_SCAST(int, id));
 		SDL_RaiseWindow(nw->window_);
 	}
 	N2_ASSERT(nw);
 	n2s_texture_fill_color(&nw->texturebuffer_->texture_, N2S_U8COLOR_WHITE);
 	n2s_texture_submit(arg->state_, &nw->texturebuffer_->texture_, N2_TRUE);
+	// フレーム確認
+	if (nw->window_)
+	{
+		const Uint32 wflags = SDL_GetWindowFlags(nw->window_);
+		const n2_bool_t has_no_frame = (wflags & SDL_WINDOW_BORDERLESS) ? N2_TRUE : N2_FALSE;
+		if (has_no_frame != bgscr)
+		{
+			SDL_SetWindowBordered(nw->window_, bgscr ? N2_FALSE : N2_TRUE);
+			
+		}
+	}
 	se->selected_window_index_ = N2_SCAST(int, id);// 操作先を変更
 	n2si_environment_fullsync_gmode_commandbuffer(arg->state_, se, se->commandbuffer_);
 	return 0;
 }
+
+static int n2si_bifunc_screen(const n2_funcarg_t* arg) { return n2si_bifunc_screen_common(arg, "screen", N2_FALSE); }
+static int n2si_bifunc_bgscr(const n2_funcarg_t* arg) { return n2si_bifunc_screen_common(arg, "bgscr", N2_TRUE); }
 
 static int n2si_bifunc_buffer(const n2_funcarg_t* arg)
 {
@@ -30728,6 +30742,7 @@ static void n2i_environment_bind_standards_builtins(n2_state_t* state, n2_pp_con
 #endif// N2_CONFIG_USE_IMAGE_WRITE_LIB
 #if N2_CONFIG_USE_SDL_LIB
 			{"screen",				n2si_bifunc_screen},
+			{"bgscr",				n2si_bifunc_bgscr},
 			{"buffer",				n2si_bifunc_buffer},
 			{"cls",					n2si_bifunc_cls},
 			{"title",				n2si_bifunc_title},
