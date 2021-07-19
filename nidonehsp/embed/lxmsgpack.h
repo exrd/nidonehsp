@@ -564,9 +564,15 @@ LXMSGP_API lxmsgp_bool_t lxmsgp_pack_put_uint(lxmsgp_pack_t* pack, uint64_t uint
 
 LXMSGP_API lxmsgp_bool_t lxmsgp_pack_put_int(lxmsgp_pack_t* pack, int64_t intval)
 {
-    //if (intval >= 0x0) { return lxmsgp_pack_put_uint(pack, (uint64_t)intval); }
     LXMSGP_INTERNAL_PACK_PUT_PRECHECK(pack);
-    if (intval >= -128 && intval <= 127)
+    //if (intval >= 0x0) { return lxmsgp_pack_put_uint(pack, (uint64_t)intval); }
+    if (intval < 0 && intval >= -32)
+    {
+        int8_t ival = (int8_t)intval;
+        uint8_t val = *(uint8_t*)(&ival);
+        LXMSGP_INTERNAL_PACK_PUT_PTR(pack, &val, 1);
+    }
+    else if (intval >= -128 && intval <= 127)
     {
         uint8_t val = 0xd0;
         LXMSGP_INTERNAL_PACK_PUT_PTR(pack, &val, 1);
@@ -935,6 +941,14 @@ static lxmsgp_bool_t lxmsgp_internal_unpack_fetch_element(lxmsgp_unpack_t* unpac
         // positive fixint
         dst_element->type = LXMSGP_TYPE_UINT;
         dst_element->content.uintval = l & 0x7f;
+        d += 1;
+    }
+    else if ((l & 0xe0) == 0xe0)
+    {
+        // negative fixint
+        dst_element->type = LXMSGP_TYPE_INT;
+        tu8 = l;
+        dst_element->content.intval = *(int8_t*)(&tu8);
         d += 1;
     }
     else if (l >= 0xcc && l <= 0xcf)
