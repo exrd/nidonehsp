@@ -174,10 +174,25 @@
 #endif
 
 //=============================================================================
+// culz.h
 #if N2_CONFIG_USE_ULZ_LIB
 #define CULZ_STATIC
 #define CULZ_IMPLEMENTATION
 #include "embed/culz.h"
+#endif
+
+//=============================================================================
+// lxlz4.h
+#if N2_CONFIG_USE_LXLZ4_LIB
+#define LXLZ4_STATIC
+#define LXLZ4_IMPLEMENTATION
+#define LXLZ4_ASSERT	N2_ASSERT
+#define LXLZ4_MALLOC(size, user)	n2_malloc(N2_RCAST(n2_state_t*, user), size)
+#define LXLZ4_FREE(ptr, user)	n2_free(N2_RCAST(n2_state_t*, user), ptr)
+#define LXLZ4_REALLOC_SIZED(oldptr, newsize, oldsize, user)	n2_realloc(N2_RCAST(n2_state_t*, user), newsize, oldptr, oldsize)
+#define LXLZ4_MEMCPY	N2_MEMCPY
+#define LXLZ4_MEMSET	N2_MEMSET
+#include "embed/lxlz4.h"
 #endif
 
 //=============================================================================
@@ -5884,6 +5899,7 @@ static const struct {
 	{"none",		N2H_COMPRESS_NULL},
 	{"z",			N2H_COMPRESS_Z},
 	{"ulz",			N2H_COMPRESS_ULZ},
+	{"lz4",			N2H_COMPRESS_LZ4},
 	{NULL,			N2H_COMPRESS_NULL}
 };
 
@@ -6042,7 +6058,7 @@ fail_exit:
 }
 #endif
 
-// uzl圧縮
+// ulz圧縮
 #if N2_CONFIG_USE_ULZ_LIB
 static const uint8_t n2hi_ulz_wrap_magic[] = {0x55, 0x4c, 0x5a, 0x21};// ULZ!
 
@@ -6148,6 +6164,66 @@ N2_API n2_bool_t n2h_ulz_wdecompress(n2_state_t* state, n2_buffer_t* dst, const 
 	if (!n2_buffer_reserve(state, dst, N2_SCAST(size_t, wrap.decompressed_size_))) { return N2_FALSE; }
 	size_t written = 0;
 	if (!n2h_ulz_wdecompress_to(state, dst->data_, dst->buffer_size_, &written, src, src_size)) { return N2_FALSE; }
+	dst->size_ = written;
+	return N2_TRUE;
+}
+#endif
+
+// lxlz4
+#if N2_CONFIG_USE_LXLZ4_LIB
+N2_API n2_bool_t n2h_lxlz4_verify(const void* src, size_t src_size)
+{
+	if (lxlz4_frame_extract(NULL, src, src_size) != LXLZ4_ERROR_NONE) { return N2_FALSE; }
+	return N2_TRUE;
+}
+
+N2_API n2_bool_t n2h_lxlz4_get_header(n2h_lxlz4_header_t* header, const void* src, size_t src_size)
+{
+	lxlz4_frame_t frame;
+	if (lxlz4_frame_extract(&frame, src, src_size) != LXLZ4_ERROR_NONE) { return N2_FALSE; }
+	if (header)
+	{
+		header->has_decompressed_size_ = frame.has_content_size_ ? N2_TRUE : N2_FALSE;
+		header->decompressed_size_ = frame.content_size_;
+	}
+	return N2_TRUE;
+}
+
+N2_API n2_bool_t n2h_lxlz4_compress(n2_state_t* state, n2_buffer_t* dst, const void* src, size_t src_size)
+{
+	N2_ASSERT(state);
+	N2_ASSERT(dst);
+	N2_ASSERT(src);
+
+	lxlz4_compress_option_t copt;
+	lxlz4_compress_option_init(&copt);
+	//copt.level_ = LXLZ4_COMPRESS_LEVEL_NORMAL;
+
+	const size_t bound_size = lxlz4_frame_compress_bound(src_size, &copt);
+	n2_buffer_reserve(state, dst, bound_size);
+
+	size_t written = 0;
+	if (lxlz4_frame_compress(dst->data_, dst->buffer_size_, &written, src, src_size, &copt, state) != LXLZ4_ERROR_NONE) { return N2_FALSE; }
+
+	dst->size_ = written;
+	return N2_TRUE;
+}
+
+N2_API n2_bool_t n2h_lxlz4_decompress_to(n2_state_t* state, void* dst, size_t dst_size, size_t* dst_written, const void* src, size_t src_size)
+{
+	return lxlz4_frame_decompress(dst, dst_size, dst_written, src, src_size, state) == LXLZ4_ERROR_NONE;
+}
+
+N2_API n2_bool_t n2h_lxlz4_decompress(n2_state_t* state, n2_buffer_t* dst, const void* src, size_t src_size)
+{
+	lxlz4_frame_t frame;
+	if (lxlz4_frame_extract(&frame, src, src_size) != LXLZ4_ERROR_NONE) { return N2_FALSE; }
+
+	if (frame.has_content_size_) { n2_buffer_reserve(state, dst, frame.content_size_); }
+
+	size_t written = 0;
+	if (!n2h_lxlz4_decompress_to(state, dst->data_, dst->buffer_size_, &written, src, src_size)) { return N2_FALSE; }
+
 	dst->size_ = written;
 	return N2_TRUE;
 }
@@ -7049,6 +7125,14 @@ static n2h_filesystem_readhandle_t* n2hi_filesystem_read_func_msgpack(n2h_filesy
 				case N2H_COMPRESS_ULZ:
 #if N2_CONFIG_USE_ULZ_LIB
 					if (!n2h_ulz_wdecompress(readparam->state_, &handle->data_mut_, hfile.filedata_, hfile.filedatasize_))
+					{
+						n2_buffer_teardown(readparam->state_, &handle->data_mut_);
+					}
+#endif
+					break;
+				case N2H_COMPRESS_LZ4:
+#if N2_CONFIG_USE_LXLZ4_LIB
+					if (!n2h_lxlz4_decompress(readparam->state_, &handle->data_mut_, hfile.filedata_, hfile.filedatasize_))
 					{
 						n2_buffer_teardown(readparam->state_, &handle->data_mut_);
 					}

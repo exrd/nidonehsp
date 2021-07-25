@@ -156,6 +156,11 @@
 #define N2_CONFIG_USE_ULZ_LIB					(1)
 #endif
 
+// lxlz4.hを使う
+#ifndef N2_CONFIG_USE_LXLZ4_LIB
+#define N2_CONFIG_USE_LXLZ4_LIB					(1)
+#endif
+
 // json.hを使う
 #ifndef N2_CONFIG_USE_JSON_LIB
 #define N2_CONFIG_USE_JSON_LIB					(1)
@@ -2052,6 +2057,7 @@ enum n2h_compress_e
 	N2H_COMPRESS_NULL = 0,
 	N2H_COMPRESS_Z,
 	N2H_COMPRESS_ULZ,
+	N2H_COMPRESS_LZ4,
 
 	N2H_MAX_COMPRESS
 };
@@ -2071,7 +2077,7 @@ N2_API n2_bool_t n2h_z_decompress_to(n2_state_t* state, void* dst, size_t dst_si
 N2_API n2_bool_t n2h_z_decompress(n2_state_t* state, n2_buffer_t* dst, const void* src, size_t src_size);
 #endif
 
-// uzl圧縮
+// ulz圧縮
 #if N2_CONFIG_USE_ULZ_LIB
 N2_API n2_bool_t n2h_ulz_compress(n2_state_t* state, n2_buffer_t* dst, const void* src, size_t src_size);
 N2_API n2_bool_t n2h_ulz_decompress_to(n2_state_t* state, void* dst, size_t dst_size, size_t* dst_written, const void* src, size_t src_size);
@@ -2090,6 +2096,22 @@ N2_API n2_bool_t n2h_ulz_wget(n2h_ulz_wrap_t* dst, const void* src, size_t src_s
 N2_API n2_bool_t n2h_ulz_wcompress(n2_state_t* state, n2_buffer_t* dst, const void* src, size_t src_size);
 N2_API n2_bool_t n2h_ulz_wdecompress_to(n2_state_t* state, void* dst, size_t dst_size, size_t* dst_written, const void* src, size_t src_size);
 N2_API n2_bool_t n2h_ulz_wdecompress(n2_state_t* state, n2_buffer_t* dst, const void* src, size_t src_size);
+#endif
+
+// lxlz4圧縮
+#if N2_CONFIG_USE_LXLZ4_LIB
+typedef struct n2h_lxlz4_header_t n2h_lxlz4_header_t;
+struct n2h_lxlz4_header_t
+{
+	n2_bool_t has_decompressed_size_;
+	uint64_t decompressed_size_;
+};
+
+N2_API n2_bool_t n2h_lxlz4_verify(const void* src, size_t src_size);
+N2_API n2_bool_t n2h_lxlz4_get_header(n2h_lxlz4_header_t* header, const void* src, size_t src_size);
+N2_API n2_bool_t n2h_lxlz4_compress(n2_state_t* state, n2_buffer_t* dst, const void* src, size_t src_size);
+N2_API n2_bool_t n2h_lxlz4_decompress_to(n2_state_t* state, void* dst, size_t dst_size, size_t* dst_written, const void* src, size_t src_size);
+N2_API n2_bool_t n2h_lxlz4_decompress(n2_state_t* state, n2_buffer_t* dst, const void* src, size_t src_size);
 #endif
 
 // zip

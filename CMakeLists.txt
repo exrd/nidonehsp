@@ -23,11 +23,7 @@ else()
 	set(N2_BUILD_STUDIO_DEFAULT ON)
 endif()
 
-if(CMAKE_BUILD_TYPE MATCHES Debug)
-	set(N2_BUILD_TYPE_RELEASE_DEFAULT OFF)
-else()
-	set(N2_BUILD_TYPE_RELEASE_DEFAULT ON)
-endif()
+set(N2_BUILD_TYPE_RELEASE_DEFAULT ON)
 
 # options
 option(N2_BUILD_SDL "Enable SDL" ON)
@@ -54,6 +50,7 @@ option(N2_BUILD_RUNTIME_STANDARD "Build Runtime(Standard)" ON)
 option(N2_BUILD_TEST "Build Test" OFF)
 
 # fixed
+set(N2_SUPPORT_LXLZ4 ON)
 set(N2_SUPPORT_MSGPACK ON)
 set(N2_SUPPORT_MD5 ON)
 set(N2_SUPPORT_AES ON)
@@ -147,6 +144,7 @@ set(NIDONEHSP_EMBED_HDR
 	${NIDONEHSP_COMMON_DIR}/embed/gif.h 
 	${NIDONEHSP_COMMON_DIR}/embed/tre.h 
 	${NIDONEHSP_COMMON_DIR}/embed/lxmsgpack.h 
+	${NIDONEHSP_COMMON_DIR}/embed/lxlz4.h 
 	${NIDONEHSP_COMMON_DIR}/embed/md5.h 
 	${NIDONEHSP_COMMON_DIR}/embed/aes.h 
 )
@@ -180,7 +178,7 @@ set(NIDONEHSP_APP_HDR
 
 # app std build condition
 if(N2_ENABLE_STANDARD AND
-	N2_SUPPORT_FONT AND N2_SUPPORT_Z AND N2_SUPPORT_ULZ AND
+	N2_SUPPORT_FONT AND N2_SUPPORT_Z AND N2_SUPPORT_LXLZ4 AND
 	N2_SUPPORT_MSGPACK AND N2_SUPPORT_AES)
 	set(N2_APP_STD_BUILD ON)
 else()
@@ -202,6 +200,7 @@ function(n2_set_app_common target)
 	target_compile_definitions(${target} PUBLIC N2_CONFIG_USE_FONT_LIB=$<BOOL:${N2_SUPPORT_FONT}>)
 	target_compile_definitions(${target} PUBLIC N2_CONFIG_USE_Z_LIB=$<BOOL:${N2_SUPPORT_Z}>)
 	target_compile_definitions(${target} PUBLIC N2_CONFIG_USE_ULZ_LIB=$<BOOL:${N2_SUPPORT_ULZ}>)
+	target_compile_definitions(${target} PUBLIC N2_CONFIG_USE_LXLZ4_LIB=$<BOOL:${N2_SUPPORT_LXLZ4}>)
 	target_compile_definitions(${target} PUBLIC N2_CONFIG_USE_JSON_LIB=$<BOOL:${N2_SUPPORT_JSON}>)
 	target_compile_definitions(${target} PUBLIC N2_CONFIG_USE_MSGPACK_LIB=$<BOOL:${N2_SUPPORT_MSGPACK}>)
 	target_compile_definitions(${target} PUBLIC N2_CONFIG_USE_MD5_LIB=$<BOOL:${N2_SUPPORT_MD5}>)
