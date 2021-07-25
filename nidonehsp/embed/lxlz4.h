@@ -56,7 +56,7 @@
 #ifdef _MSC_VER
 #define LXLZ4_STRONG_INLINE static __forceinline
 #else
-#define LXLZ4_STRONG_INLINE inline
+#define LXLZ4_STRONG_INLINE static inline
 #endif
 #endif // LXLZ4_STRONG_INLINE
 
@@ -609,9 +609,9 @@ static inline size_t lxlz4_internal_input_range_to_num_limit(lxlz4_input_range_e
 {
     switch (input_range)
     {
-    case LXLZ4_INPUT_RANGE_U16: return UINT16_MAX;
-    case LXLZ4_INPUT_RANGE_U32: return UINT32_MAX;
-    case LXLZ4_INPUT_RANGE_U64: return UINT64_MAX;
+    case LXLZ4_INPUT_RANGE_U16: return (size_t)UINT16_MAX;
+    case LXLZ4_INPUT_RANGE_U32: return (size_t)UINT32_MAX;
+    case LXLZ4_INPUT_RANGE_U64: return (size_t)UINT64_MAX;// may overflow
     default: LXLZ4_ASSERT(0); break;
     }
     return 0;
@@ -653,7 +653,7 @@ LXLZ4_STRONG_INLINE uint32_t lxlz4_internal_hash6(const void* src, size_t hash_b
         (input_range) == LXLZ4_INPUT_RANGE_U16 ? ((const uint16_t*)(htable))[(hash)] : \
         (input_range) == LXLZ4_INPUT_RANGE_U32 ? ((const uint32_t*)(htable))[(hash)] : \
         (input_range) == LXLZ4_INPUT_RANGE_U64 ? ((const uint64_t*)(htable))[(hash)] : \
-        (LXLZ4_ASSERT(0), 0) \
+        (0) \
     )
 LXLZ4_STRONG_INLINE lxlz4_error_e lxlz4_internal_llcompress_raw(void* dst, size_t dst_size, size_t* dst_written, const void* src, size_t src_size, void* work, size_t work_size, lxlz4_bool_t do_compress, size_t hash_bits, size_t hash_unit, lxlz4_input_range_e input_range, size_t accel_to_step, size_t matched_block_hash_range, size_t matched_block_hash_step, const void* dictionary, size_t dictionary_size)
 {
