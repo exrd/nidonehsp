@@ -18831,6 +18831,118 @@ N2_API void n2s_commandbuffer_d2circle(n2_state_t* state, n2s_commandbuffer_t* c
 	}
 }
 
+N2_API void n2s_commandbuffer_d2arc(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t center, n2_fvec2_t scale, n2s_u8color_t color, float start_angle, float sweep_angle, float thickness, size_t div)
+{
+	if (div < 3) { return; }
+	const n2s_index_t top_index = N2_SCAST(n2s_index_t, n2s_commandbuffer_d2vertex_size(cb));
+	n2s_commandbuffer_set_texture(state, cb, NULL);
+	const n2_bool_t fill = thickness <= 0;
+	const size_t vertex_num = fill ? div : div * 2;
+	const size_t index_num = fill ? (div - 2) * 3 : (div - 1) * 6;
+	n2s_commandbuffer_add_command_draw(state, cb, vertex_num, index_num);
+	n2s_d2vertex_t* v = n2s_commandbuffer_alloc_d2vertex(state, cb, vertex_num);
+	n2s_index_t* i = n2s_commandbuffer_alloc_index(state, cb, index_num);
+	if (fill) { thickness *= 0.5f; }
+	sweep_angle = N2_CLAMP(sweep_angle, -N2_SCAST(float, N2_MPI) * 2, N2_SCAST(float, N2_MPI) * 2);
+	for (size_t r = 0; r < div; ++r)
+	{
+		const float rad = N2_SCAST(float, r) / N2_SCAST(float, div) * N2_SCAST(float, sweep_angle) + start_angle;
+		const float c = N2_COSF(rad); const float s = N2_SINF(rad);
+		if (fill)
+		{
+			n2s_d2vertex_to(v++, n2_fvec3_add(center, n2_fvec3(c * scale.x_ * 0.5f, s * scale.y_ * 0.5f, 0)), n2_fvec2(0, 0), color);
+		}
+		else
+		{
+			n2s_d2vertex_to(v++, n2_fvec3_add(center, n2_fvec3(c * (scale.x_ - thickness) * 0.5f, s * (scale.y_ - thickness) * 0.5f, 0)), n2_fvec2(0, 0), color);
+			n2s_d2vertex_to(v++, n2_fvec3_add(center, n2_fvec3(c * (scale.x_ + thickness) * 0.5f, s * (scale.y_ + thickness) * 0.5f, 0)), n2_fvec2(0, 0), color);
+		}
+	}
+	if (fill)
+	{
+		for (size_t r = 0; r < div - 2; ++r)
+		{
+			i[r * 3 + 0] = top_index + 0; i[r * 3 + 1] = top_index + N2_SCAST(n2s_index_t, r + 1); i[r * 3 + 2] = top_index + N2_SCAST(n2s_index_t, r + 2);
+		}
+	}
+	else
+	{
+		for (size_t r = 0; r < div - 1; ++r)
+		{
+			i[r * 6 + 0] = top_index + N2_SCAST(n2s_index_t, (r * 2) + 0); i[r * 6 + 1] = top_index + N2_SCAST(n2s_index_t, (r * 2) + 2); i[r * 6 + 2] = top_index + N2_SCAST(n2s_index_t, (r * 2) + 1);
+			i[r * 6 + 3] = top_index + N2_SCAST(n2s_index_t, (r * 2) + 1); i[r * 6 + 4] = top_index + N2_SCAST(n2s_index_t, (r * 2) + 2); i[r * 6 + 5] = top_index + N2_SCAST(n2s_index_t, (r * 2) + 3);
+		}
+	}
+}
+
+N2_API void n2s_commandbuffer_d2pie(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t center, n2_fvec2_t scale, n2s_u8color_t color, float start_angle, float sweep_angle, float thickness, size_t div)
+{
+	if (div < 3) { return; }
+	const n2s_index_t top_index = N2_SCAST(n2s_index_t, n2s_commandbuffer_d2vertex_size(cb));
+	n2s_commandbuffer_set_texture(state, cb, NULL);
+	const n2_bool_t fill = thickness <= 0;
+	const size_t vertex_num = fill ? div + 1 : (div + 1) * 2;
+	const size_t index_num = fill ? (div - 1) * 3 : (div + 1) * 6;
+	n2s_commandbuffer_add_command_draw(state, cb, vertex_num, index_num);
+	n2s_d2vertex_t* v = n2s_commandbuffer_alloc_d2vertex(state, cb, vertex_num);
+	n2s_index_t* i = n2s_commandbuffer_alloc_index(state, cb, index_num);
+	if (fill) { thickness *= 0.5f; }
+	sweep_angle = N2_CLAMP(sweep_angle, -N2_SCAST(float, N2_MPI) * 2, N2_SCAST(float, N2_MPI) * 2);
+	if (fill)
+	{
+		n2s_d2vertex_to(v++, center, n2_fvec2(0, 0), color);
+	}
+	else
+	{
+		const float cs = N2_COSF(start_angle); const float ss = N2_SINF(start_angle);
+		const float ce = N2_COSF(start_angle + sweep_angle); const float se = N2_SINF(start_angle + sweep_angle);
+#if 0
+		n2_fvec2_t s2e = n2_fvec2(ce - cs, se - ss);
+		if (n2_fvec2_normalize(&s2e) <= 0.00001f) { s2e = n2_fvec2(ss, -cs); }
+		const float c = s2e.x_; const float s = s2e.y_;
+#else
+		n2_fvec2_t s2e = n2_fvec2(ce + cs, se + ss);
+		if (n2_fvec2_normalize(&s2e) <= 0.00001f) { s2e = n2_fvec2(cs, ss); }
+		const float c = s2e.x_; const float s = s2e.y_;
+#endif
+		n2s_d2vertex_to(v++, n2_fvec3_add(center, n2_fvec3(c * -thickness * 0.5f, s * -thickness * 0.5f, 0)), n2_fvec2(0, 0), color);
+		n2s_d2vertex_to(v++, n2_fvec3_add(center, n2_fvec3(c *  thickness * 0.5f, s *  thickness * 0.5f, 0)), n2_fvec2(0, 0), color);
+	}
+	for (size_t r = 0; r < div; ++r)
+	{
+		const float rad = N2_SCAST(float, r) / N2_SCAST(float, div) * N2_SCAST(float, sweep_angle) + start_angle;
+		const float c = N2_COSF(rad); const float s = N2_SINF(rad);
+		if (fill)
+		{
+			n2s_d2vertex_to(v++, n2_fvec3_add(center, n2_fvec3(c * scale.x_ * 0.5f, s * scale.y_ * 0.5f, 0)), n2_fvec2(0, 0), color);
+		}
+		else
+		{
+			n2s_d2vertex_to(v++, n2_fvec3_add(center, n2_fvec3(c * (scale.x_ - thickness) * 0.5f, s * (scale.y_ - thickness) * 0.5f, 0)), n2_fvec2(0, 0), color);
+			n2s_d2vertex_to(v++, n2_fvec3_add(center, n2_fvec3(c * (scale.x_ + thickness) * 0.5f, s * (scale.y_ + thickness) * 0.5f, 0)), n2_fvec2(0, 0), color);
+		}
+	}
+	if (fill)
+	{
+		for (size_t r = 0; r < div - 1; ++r)
+		{
+			i[r * 3 + 0] = top_index + 0; i[r * 3 + 1] = top_index + N2_SCAST(n2s_index_t, r + 0); i[r * 3 + 2] = top_index + N2_SCAST(n2s_index_t, r + 1);
+		}
+	}
+	else
+	{
+		*i++ = top_index + 0; *i++ = top_index + 2; *i++ = top_index + 1;
+		*i++ = top_index + 1; *i++ = top_index + 2; *i++ = top_index + 3;
+		for (size_t r = 1; r < div; ++r)
+		{
+			*i++ = top_index + N2_SCAST(n2s_index_t, (r * 2) + 0); *i++ = top_index + N2_SCAST(n2s_index_t, (r * 2) + 2); *i++ = top_index + N2_SCAST(n2s_index_t, (r * 2) + 1);
+			*i++ = top_index + N2_SCAST(n2s_index_t, (r * 2) + 1); *i++ = top_index + N2_SCAST(n2s_index_t, (r * 2) + 2); *i++ = top_index + N2_SCAST(n2s_index_t, (r * 2) + 3);
+		}
+		*i++ = top_index + N2_SCAST(n2s_index_t, (div * 2) + 0); *i++ = top_index + 0; *i++ = top_index + N2_SCAST(n2s_index_t, (div * 2) + 1);
+		*i++ = top_index + N2_SCAST(n2s_index_t, (div * 2) + 1); *i++ = top_index + 0; *i++ = top_index + 1;
+	}
+}
+
 typedef struct n2si_commandbuffer_text_context_t n2si_commandbuffer_text_context_t;
 struct n2si_commandbuffer_text_context_t
 {
@@ -29381,6 +29493,73 @@ static int n2si_bifunc_circle_common(const n2_funcarg_t* arg, n2_bool_t independ
 static int n2si_bifunc_circle(const n2_funcarg_t* arg) { return n2si_bifunc_circle_common(arg, N2_TRUE); }
 static int n2si_bifunc_circle_n2(const n2_funcarg_t* arg) { return n2si_bifunc_circle_common(arg, N2_FALSE); }
 
+static int n2si_bifunc_arc_common(const char* label, const n2_funcarg_t* arg, n2_bool_t independent_gmode)
+{
+	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	if (arg_num > 7) { n2e_funcarg_raise(arg, "%s：引数の数（%d）が期待（0 - %d）と違います", label, arg_num, 7); return -1; }
+	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
+	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
+	N2_ASSERT(nw);
+	const n2_value_t* sxval = n2e_funcarg_getarg(arg, 0);
+	n2_valint_t sx = sxval && n2_value_get_type(sxval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, sxval) : 0;
+	const n2_value_t* syval = n2e_funcarg_getarg(arg, 1);
+	n2_valint_t sy = syval && n2_value_get_type(syval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, syval) : 0;
+	const n2_value_t* exval = n2e_funcarg_getarg(arg, 2);
+	n2_valint_t ex = exval && n2_value_get_type(exval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, exval) : N2_SCAST(n2_valint_t, nw->width_);
+	const n2_value_t* eyval = n2e_funcarg_getarg(arg, 3);
+	n2_valint_t ey = eyval && n2_value_get_type(eyval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, eyval) : N2_SCAST(n2_valint_t, nw->height_);
+	const n2_value_t* stval = n2e_funcarg_getarg(arg, 4);
+	n2_valfloat_t st = stval && n2_value_get_type(stval) != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, stval) : 0;
+	const n2_value_t* swval = n2e_funcarg_getarg(arg, 5);
+	n2_valfloat_t sw = swval && n2_value_get_type(swval) != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, swval) : N2_MPI;
+	const n2_value_t* fval = n2e_funcarg_getarg(arg, 6);
+	n2_valfloat_t f = fval && n2_value_get_type(fval) != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, fval) : -1;
+	n2si_environment_checkout_draw_commandbuffer(arg->state_, se);
+	if (independent_gmode) { n2s_commandbuffer_set_program(arg->state_, se->commandbuffer_, N2S_GPROGRAM_2D); n2s_commandbuffer_set_renderstate(arg->state_, se->commandbuffer_, N2S_RENDERSTATE_2D_NOBLEND); }
+	const n2s_u8color_t c = n2s_u8color(nw->ginfo_r_, nw->ginfo_g_, nw->ginfo_b_, independent_gmode ? 255 : nw->ginfo_a_);
+	const n2_fvec3_t center = n2_fvec3((N2_SCAST(float, sx) + N2_SCAST(float, ex)) * 0.5f, (N2_SCAST(float, sy) + N2_SCAST(float, ey)) * 0.5f, 0);
+	const n2_fvec2_t scale = n2_fvec2(N2_SCAST(float, ex) - N2_SCAST(float, sx), N2_SCAST(float, ey) - N2_SCAST(float, sy));
+	n2s_commandbuffer_d2arc(arg->state_, se->commandbuffer_, center, scale, c, N2_SCAST(float, st), N2_SCAST(float, sw), N2_SCAST(float, f), 64);
+	return 0;
+}
+static int n2si_bifunc_arc_n2(const n2_funcarg_t* arg) { return n2si_bifunc_arc_common("arc@n2", arg, N2_TRUE); }
+static int n2si_bifunc_garc_n2(const n2_funcarg_t* arg) { return n2si_bifunc_arc_common("garc@n2", arg, N2_FALSE); }
+
+static int n2si_bifunc_pie_common(const char* label, const n2_funcarg_t* arg, n2_bool_t independent_gmode)
+{
+	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	if (arg_num > 7) { n2e_funcarg_raise(arg, "%s：引数の数（%d）が期待（0 - %d）と違います", label, arg_num, 7); return -1; }
+	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
+	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
+	N2_ASSERT(nw);
+	const n2_value_t* sxval = n2e_funcarg_getarg(arg, 0);
+	n2_valint_t sx = sxval && n2_value_get_type(sxval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, sxval) : 0;
+	const n2_value_t* syval = n2e_funcarg_getarg(arg, 1);
+	n2_valint_t sy = syval && n2_value_get_type(syval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, syval) : 0;
+	const n2_value_t* exval = n2e_funcarg_getarg(arg, 2);
+	n2_valint_t ex = exval && n2_value_get_type(exval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, exval) : N2_SCAST(n2_valint_t, nw->width_);
+	const n2_value_t* eyval = n2e_funcarg_getarg(arg, 3);
+	n2_valint_t ey = eyval && n2_value_get_type(eyval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, eyval) : N2_SCAST(n2_valint_t, nw->height_);
+	const n2_value_t* stval = n2e_funcarg_getarg(arg, 4);
+	n2_valfloat_t st = stval && n2_value_get_type(stval) != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, stval) : 0;
+	const n2_value_t* swval = n2e_funcarg_getarg(arg, 5);
+	n2_valfloat_t sw = swval && n2_value_get_type(swval) != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, swval) : N2_MPI;
+	const n2_value_t* fval = n2e_funcarg_getarg(arg, 6);
+	n2_valfloat_t f = fval && n2_value_get_type(fval) != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, fval) : -1;
+	n2si_environment_checkout_draw_commandbuffer(arg->state_, se);
+	if (independent_gmode) { n2s_commandbuffer_set_program(arg->state_, se->commandbuffer_, N2S_GPROGRAM_2D); n2s_commandbuffer_set_renderstate(arg->state_, se->commandbuffer_, N2S_RENDERSTATE_2D_NOBLEND); }
+	const n2s_u8color_t c = n2s_u8color(nw->ginfo_r_, nw->ginfo_g_, nw->ginfo_b_, independent_gmode ? 255 : nw->ginfo_a_);
+	const n2_fvec3_t center = n2_fvec3((N2_SCAST(float, sx) + N2_SCAST(float, ex)) * 0.5f, (N2_SCAST(float, sy) + N2_SCAST(float, ey)) * 0.5f, 0);
+	const n2_fvec2_t scale = n2_fvec2(N2_SCAST(float, ex) - N2_SCAST(float, sx), N2_SCAST(float, ey) - N2_SCAST(float, sy));
+	if (f <= 0)// @todo enable thickness
+	{
+		n2s_commandbuffer_d2pie(arg->state_, se->commandbuffer_, center, scale, c, N2_SCAST(float, st), N2_SCAST(float, sw), N2_SCAST(float, f), 64);
+	}
+	return 0;
+}
+static int n2si_bifunc_pie_n2(const n2_funcarg_t* arg) { return n2si_bifunc_pie_common("pie@n2", arg, N2_TRUE); }
+static int n2si_bifunc_gpie_n2(const n2_funcarg_t* arg) { return n2si_bifunc_pie_common("gpie@n2", arg, N2_FALSE); }
+
 static int n2si_bifunc_grect(const n2_funcarg_t* arg)
 {
 	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
@@ -30843,6 +31022,8 @@ static void n2i_environment_bind_standards_builtins(n2_state_t* state, n2_pp_con
 			{"gboxf@n2",			n2si_bifunc_boxf_n2},
 			{"circle",				n2si_bifunc_circle},
 			{"gcircle@n2",			n2si_bifunc_circle_n2},
+			{"garc@n2",				n2si_bifunc_garc_n2},
+			{"gpie@n2",				n2si_bifunc_gpie_n2},
 			{"grect",				n2si_bifunc_grect},
 			{"gcopy",				n2si_bifunc_gcopy},
 			{"gzoom",				n2si_bifunc_gzoom},

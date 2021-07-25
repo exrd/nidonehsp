@@ -4695,6 +4695,8 @@ N2_API void n2s_commandbuffer_d2rect_textured_rot(n2_state_t* state, n2s_command
 N2_API void n2s_commandbuffer_d2rect_textured_rotskew(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t position, n2_fvec2_t pivot, n2_fvec2_t scale, n2s_u8color_t color, const n2s_texture_t* texture, n2_fvec2_t left_top_uv, n2_fvec2_t right_bottom_uv, float rad, n2_fvec2_t topskew, n2_fvec2_t bottomskew, size_t w, size_t h);
 N2_API void n2s_commandbuffer_d2circle_wire(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t center, n2_fvec2_t scale, n2s_u8color_t color, float thickness, size_t div);
 N2_API void n2s_commandbuffer_d2circle(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t center, n2_fvec2_t scale, n2s_u8color_t color, size_t div);
+N2_API void n2s_commandbuffer_d2arc(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t center, n2_fvec2_t scale, n2s_u8color_t color, float start_angle, float sweep_angle, float thickness, size_t div);
+N2_API void n2s_commandbuffer_d2pie(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t center, n2_fvec2_t scale, n2s_u8color_t color, float start_angle, float sweep_angle, float thickness, size_t div);
 
 N2_API n2_bool_t n2s_commandbuffer_d2text_units(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t begin, n2s_font_t* font, const char* str, size_t str_length, float height, const n2s_text_render_unit_t* units, size_t unit_num, float wrap_width, size_t flags, n2_fvec2_t* dst_bb);
 N2_API n2_bool_t n2s_commandbuffer_d2text(n2_state_t* state, n2s_commandbuffer_t* cb, n2_fvec3_t begin, n2s_font_t* font, const char* str, size_t str_length, float height, n2s_u8color_t color, float wrap_width, size_t flags, n2_fvec2_t* dst_bb);

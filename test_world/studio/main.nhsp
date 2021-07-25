@@ -58,6 +58,15 @@ repeat
 	//if (cnt == 50) { a /= 0 }
 	//getkey a, 'A'
 	//mes "getkey(A)=", a
+	gmode 3, , , 128
+	color 255, 0, 0
+	garc@n2 200, 200, 250, 250, deg2rad(cnt), deg2rad(180.0 + sin(deg2rad(cnt * 2)) * 180.0), -1
+	color 0, 255, 0
+	garc@n2 250, 200, 300, 250, deg2rad(cnt), deg2rad(180.0 + sin(deg2rad(cnt * 2)) * 180.0), 10
+	color 255, 0, 255
+	gpie@n2 200, 250, 250, 300, deg2rad(cnt), deg2rad(180.0 + sin(deg2rad(cnt * 2)) * 180.0), -1
+	color 0, 255, 255
+	gpie@n2 250, 250, 300, 300, deg2rad(cnt), deg2rad(180.0 + sin(deg2rad(cnt * 2)) * 180.0), 10
 	hsvcolor 100, 200, 255 : mes strf("%d,%d,%d", ginfo_r, ginfo_g, ginfo_b)
 	foo cnt
 	mes `WORKSPACE_MACRO=${WORKSPACE_MACRO}`

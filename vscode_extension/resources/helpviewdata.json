@@ -5476,6 +5476,127 @@
 				"stdDrawPrimitive"
 			]
 		},
+		"garc@n2": {
+			"type": "function",
+			"summary": "円弧を描画",
+			"group": ["standard"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "lefTopX",
+					"description": "左上X座標",
+					"omitted": "0"
+				},
+				{
+					"name": "leftTopY",
+					"description": "左上Y座標",
+					"omitted": "0"
+				},
+				{
+					"name": "rightBottomX",
+					"description": "右下X座標",
+					"omitted": "(ウィンドウ幅)"
+				},
+				{
+					"name": "rightBottomY",
+					"description": "右下Y座標",
+					"omitted": "(ウィンドウ高さ)"
+				},
+				{
+					"name": "startAngle",
+					"description": "開始角度[rad]",
+					"omitted": "0"
+				},
+				{
+					"name": "sweepAngle",
+					"description": "円弧の角度[rad]",
+					"omitted": "pi"
+				},
+				{
+					"name": "thickness",
+					"description": "枠線の太さ（0以下で塗りつぶし）",
+					"omitted": "-1"
+				}
+			],
+			"description": [
+				"現在の操作先ウィンドウに対して円弧の描画を行います。",
+				"指定した左上座標・右下座標に収まるような円上の円弧が描画されます。",
+				"",
+				"描画で使用されるパラメータは次の表の通りです。$",
+				"$",
+				"|内容|使用される値|$",
+				"|:--|:--|$",
+				"|色|カレントカラー（$ref(color)等で設定したもの）|$",
+				"|描画モード|$ref(gmode)で設定したモード|$",
+				"|枠線太さ|thickness|$"
+			],
+			"relationGroup": [
+				"stdDrawPrimitive"
+			]
+		},
+		"gpie@n2": {
+			"type": "function",
+			"summary": "扇図形を描画",
+			"group": ["standard"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "lefTopX",
+					"description": "左上X座標",
+					"omitted": "0"
+				},
+				{
+					"name": "leftTopY",
+					"description": "左上Y座標",
+					"omitted": "0"
+				},
+				{
+					"name": "rightBottomX",
+					"description": "右下X座標",
+					"omitted": "(ウィンドウ幅)"
+				},
+				{
+					"name": "rightBottomY",
+					"description": "右下Y座標",
+					"omitted": "(ウィンドウ高さ)"
+				},
+				{
+					"name": "startAngle",
+					"description": "開始角度[rad]",
+					"omitted": "0"
+				},
+				{
+					"name": "sweepAngle",
+					"description": "円弧の角度[rad]",
+					"omitted": "pi"
+				},
+				{
+					"name": "thickness",
+					"description": "枠線の太さ（0以下で塗りつぶし）",
+					"omitted": "-1"
+				}
+			],
+			"description": [
+				"現在の操作先ウィンドウに対して扇図形の描画を行います。",
+				"指定した左上座標・右下座標に収まるような円上の扇図形が描画されます。",
+				"$ref(garc@n2)の円中心を経由する図形と同じです。",
+				"",
+				"現在はthicknessに0より大きい値を渡した場合何も描画されません。",
+				"扇形の枠線描画はサポートされていません。",
+				"※将来的にサポートされる可能性を考え、パラメータは存在しています。",
+				"",
+				"描画で使用されるパラメータは次の表の通りです。$",
+				"$",
+				"|内容|使用される値|$",
+				"|:--|:--|$",
+				"|色|カレントカラー（$ref(color)等で設定したもの）|$",
+				"|描画モード|$ref(gmode)で設定したモード|$",
+				"|枠線太さ|thickness|$"
+			],
+			"relationGroup": [
+				"stdDrawPrimitive"
+			]
+		},
 		"grect": {
 			"type": "function",
 			"summary": "矩形を描画",

@@ -121,6 +121,11 @@
 		repeat 4 : dxs(cnt) += 40.0 : sxs(cnt) = cnt == 1 || cnt == 2 then 64 else 0 : sys(cnt) = cnt < 2 then 0 else 64 : loop : gmode 0 : gsquare SID_ICON, dxs, dys, sxs, sys
 
 		tsx = 300 : tsy = 350
+		gmode 3, , , 128
+		color 255, 0, 0 : garc@n2 tsx + 0, tsy, tsx + 30, tsy + 30, deg2rad(0.8 * masterFrame), deg2rad(180.0 + sin(deg2rad(masterFrame * 2)) * 180.0), -1
+		color 255, 255, 0 : garc@n2 tsx + 30, tsy, tsx + 60, tsy + 30, deg2rad(0.8 * masterFrame), deg2rad(180.0 + sin(deg2rad(masterFrame * 2)) * 180.0), 5
+
+		tsx = 380 : tsy = 360
 		dim tpixels, 5, 5
 		tpixels(0, 0) = 0, 0, 1, 0, 0
 		tpixels(1, 0) = 0, 1, 1, 1, 0
