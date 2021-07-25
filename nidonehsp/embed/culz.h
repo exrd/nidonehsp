@@ -1,7 +1,7 @@
 //-----------------------------------------------------------------------------
 /*
     culz.h
-      uzl compression algorithm implementation in C.
+      ulz compression algorithm implementation in C.
 
       ulz is an ultra-fast LZ77 data compression library.
       original ulz work is written and placed into public domain by Ilya Muravyov,
