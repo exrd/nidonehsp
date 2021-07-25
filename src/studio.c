@@ -357,7 +357,7 @@ static n2_bool_t n2ai_build_ebinary(n2_state_t* state, n2_buffer_t* dst, const n
 			n2_buffer_t filecompressed;
 			n2_buffer_init(&filecompressed);
 
-			const char* compressformat = "none";
+			n2h_compress_e compressformat = N2H_COMPRESS_NULL;
 			const n2_buffer_t* usefilebin = &filecontent;
 
 			if (opts->pack_compress_)
@@ -365,15 +365,54 @@ static n2_bool_t n2ai_build_ebinary(n2_state_t* state, n2_buffer_t* dst, const n
 				// @todo compress format
 				fprintf(stdout, "  ファイル圧縮中…（入力サイズ＝%zu[byte]）\n", filecontent.size_);
 
-				if (n2h_z_compress(state, &filecompressed, filecontent.data_, filecontent.size_, N2_Z_COMPRESS_SPEED))
+				n2h_compress_e use_compresses[] = {
+					N2H_COMPRESS_LZ4,
+					N2H_COMPRESS_Z,
+				};
+				const size_t use_compress_num = sizeof(use_compresses) / sizeof(*use_compresses);
+
+				for (size_t ci = 0; ci < use_compress_num; ++ci)
 				{
-					compressformat = "z";
-					usefilebin = &filecompressed;
-					fprintf(stdout, "  ファイル圧縮成功　フォーマット（%s）、圧縮後（%zu[byte]＝%.2lf%%に圧縮）\n", compressformat, filecompressed.size_, N2_SCAST(double, filecompressed.size_) / N2_SCAST(double, filecontent.size_) * 100.0);
-				}
-				else
-				{
-					fprintf(stdout, "  ファイル圧縮に失敗、元のファイルをそのまま使います\n");
+					compressformat = use_compresses[ci];
+
+					switch (use_compresses[ci])
+					{
+					case N2H_COMPRESS_LZ4:
+						if (!n2h_lxlz4_compress(state, &filecompressed, filecontent.data_, filecontent.size_))
+						{
+							compressformat = N2H_COMPRESS_NULL;
+						}
+						break;
+					case N2H_COMPRESS_Z:
+						if (!n2h_z_compress(state, &filecompressed, filecontent.data_, filecontent.size_, N2_Z_COMPRESS_SPEED))
+						{
+							compressformat = N2H_COMPRESS_NULL;
+						}
+						break;
+					default:
+						compressformat = N2H_COMPRESS_NULL;
+						break;
+					}
+
+					if (compressformat != N2H_COMPRESS_NULL)
+					{
+						fprintf(stdout, "  ファイル圧縮成功　フォーマット（%s）、圧縮後（%zu[byte]＝%.2lf%%に圧縮）\n", n2h_compress_name(compressformat, NULL), filecompressed.size_, N2_SCAST(double, filecompressed.size_) / N2_SCAST(double, filecontent.size_) * 100.0);
+
+						if (filecompressed.size_ >= filecontent.size_)
+						{
+							fprintf(stdout, "   > ファイル圧縮後のサイズ（%zu）が圧縮前のサイズ（%zu）より大きいため、他の圧縮を試します\n", filecompressed.size_, filecontent.size_);
+							compressformat = N2H_COMPRESS_NULL;
+							continue;
+						}
+
+						// これで決定
+						usefilebin = &filecompressed;
+						break;
+					}
+					else
+					{
+						fprintf(stdout, "  ファイル圧縮に失敗、他の圧縮を試します\n");
+					}
 				}
 			}
 
@@ -385,7 +424,9 @@ static n2_bool_t n2ai_build_ebinary(n2_state_t* state, n2_buffer_t* dst, const n
 			fprintf(stdout, "  ファイルパス解決（%s） -> （%s）\n", packfile->filepath_.str_, filepath.str_);
 
 			n2h_datatree_t* filetree = n2h_datatree_allocmap(state);
-			n2h_datatree_set_bystr(state, filetree, "compress", SIZE_MAX, n2h_datatree_allocstr(state, compressformat, SIZE_MAX));
+			const char* compressformatname = n2h_compress_name(compressformat, NULL);
+			N2_ASSERT(compressformatname);
+			n2h_datatree_set_bystr(state, filetree, "compress", SIZE_MAX, n2h_datatree_allocstr(state, compressformatname, SIZE_MAX));
 			n2h_datatree_set_bystr(state, filetree, "size", SIZE_MAX, n2h_datatree_alloci(state, N2_SCAST(int64_t, filecontent.size_)));
 			n2h_datatree_set_bystr(state, filetree, "bin", SIZE_MAX, n2h_datatree_allocbin(state, usefilebin->data_, usefilebin->size_));
 			n2h_datatree_set_bystr(state, fstree, filepath.str_, filepath.size_, filetree);

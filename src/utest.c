@@ -12,11 +12,25 @@
 #define CULZ_STATIC
 #define CULZ_IMPLEMENTATION
 #include "embed/culz.h"
+#define LXLZ4_STATIC
+//#define LXLZ4_UNALIGNED_MEMORY_ACCESS
+#define LXLZ4_IMPLEMENTATION
+#include "embed/lxlz4.h"
 #define MINIZ_HEADER_FILE_ONLY
 #include "embed/miniz.h"
 #define ZED_NET_STATIC
 #define ZED_NET_IMPLEMENTATION
 #include "embed/zed_net.h"
+#if 0
+#include <../external/lz4/lz4.h>
+#include <../external/lz4/lz4.c>
+#include <../external/lz4/lz4frame.h>
+#include <../external/lz4/lz4frame.c>
+#include <../external/lz4/xxhash.h>
+#include <../external/lz4/xxhash.c>
+#include <../external/lz4/lz4hc.h>
+#include <../external/lz4/lz4hc.c>
+#endif
 
 #include <nidonehsp.h>
 #include "app.h"
@@ -479,6 +493,10 @@ int main(int argc, char* argv[])
 		UTEST_LXMSGP_RW("300", "d1 01 2c", (lxmsgp_pack_put_int(&pack, 300)), (assert(element.type == LXMSGP_TYPE_INT), assert(element.content.intval == 300)));
 		UTEST_LXMSGP_RW("65550", "d2 00 01 00 0e", (lxmsgp_pack_put_int(&pack, 65550)), (assert(element.type == LXMSGP_TYPE_INT), assert(element.content.intval == 65550)));
 		UTEST_LXMSGP_RW("1829304858821", "d3 00 00 01 a9 eb 10 f8 c5", (lxmsgp_pack_put_int(&pack, 1829304858821LL)), (assert(element.type == LXMSGP_TYPE_INT), assert(element.content.intval == 1829304858821LL)));
+		UTEST_LXMSGP_RW("-1", "ff", (lxmsgp_pack_put_int(&pack, -1)), (assert(element.type == LXMSGP_TYPE_INT), assert(element.content.intval == -1)));
+		UTEST_LXMSGP_RW("-10", "f6", (lxmsgp_pack_put_int(&pack, -10)), (assert(element.type == LXMSGP_TYPE_INT), assert(element.content.intval == -10)));
+		UTEST_LXMSGP_RW("-32", "e0", (lxmsgp_pack_put_int(&pack, -32)), (assert(element.type == LXMSGP_TYPE_INT), assert(element.content.intval == -32)));
+		UTEST_LXMSGP_RW("-33", "d0 df", (lxmsgp_pack_put_int(&pack, -33)), (assert(element.type == LXMSGP_TYPE_INT), assert(element.content.intval == -33)));
 		UTEST_LXMSGP_RW("-100", "d0 9c", (lxmsgp_pack_put_int(&pack, -100)), (assert(element.type == LXMSGP_TYPE_INT), assert(element.content.intval == -100)));
 		UTEST_LXMSGP_RW("-200", "d1 ff 38", (lxmsgp_pack_put_int(&pack, -200)), (assert(element.type == LXMSGP_TYPE_INT), assert(element.content.intval == -200)));
 		UTEST_LXMSGP_RW("-300", "d1 fe d4", (lxmsgp_pack_put_int(&pack, -300)), (assert(element.type == LXMSGP_TYPE_INT), assert(element.content.intval == -300)));
@@ -548,6 +566,335 @@ int main(int argc, char* argv[])
 		}
 	}
 #elif 0
+	// xxhash
+	if (0)
+	{
+		printf("xxhash test\n");
+		n2h_random_t rd;
+		n2h_random_init(&rd, 0);
+		for (size_t i = 0; i < 128 * 1024; ++i)
+		{
+			size_t size = n2h_random_next_range(&rd, 0x00ffffff) + 0xff;
+			uint64_t mode = n2h_random_next_range(&rd, 8);
+			if (i < 1024) { size = i; }
+			if (i / 1024 < 9) { mode = i / 1024; }
+
+			void* src = malloc(size);
+			uint64_t scratch_key = n2h_random_next(&rd);
+			//if (i < 24) { continue; }
+			memset(src, 0, size);
+			n2h_random_scratch(src, size, scratch_key);
+			switch (mode)
+			{
+			case 0: break;
+			case 1: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] >>= 1; } break;
+			case 2: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] >>= 2; } break;
+			case 3: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] >>= 3; } break;
+			case 4: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] >>= 4; } break;
+			case 5: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] >>= 5; } break;
+			case 6: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] >>= 6; } break;
+			case 7: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] >>= 7; } break;
+			case 8: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] = 128; } break;
+			default: assert(0); break;
+			}
+
+			const uint64_t hash_begin = SDL_GetPerformanceCounter();
+			const uint32_t xxhash = lxlz4_xxhash32(src, size, 0);
+			const uint64_t hash_end = SDL_GetPerformanceCounter();
+			const uint64_t hash_micro = (hash_end - hash_begin) * 1000000 / SDL_GetPerformanceFrequency();
+
+			const uint64_t libhash_begin = SDL_GetPerformanceCounter();
+#ifdef LZ4_VERSION_MAJOR
+			const uint32_t libxxhash = XXH32(src, size, 0);
+#endif
+			const uint64_t libhash_end = SDL_GetPerformanceCounter();
+			const uint64_t libhash_micro = (libhash_end - libhash_begin) * 1000000 / SDL_GetPerformanceFrequency();
+#ifdef LZ4_VERSION_MAJOR
+			(void)(libxxhash);
+			assert(xxhash == libxxhash);
+#endif
+
+			printf("%03zu : size=%zu, got hash=%x, hash=%lld usec, libhash=%lld usec\n", i, size, xxhash, hash_micro, libhash_micro);
+		}
+	}
+	// lxlz4
+	if (0)
+	{
+		printf("lxlz4 test\n");
+		n2h_random_t rd;
+		n2h_random_init(&rd, 0);
+		for (size_t i = 0; i < 128; ++i)
+		{
+			size_t size = n2h_random_next_range(&rd, 0x00ffffff) + 0xff;
+			uint64_t mode = n2h_random_next_range(&rd, 8);
+			if (i < 1024) { size = i; }
+			if (i / 1024 < 9) { mode = i / 1024; }
+			//size = 512;
+			mode = 6;
+
+			void* src = malloc(size);
+			uint64_t scratch_key = n2h_random_next(&rd);
+			//if (i < 24) { continue; }
+			memset(src, 0, size);
+			n2h_random_scratch(src, size, scratch_key);
+			switch (mode)
+			{
+			case 0: break;
+			case 1: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] >>= 1; } break;
+			case 2: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] >>= 2; } break;
+			case 3: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] >>= 3; } break;
+			case 4: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] >>= 4; } break;
+			case 5: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] >>= 5; } break;
+			case 6: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] >>= 6; } break;
+			case 7: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] >>= 7; } break;
+			case 8: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] = 128; } break;
+			default: assert(0); break;
+			}
+
+#ifdef LZ4_VERSION_MAJOR
+			const size_t libnum = 2;
+#else
+			const size_t libnum = 1;
+#endif
+			for (size_t lib = 0; lib < libnum; ++lib)
+			{
+				const size_t boundsize = lxlz4_compress_bound(size, NULL);
+				void* compressed = malloc(boundsize);
+				lxlz4_error_e e = LXLZ4_ERROR_NONE;
+				size_t compressed_size = 0;
+				const uint64_t compress_begin = SDL_GetPerformanceCounter();
+				if (lib == 0)
+				{
+					lxlz4_compress_option_t copt;
+					lxlz4_compress_option_init(&copt);
+					//copt.level_ = LXLZ4_COMPRESS_LEVEL_NOCOMPRESS;
+					e = lxlz4_compress(compressed, boundsize, &compressed_size, src, size, &copt, NULL);
+					assert(e == LXLZ4_ERROR_NONE);
+				}
+				else
+				{
+#ifdef LZ4_VERSION_MAJOR
+					compressed_size = (size_t)LZ4_compress_default((const char*)src, (char*)compressed, (int)size, (int)boundsize);
+#endif
+				}
+				const uint64_t compress_end = SDL_GetPerformanceCounter();
+				const uint64_t compress_micro = (compress_end - compress_begin) * 1000000 / SDL_GetPerformanceFrequency();
+				void* decompressed = malloc(size);
+				const uint64_t decompress_begin = SDL_GetPerformanceCounter();
+				size_t decompressed_written = 0;
+				if (lib == 0)
+				{
+					e = lxlz4_decompress(decompressed, size, &decompressed_written, compressed, compressed_size, NULL);
+					assert(e == LXLZ4_ERROR_NONE);
+				}
+				else
+				{
+#ifdef LZ4_VERSION_MAJOR
+					int dw = LZ4_decompress_safe((const char*)compressed, (char*)decompressed, (int)compressed_size, (int)size);
+					assert(dw >= 0);
+					decompressed_written = (size_t)dw;
+#endif
+				}
+				uint64_t decompress_end = SDL_GetPerformanceCounter();
+				uint64_t decompress_micro = (decompress_end - decompress_begin) * 1000000 / SDL_GetPerformanceFrequency();
+				assert(decompressed_written == size);
+				int cmp = 0;
+				size_t cmppos = 0;
+				for (size_t j = 0; j < size; ++j) { if (((uint8_t*)src)[j] != ((uint8_t*)decompressed)[j]) { cmp = 1; cmppos = j; break; } }
+				assert(cmp == 0);
+				printf("%03zu(lib=%zu) : size=%zu, compressed=%zu(%+.4lf%%) comp=%llu[us]:%+.2lfMiB/s decomp=%llu[us]:%+.2lfMiB/s\n", i, lib, size, compressed_size, (double)compressed_size / (double)size * 100.0, compress_micro, (double)size / (double)compress_micro * 1000000.0 / 1024.0 / 1024.0, decompress_micro, (double)size / (double)decompress_micro * 1000000.0 / 1024.0 / 1024.0);
+				// cross decompression test
+				if (0)
+				{
+#ifdef LZ4_VERSION_MAJOR
+					if (lib == 1)
+					{
+						e = lxlz4_decompress(decompressed, size, &decompressed_written, compressed, compressed_size, NULL);
+						assert(e == LXLZ4_ERROR_NONE);
+					}
+					else
+					{
+						int dw = LZ4_decompress_safe((const char*)compressed, (char*)decompressed, (int)compressed_size, (int)size);
+						assert(dw >= 0);
+						decompressed_written = (size_t)dw;
+					}
+					assert(decompressed_written == size);
+					cmp = 0;
+					cmppos = 0;
+					for (size_t j = 0; j < size; ++j) { if (((uint8_t*)src)[j] != ((uint8_t*)decompressed)[j]) { cmp = 1; cmppos = j; break; } }
+					assert(cmp == 0);
+#endif
+				}
+				free(compressed);
+				free(decompressed);
+			}
+			free(src);
+		}
+		printf("lxlz4 test end\n");
+	}
+
+	// lxlz4frame
+	if (1)
+	{
+		printf("lxlz4frame test\n");
+		n2h_random_t rd;
+		n2h_random_init(&rd, 0);
+		for (size_t i = 0; i < 128; ++i)
+		{
+			size_t size = n2h_random_next_range(&rd, 0x00ffffff) + 0x00;
+			uint64_t mode = n2h_random_next_range(&rd, 8);
+			const size_t enblock = 128;
+			(void)(enblock);
+			//if (i < enblock) { size = i; }
+			//if (i / enblock < 9) { mode = i / enblock; }
+			//size = 256;
+			mode = 6;
+
+			void* src = malloc(size);
+			uint64_t scratch_key = n2h_random_next(&rd);
+			//if (i < 24) { continue; }
+			memset(src, 0, size);
+			n2h_random_scratch(src, size, scratch_key);
+			switch (mode)
+			{
+			case 0: break;
+			case 1: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] >>= 1; } break;
+			case 2: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] >>= 2; } break;
+			case 3: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] >>= 3; } break;
+			case 4: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] >>= 4; } break;
+			case 5: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] >>= 5; } break;
+			case 6: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] >>= 6; } break;
+			case 7: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] >>= 7; } break;
+			case 8: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] = 128; } break;
+			default: assert(0); break;
+			}
+
+			//if (i < 1024) { continue; }
+
+#ifdef LZ4_VERSION_MAJOR
+			const size_t libnum = 2;
+#else
+			const size_t libnum = 1;
+#endif
+			for (size_t lib = 0; lib < libnum; ++lib)
+			{
+				const size_t boundsize = lxlz4_frame_compress_bound(size, NULL);
+				void* compressed = malloc(boundsize);
+				lxlz4_error_e e = LXLZ4_ERROR_NONE;
+				size_t compressed_size = 0;
+				const uint64_t compress_begin = SDL_GetPerformanceCounter();
+				if (lib == 0)
+				{
+					lxlz4_compress_option_t copt;
+					lxlz4_compress_option_init_compatible(&copt);
+					//copt.level_ = LXLZ4_COMPRESS_LEVEL_NOCOMPRESS;
+					//copt.level_ = LXLZ4_COMPRESS_LEVEL_NORMAL;
+					//copt.is_block_independent_ = LXLZ4_TRUE;
+					//copt.block_max_size_ = LXLZ4_BLOCK_SIZE_4MB;
+					e = lxlz4_frame_compress(compressed, boundsize, &compressed_size, src, size, &copt, NULL);
+					assert(e == LXLZ4_ERROR_NONE);
+				}
+				else
+				{
+#ifdef LZ4_VERSION_MAJOR
+					LZ4F_preferences_t pref = LZ4F_INIT_PREFERENCES;
+					//pref.frameInfo.blockMode = LZ4F_blockIndependent;
+					compressed_size = LZ4F_compressFrame(compressed, boundsize, src, size, &pref);
+#endif
+				}
+				const uint64_t compress_end = SDL_GetPerformanceCounter();
+				const uint64_t compress_micro = (compress_end - compress_begin) * 1000000 / SDL_GetPerformanceFrequency();
+				void* decompressed = malloc(size);
+				const uint64_t decompress_begin = SDL_GetPerformanceCounter();
+				size_t decompressed_written = 0;
+				if (lib == 0)
+				{
+					e = lxlz4_frame_decompress(decompressed, size, &decompressed_written, compressed, compressed_size, NULL);
+					assert(e == LXLZ4_ERROR_NONE);
+				}
+				else
+				{
+#ifdef LZ4_VERSION_MAJOR
+					LZ4F_dctx* dctx = NULL;
+					LZ4F_createDecompressionContext(&dctx, LZ4F_VERSION);
+					const uint8_t* ip = (const uint8_t*)compressed;
+					const uint8_t* eip = ip + compressed_size;
+					uint8_t* op = (uint8_t*)decompressed;
+					uint8_t* sop = op;
+					uint8_t* eop = op + size;
+					for (;;)
+					{
+						size_t opsize = (size_t)(eop - op);
+						size_t ipsize = (size_t)(eip - ip);
+						const size_t hint = LZ4F_decompress(dctx, op, &opsize, ip, &ipsize, NULL);
+						assert(!LZ4F_isError(hint));
+						ip += ipsize; op += opsize;
+						//if (ip == eip) { break; }
+						if (!hint) { break; }
+					}
+					decompressed_written = (size_t)(op - sop);
+					LZ4F_freeDecompressionContext(dctx);
+#endif
+				}
+				uint64_t decompress_end = SDL_GetPerformanceCounter();
+				uint64_t decompress_micro = (decompress_end - decompress_begin) * 1000000 / SDL_GetPerformanceFrequency();
+				assert(decompressed_written == size);
+				int cmp = 0;
+				size_t cmppos = 0;
+				if (memcmp(src, decompressed, size))
+				{
+					for (size_t j = 0; j < size; ++j) { if (((uint8_t*)src)[j] != ((uint8_t*)decompressed)[j]) { cmp = 1; cmppos = j; break; } }
+				}
+				assert(cmp == 0);
+				printf("%03zu(lib=%zu) : size=%zu, compressed=%zu(%+.4lf%%) comp=%llu[us]:%+.2lfMiB/s decomp=%llu[us]:%+.2lfMiB/s\n", i, lib, size, compressed_size, (double)compressed_size / (double)size * 100.0, compress_micro, (double)size / (double)compress_micro * 1000000.0 / 1024.0 / 1024.0, decompress_micro, (double)size / (double)decompress_micro * 1000000.0 / 1024.0 / 1024.0);
+				// cross decompression test
+#ifdef LZ4_VERSION_MAJOR
+				{
+					if (lib == 1)
+					{
+						e = lxlz4_frame_decompress(decompressed, size, &decompressed_written, compressed, compressed_size, NULL);
+						assert(e == LXLZ4_ERROR_NONE);
+					}
+					else
+					{
+						LZ4F_dctx* dctx = NULL;
+						LZ4F_createDecompressionContext(&dctx, LZ4F_VERSION);
+						const uint8_t* ip = (const uint8_t*)compressed;
+						const uint8_t* eip = ip + compressed_size;
+						uint8_t* op = (uint8_t*)decompressed;
+						uint8_t* sop = op;
+						uint8_t* eop = op + size;
+						for (;;)
+						{
+							size_t opsize = (size_t)(eop - op);
+							size_t ipsize = (size_t)(eip - ip);
+							const size_t hint = LZ4F_decompress(dctx, op, &opsize, ip, &ipsize, NULL);
+							assert(!LZ4F_isError(hint));
+							ip += ipsize; op += opsize;
+							//if (ip == eip) { break; }
+							if (!hint) { break; }
+						}
+						decompressed_written = (size_t)(op - sop);
+						LZ4F_freeDecompressionContext(dctx);
+					}
+					assert(decompressed_written == size);
+					cmp = 0;
+					cmppos = 0;
+					if (memcmp(src, decompressed, size))
+					{
+						for (size_t j = 0; j < size; ++j) { if (((uint8_t*)src)[j] != ((uint8_t*)decompressed)[j]) { cmp = 1; cmppos = j; break; } }
+					}
+					assert(cmp == 0);
+				}
+#endif
+				free(compressed);
+				free(decompressed);
+			}
+			free(src);
+		}
+		printf("lxlz4 test end\n");
+	}
+
 	// culz
 	if (1)
 	{
@@ -633,17 +980,17 @@ int main(int argc, char* argv[])
 			case 6: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] >>= 6; } break;
 			case 7: for (size_t j = 0; j < size; ++j) { ((uint8_t*)src)[j] >>= 7; } break;
 			}
-			size_t boundsize = (size_t)(mz_compressBound(size));
+			size_t boundsize = (size_t)(mz_compressBound((mz_ulong)size));
 			void* dst = malloc(boundsize);
 			const uint64_t compress_begin = SDL_GetPerformanceCounter();
-			mz_ulong compressed = boundsize;
+			mz_ulong compressed = (mz_ulong)boundsize;
 			int compressed_res = mz_compress2((uint8_t*)dst, &compressed, (const uint8_t*)src, (int)size, MZ_BEST_SPEED);
 			const uint64_t compress_end = SDL_GetPerformanceCounter();
 			const uint64_t compress_micro = (compress_end - compress_begin) * 1000000 / SDL_GetPerformanceFrequency();
 			assert(compressed_res == MZ_OK);
 			void* decompressed = malloc(size);
 			const uint64_t decompress_begin = SDL_GetPerformanceCounter();
-			mz_ulong decompressed_size = size;
+			mz_ulong decompressed_size = (mz_ulong)size;
 			int decompressed_res = mz_uncompress((uint8_t*)decompressed, &decompressed_size, (const uint8_t*)dst, compressed);
 			assert(decompressed_res == MZ_OK);
 			const uint64_t decompress_end = SDL_GetPerformanceCounter();
