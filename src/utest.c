@@ -315,9 +315,9 @@ int main(int argc, char* argv[])
 
 					for (size_t urlsafe = 0; urlsafe < 2; ++urlsafe)
 					{
-						n2h_base64_encode_to(state, &to_buf, from.data_, from.size_, N2_FALSE);
+						n2h_base64_encode_to(state, &to_buf, from.data_, from.size_, N2_TOBOOL(urlsafe));
 						n2_buffer_clear(&from_buf);
-						n2_bool_t dcnv = n2h_base64_decode_to(state, &from_buf, to_buf.str_, to_buf.size_, N2_FALSE);
+						n2_bool_t dcnv = n2h_base64_decode_to(state, &from_buf, to_buf.str_, to_buf.size_, N2_TOBOOL(urlsafe));
 						N2_ASSERT(dcnv);
 						N2_ASSERT(N2_MEMCMP(from_buf.data_, from.data_, from_buf.size_) == 0);
 					}
