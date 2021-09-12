@@ -186,7 +186,7 @@ int main(int argc, char* argv[])
 		}
 
 		// sort
-		if (1)
+		if (0)
 		{
 			printf("sort\n");
 
@@ -228,6 +228,106 @@ int main(int argc, char* argv[])
 			}
 
 			n2_intarray_teardown(state, &at);
+		}
+
+		// base64
+		if (1)
+		{
+			printf("base64\n");
+
+			n2_buffer_t from_buf;
+			n2_buffer_init(&from_buf);
+			n2_str_t to_buf;
+			n2_str_init(&to_buf);
+
+			// fixed cases
+			if (1)
+			{
+				const struct {
+					const char* from_;
+					const char* to_;
+					const char* to_urlsafe_;
+					n2_bool_t from_to_check_;
+				} testpair[] = {
+					{"test message", "dGVzdCBtZXNzYWdl", "dGVzdCBtZXNzYWdl", N2_TRUE},
+					{"123", "MTIz", "MTIz", N2_TRUE},
+					{"12", "MTI=", "MTI=", N2_TRUE},
+					{"1", "MQ==", "MQ==", N2_TRUE},
+					{"!\"#$%'()0987654321\\|^~-=[{]}@`:*;+\\_/?.>,<1", "ISIjJCUnKCkwOTg3NjU0MzIxXHxefi09W3tdfUBgOio7K1xfLz8uPiw8MQ==", "ISIjJCUnKCkwOTg3NjU0MzIxXHxefi09W3tdfUBgOio7K1xfLz8uPiw8MQ==", N2_TRUE},
+					{"!-2~_><", "IS0yfl8+PA==", "IS0yfl8-PA==", N2_TRUE},
+					{"", "", "", N2_TRUE},
+					{"", "=", "=", N2_FALSE},
+					{"", "==", "==", N2_FALSE},
+				};
+
+				for (size_t i = 0; i < N2_ARRAYDIM(testpair); ++i)
+				{
+					n2_bool_t dcnv = N2_TRUE;
+
+					const char* from = testpair[i].from_;
+					const size_t from_len = N2_STRLEN(from);
+
+					printf(" %zu> %s >> %s >> %s\n", i, from, testpair[i].to_, testpair[i].to_urlsafe_);
+
+					if (testpair[i].from_to_check_)
+					{
+						n2h_base64_encode_to(state, &to_buf, from, N2_SCAST(size_t, from_len), N2_FALSE);
+						N2_ASSERT(N2_STRCMP(to_buf.str_, testpair[i].to_) == 0);
+					}
+					n2_buffer_clear(&from_buf);
+					dcnv = n2h_base64_decode_to(state, &from_buf, testpair[i].to_, N2_STRLEN(testpair[i].to_), N2_FALSE);
+					N2_ASSERT(dcnv);
+					N2_ASSERT(N2_MEMCMP(from_buf.data_, from, from_buf.size_) == 0);
+
+					if (testpair[i].from_to_check_)
+					{
+						n2h_base64_encode_to(state, &to_buf, from, N2_SCAST(size_t, from_len), N2_TRUE);
+						N2_ASSERT(N2_STRCMP(to_buf.str_, testpair[i].to_urlsafe_) == 0);
+					}
+					n2_buffer_clear(&from_buf);
+					dcnv = n2h_base64_decode_to(state, &from_buf, testpair[i].to_urlsafe_, N2_STRLEN(testpair[i].to_urlsafe_), N2_TRUE);
+					N2_ASSERT(dcnv);
+					N2_ASSERT(N2_MEMCMP(from_buf.data_, from, from_buf.size_) == 0);
+				}
+			}
+
+			// random cases
+			if (1)
+			{
+				n2h_random_t rd;
+				n2h_random_init(&rd, 0x12345678ULL);
+
+				n2_buffer_t from;
+				n2_buffer_init(&from);
+
+				for (size_t test = 0; test < 8 * 1024; ++test)
+				{
+					if ((test % 1024) == 0) { printf(" random %zu\n", test); }
+
+					const size_t n = n2h_random_next_range(&rd, 1024);
+					n2_buffer_reserve(state, &from, n);
+					n2_buffer_clear(&from);
+					for (size_t i = 0; i < n; ++i)
+					{
+						const uint8_t w = n2h_random_next(&rd) & 0xff;
+						n2_buffer_append(state, &from, &w, 1);
+					}
+
+					for (size_t urlsafe = 0; urlsafe < 2; ++urlsafe)
+					{
+						n2h_base64_encode_to(state, &to_buf, from.data_, from.size_, N2_FALSE);
+						n2_buffer_clear(&from_buf);
+						n2_bool_t dcnv = n2h_base64_decode_to(state, &from_buf, to_buf.str_, to_buf.size_, N2_FALSE);
+						N2_ASSERT(dcnv);
+						N2_ASSERT(N2_MEMCMP(from_buf.data_, from.data_, from_buf.size_) == 0);
+					}
+				}
+
+				n2_buffer_teardown(state, &from);
+			}
+
+			n2_buffer_teardown(state, &from_buf);
+			n2_str_teardown(state, &to_buf);
 		}
 
 		n2_state_free(state);

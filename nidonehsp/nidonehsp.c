@@ -4223,6 +4223,145 @@ N2_API void n2h_md5(n2_md5_digest_t* dst, const void* src, size_t src_size)
 }
 #endif
 
+// base64
+static const char n2hi_base64_encode_table[] = 
+{
+	'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+	'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+	'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '/',
+};
+static uint8_t n2hi_base64_decode_table[255] = {0};
+static n2_bool_t n2hi_base64_decode_table_initialized = N2_FALSE;
+
+static const char n2hi_base64urlsafe_encode_table[] = 
+{
+	'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+	'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+	'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '-', '_',
+};
+static uint8_t n2hi_base64urlsafe_decode_table[255] = {0};
+static n2_bool_t n2hi_base64urlsafe_decode_table_initialized = N2_FALSE;
+
+static void n2hi_base64_initialize()
+{
+	if (!n2hi_base64_decode_table_initialized)
+	{
+		N2_MEMSET(n2hi_base64_decode_table, 0xff, sizeof(n2hi_base64_decode_table));
+		for (size_t i = 0; i < N2_ARRAYDIM(n2hi_base64_encode_table); ++i)
+		{
+			const uint8_t c = N2_SCAST(uint8_t, N2_SCAST(unsigned char, n2hi_base64_encode_table[i]));
+			n2hi_base64_decode_table[c] = N2_SCAST(uint8_t, i);
+		}
+		n2hi_base64_decode_table_initialized = N2_TRUE;
+	}
+	if (!n2hi_base64urlsafe_decode_table_initialized)
+	{
+		N2_MEMSET(n2hi_base64urlsafe_decode_table, 0xff, sizeof(n2hi_base64urlsafe_decode_table));
+		for (size_t i = 0; i < N2_ARRAYDIM(n2hi_base64urlsafe_encode_table); ++i)
+		{
+			const uint8_t c = N2_SCAST(uint8_t, N2_SCAST(unsigned char, n2hi_base64urlsafe_encode_table[i]));
+			n2hi_base64urlsafe_decode_table[c] = N2_SCAST(uint8_t, i);
+		}
+		n2hi_base64urlsafe_decode_table_initialized = N2_TRUE;
+	}
+}
+
+N2_API size_t n2h_base64_encode_bound(size_t src_size)
+{
+	return 4 * ((src_size + 2) / 3);
+}
+
+N2_API void n2h_base64_encode_to(n2_state_t* state, n2_str_t* dst, const void* src, size_t src_size, n2_bool_t url_safe)
+{
+	n2hi_base64_initialize();
+	n2_str_clear(dst);
+	n2_str_reserve(state, dst, n2h_base64_encode_bound(src_size) + 1);
+
+	const char* encode_table = url_safe ? n2hi_base64urlsafe_encode_table : n2hi_base64_encode_table;
+
+	char* w = dst->str_;
+	const uint8_t* r = N2_RCAST(const uint8_t*, src);
+	size_t src_count = src_size;
+	while (src_count)
+	{
+		uint32_t v = 0;
+		for (size_t i = 0; i < 3; ++i)
+		{
+			v <<= 8;
+			if (src_count)
+			{
+				v |= *r;
+				++r;
+				--src_count;
+			}
+		}
+		*w++ = encode_table[(v >> 18) & 0x3f];
+		*w++ = encode_table[(v >> 12) & 0x3f];
+		*w++ = encode_table[(v >> 6) & 0x3f];
+		*w++ = encode_table[(v >> 0) & 0x3f];
+	}
+	switch (src_size % 3)
+	{
+	case 1:
+		w[-2] = w[-1] = '=';
+		break;
+	case 2:
+		w[-1] = '=';
+		break;
+	default:
+		break;
+	}
+	*w = '\0';
+	dst->size_ = N2_SCAST(size_t, n2_ptr_diff(w, dst->str_));
+}
+
+N2_API n2_bool_t n2h_base64_decode_to(n2_state_t* state, n2_buffer_t* dst, const char* src, size_t src_size, n2_bool_t url_safe)
+{
+	n2hi_base64_initialize();
+	n2_buffer_clear(dst);
+	n2_buffer_reserve(state, dst, ((src_size + 3) / 4) * 3 + 1);
+
+	const uint8_t* decode_table = url_safe ? n2hi_base64urlsafe_decode_table : n2hi_base64_decode_table;
+
+	uint8_t* w = N2_RCAST(uint8_t*, dst->data_);
+	const char* r = src;
+	size_t src_count = src_size;
+	while (src_count)
+	{
+		uint32_t v = 0;
+		for (size_t i = 0; i < 4; ++i)
+		{
+			const uint8_t c = (!src_count || (src_count < 3 && *r == '=')) ? 0 : decode_table[N2_SCAST(unsigned char, *r)];
+			if (c >= 64) { return N2_FALSE; }
+			v <<= 6;
+			v |= c;
+			if (src_count)
+			{
+				++r;
+				--src_count;
+			}
+		}
+		*w++ = (v >> 16) & 0xff;
+		*w++ = (v >> 8) & 0xff;
+		*w++ = (v >> 0) & 0xff;
+	}
+
+	size_t sentinel_count = 0;
+	if (src_size >= 2 && src[src_size - 1] == '=' && src[src_size - 2] == '=') { sentinel_count = 2; }
+	else if (src_size >= 1 && src[src_size - 1] == '=') { sentinel_count = 1; }
+	if (sentinel_count > 0)
+	{
+		w -= sentinel_count;
+		for (size_t i = 0; i < sentinel_count; ++i) { w[i] = 0; }
+	}
+
+	*w = 0;// add sentinel
+
+	dst->size_ = N2_SCAST(size_t, n2_ptr_diff(w, dst->data_));
+	return N2_TRUE;
+}
+
+// base85
 // rfc1924
 static const char n2hi_base85_encode_table[] = 
 {
@@ -4231,7 +4370,6 @@ static const char n2hi_base85_encode_table[] =
 	'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
 	'!', '#', '$', '%', '&', '(', ')', '*', '+', '-', ';', '<', '=', '>', '?', '@', '^', '_', '`', '{', '|', '}', '~'
 };
-
 static uint8_t n2hi_base85_decode_table[255] = {0};
 static n2_bool_t n2hi_base85_decode_table_initialized = N2_FALSE;
 
@@ -4247,15 +4385,20 @@ static void n2hi_base85_initialize()
 	n2hi_base85_decode_table_initialized = N2_TRUE;
 }
 
+N2_API size_t n2h_base85_encode_bound(size_t src_size)
+{
+	return src_size * 5 / 4 + 4;
+}
+
 N2_API void n2h_base85_encode_to(n2_state_t* state, n2_str_t* dst, const void* src, size_t src_size)
 {
 	n2hi_base85_initialize();
 	n2_str_clear(dst);
-	n2_str_reserve(state, dst, src_size * 5 / 4 + 4 + 1);
+	n2_str_reserve(state, dst, n2h_base85_encode_bound(src_size) + 1);
 
 	char* w = dst->str_;
 	const uint8_t* r = N2_RCAST(const uint8_t*, src);
-	while (src_size > 0)
+	while (src_size)
 	{
 		uint32_t v = 0;
 		for (size_t i = 0; i < 4; ++i)
@@ -4286,12 +4429,12 @@ N2_API n2_bool_t n2h_base85_decode_to(n2_state_t* state, n2_buffer_t* dst, const
 
 	uint8_t* w = N2_RCAST(uint8_t*, dst->data_);
 	const char* r = src;
-	while (src_size > 0)
+	while (src_size)
 	{
 		uint32_t v = 0;
 		for (size_t i = 0; i < 5; ++i)
 		{
-			const unsigned char c = n2hi_base85_decode_table[N2_SCAST(unsigned char, *r)];
+			const uint8_t c = n2hi_base85_decode_table[N2_SCAST(unsigned char, *r)];
 			if (c >= 85) { return N2_FALSE; }
 			v *= 85;
 			v += c;
@@ -4305,6 +4448,8 @@ N2_API n2_bool_t n2h_base85_decode_to(n2_state_t* state, n2_buffer_t* dst, const
 			++w;
 		}
 	}
+	*w = 0;// add sentinel
+
 	dst->size_ = N2_SCAST(size_t, n2_ptr_diff(w, dst->data_));
 	return N2_TRUE;
 }

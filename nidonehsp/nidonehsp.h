@@ -1741,7 +1741,13 @@ struct n2_md5_digest_t
 N2_API void n2h_md5(n2_md5_digest_t* dst, const void* src, size_t src_size);
 #endif
 
+// base64
+N2_API size_t n2h_base64_encode_bound(size_t src_size);
+N2_API void n2h_base64_encode_to(n2_state_t* state, n2_str_t* dst, const void* src, size_t src_size, n2_bool_t url_safe);
+N2_API n2_bool_t n2h_base64_decode_to(n2_state_t* state, n2_buffer_t* dst, const char* src, size_t src_size, n2_bool_t url_safe);
+
 // base85
+N2_API size_t n2h_base85_encode_bound(size_t src_size);
 N2_API void n2h_base85_encode_to(n2_state_t* state, n2_str_t* dst, const void* src, size_t src_size);
 N2_API n2_bool_t n2h_base85_decode_to(n2_state_t* state, n2_buffer_t* dst, const char* src, size_t src_size);
 
