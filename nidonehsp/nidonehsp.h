@@ -608,6 +608,10 @@ typedef struct SDL_Renderer SDL_Renderer;
 #if N2_CONFIG_USE_GLES
 #include <SDL_opengles2_khrplatform.h>
 #include "embed/glad_gles3.h"
+
+#ifdef APIENTRY// msvc workaround
+#undef APIENTRY
+#endif
 #endif
 
 #define N2_SDL_OR(sdl, nosdl)	sdl
@@ -669,6 +673,7 @@ typedef struct n2_ast_evaluate_context_t n2_ast_evaluate_context_t;
 typedef int n2_bool_t;
 #define N2_TRUE		(1)
 #define N2_FALSE	(0)
+#define N2_TOBOOL(v)	((v) ? N2_TRUE : N2_FALSE)
 
 #define N2_UNUSE(...)	((void)(__VA_ARGS__))
 

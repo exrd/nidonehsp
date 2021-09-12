@@ -204,7 +204,10 @@
 //=============================================================================
 // zed_net.h
 #if N2_CONFIG_USE_NET_SOCKET_LIB
-#undef APIENTRY// for msvc workaround
+#ifdef APIENTRY// msvc workaround
+#undef APIENTRY
+#endif
+
 #define ZED_NET_STATIC
 #define ZED_NET_IMPLEMENTATION
 #include "embed/zed_net.h"
@@ -303,8 +306,10 @@
 //=============================================================================
 // プラットフォーム固有
 #if N2_PLATFORM_IS_WINDOWS
-#undef APIENTRY
 #include <Windows.h>
+#include <objbase.h>
+#include <shellapi.h>
+#include <winbase.h>
 #endif
 
 #if N2_PLATFORM_IS_EMSCRIPTEN
@@ -28394,6 +28399,102 @@ static int n2i_bifunc_bcopy(const n2_funcarg_t* arg)
 	return 0;
 }
 
+static int n2i_bifunc_exec(const n2_funcarg_t* arg)
+{
+	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	if (arg_num < 1 || arg_num > 2) { n2e_funcarg_raise(arg, "exec：引数の数（%d）が期待（%d - %d）と違います", arg_num, 1, 2); return -1; }
+	const n2_value_t* shval = n2e_funcarg_getarg(arg, 0);
+	const n2_str_t* sh = n2e_funcarg_eval_str_and_push(arg, shval);
+	const n2_value_t* modeval = n2e_funcarg_getarg(arg, 1);
+	const n2_valint_t mode = modeval && modeval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, modeval) : 0;
+
+	n2_valint_t result = -1;
+	n2_bool_t succeeded = N2_FALSE;
+
+#if N2_PLATFORM_IS_WINDOWS
+	{
+		INT show_cmd = SW_SHOWDEFAULT;
+		if (mode & 2) { show_cmd = SW_SHOWMINIMIZED; }
+
+		n2_str_t syssh;
+		n2_str_init(&syssh);
+		if (n2hi_to_system_string(arg->state_, &syssh, sh->str_, sh->size_))
+		{
+			succeeded = N2_TRUE;
+
+			if (mode & 16 || mode & 32)
+			{
+				SHELLEXECUTEINFOW shell_info;
+				ZeroMemory(&shell_info, sizeof(shell_info));
+				shell_info.cbSize = sizeof(shell_info);
+				shell_info.fMask = SEE_MASK_NOCLOSEPROCESS;
+				shell_info.hwnd = NULL;
+				shell_info.lpFile = N2_RCAST(LPWSTR, syssh.str_);
+				shell_info.lpParameters = L"";
+				shell_info.lpDirectory = NULL;
+				shell_info.nShow = show_cmd;
+				shell_info.hInstApp = NULL;
+				if (mode & 32)
+				{
+					shell_info.lpVerb = L"print";
+				}
+
+				if (ShellExecuteExW(&shell_info))
+				{
+					WaitForSingleObject(shell_info.hProcess,INFINITE);
+					DWORD shell_result = 0;
+					if (GetExitCodeProcess(shell_info.hProcess, &shell_result))
+					{
+						result = N2_SCAST(n2_valint_t, shell_result);
+					}
+				}
+				else
+				{
+					succeeded = N2_FALSE;
+				}
+			}
+			else
+			{
+				const UINT we_result = WinExec(sh->str_, show_cmd);
+				if (we_result < 32) { succeeded = N2_FALSE; }
+			}
+
+			if (!succeeded)
+			{
+				n2e_funcarg_raise(arg, "exec：実行に失敗しました（%s）", sh->str_);
+				succeeded = N2_FALSE;
+			}
+		}
+		else
+		{
+			n2e_funcarg_raise(arg, "exec：実行文字列の変換に失敗しました");
+			succeeded = N2_FALSE;
+		}
+		n2_str_teardown(arg->state_, &syssh);
+	}
+#elif N2_PLATFORM_IS_EMSCRIPTEN
+	{
+		emscripten_run_script(sh->str_);
+		// NO RESULT!
+	}
+#elif N2_PLATFORM_IS_UNIX
+	{
+		// posix
+		result = system(sh->str_);
+	}
+#else
+	{
+		n2e_funcarg_raise(arg, "exec：サポートされてないプラットフォームです");
+		succeeded = N2_FALSE;
+	}
+#endif
+
+	if (!succeeded) { return -1; }
+
+	n2e_funcarg_pushi(arg, result);
+	return 1;
+}
+
 static void n2i_environment_bind_basic_builtins(n2_state_t* state, n2_pp_context_t* ppc, n2_environment_t* e)
 {
 	if (e->is_basics_bounded_) { return; }
@@ -28504,6 +28605,7 @@ static void n2i_environment_bind_basic_builtins(n2_state_t* state, n2_pp_context
 		{"bload",				n2i_bifunc_bload,				N2_FALSE},
 		{"bsave",				n2i_bifunc_bsave,				N2_FALSE},
 		{"bcopy",				n2i_bifunc_bcopy,				N2_FALSE},
+		{"exec",				n2i_bifunc_exec,				N2_FALSE},
 		{NULL,					NULL}
 	};
 	n2_str_t tstr;
@@ -28531,6 +28633,12 @@ static void n2i_environment_bind_basic_builtins(n2_state_t* state, n2_pp_context
 		n2i_pp_context_register_macro_rawi(state, ppc, "timemode_localtime@n2", N2_TIMEMODE_LOCALTIME);
 		n2i_pp_context_register_macro_rawi(state, ppc, "timemode_unixtime@n2", N2_TIMEMODE_UNIXTIME);
 	}
+
+	// システム側で必要な処理
+#if N2_PLATFORM_IS_WINDOWS
+	// COM初期化
+	CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+#endif
 
 	e->is_basics_bounded_ = N2_TRUE;
 }
