@@ -279,6 +279,7 @@ static void n2ai_error_dump(const n2a_options_t* opts)
 		n2_error_param_t* e = &ed->e_;
 		fprintf(out, "type(error)");
 		fprintf(out, " file(%s)", ed->sourcefile_ ? ed->sourcefile_ : "");
+		fprintf(out, " loc(%d)", e->line_ + N2_LINE_BASE);
 		fprintf(out, " line(%d)", e->line_ + N2_LINE_BASE);
 		fprintf(out, " column(%d)", e->column_ + N2_COLUMN_BASE);
 		fprintf(out, " message{{%s}}", e->raw_message_);
@@ -1011,6 +1012,9 @@ int main(int argc, char* argv[])
 
 #if N2RI_DEBUG && 0
 			{
+				//opts.mode_ = MODE_BUILD;
+				//opts.mode_ = MODE_EXPORT;
+
 				n2_str_t relpath;
 				n2_str_init(&relpath);
 				n2_str_set(state, &relpath, "../demo", SIZE_MAX);

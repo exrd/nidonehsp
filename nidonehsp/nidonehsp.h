@@ -867,7 +867,8 @@ N2_API int n2_plstr_ncmp_sized(const char* lhs, size_t lhs_length, const char* r
 N2_API int n2_plstr_ncmp_sized_fast(const char* lhs, size_t lhs_length, const char* rhs, size_t rhs_length);// 辞書順ではないが高速
 N2_API int n2_plstr_cmp_case(const char* lhs, const char* rhs);
 N2_API int n2_plstr_ncmp_case(const char* lhs, const char* rhs, size_t size);
-N2_API int n2_plstr_search(const char* str, size_t str_len, const char* pattern, size_t pattern_len);
+N2_API int n2_plstr_search_pattern(const char* str, const char* pattern, size_t pattern_len);
+N2_API int n2_plstr_nsearch_pattern(const char* str, size_t str_len, const char* pattern, size_t pattern_len);
 
 struct n2_str_t
 {
@@ -2638,6 +2639,7 @@ enum n2_token_e
 	N2_TOKEN_LPARENTHESIS,
 	N2_TOKEN_RPARENTHESIS,
 	N2_TOKEN_COMMA,
+	N2_TOKEN_DOT,
 
 	N2_TOKEN_NIL,
 	N2_TOKEN_INT,
@@ -2795,6 +2797,7 @@ enum n2_ast_node_e
 	N2_AST_NODE_ARGUMENTS,
 	N2_AST_NODE_ARGUMENTS_PARTS,
 	N2_AST_NODE_ARGUMENTS_EMPTY_ARG,
+	N2_AST_NODE_ARGUMENTS_KEYWORDED_ARG,
 
 	N2_AST_NODE_ASSIGN,
 	N2_AST_NODE_LOR_ASSIGN,

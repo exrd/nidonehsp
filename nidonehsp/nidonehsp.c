@@ -1720,7 +1720,21 @@ N2_API int n2_plstr_ncmp_case(const char* lhs, const char* rhs, size_t size)
 	return 0;
 }
 
-N2_API int n2_plstr_search(const char* str, size_t str_len, const char* pattern, size_t pattern_len)
+N2_API int n2_plstr_search_pattern(const char* str, const char* pattern, size_t pattern_len)
+{
+	if (!str) { return -1; }
+	if (pattern_len == SIZE_MAX) { pattern_len = N2_STRLEN(pattern); }
+	int i = 0;
+	while (*str != '\0')
+	{
+		if (N2_STRNCMP(str, pattern, pattern_len) == 0) { return i; }
+		++str;
+		++i;
+	}
+	return -1;
+}
+
+N2_API int n2_plstr_nsearch_pattern(const char* str, size_t str_len, const char* pattern, size_t pattern_len)
 {
 	if (str_len == SIZE_MAX) { str_len = N2_STRLEN(str); }
 	if (pattern_len == SIZE_MAX) { pattern_len = N2_STRLEN(pattern); }
@@ -5772,9 +5786,9 @@ static n2h_datatree_t* n2hi_datatree_json_import(n2_state_t* state, struct json_
 			N2_ASSERT(njson);
 			n2_str_t tstr; n2_str_init(&tstr); n2_str_set(state, &tstr, njson->number, njson->number_size);
 			n2_bool_t is_float = N2_FALSE;
-			if (n2_plstr_search(tstr.str_, tstr.size_, ".", 1) >= 0 ||
-				n2_plstr_search(tstr.str_, tstr.size_, "E", 1) >= 0 ||
-				n2_plstr_search(tstr.str_, tstr.size_, "e", 1) >= 0)
+			if (n2_plstr_nsearch_pattern(tstr.str_, tstr.size_, ".", 1) >= 0 ||
+				n2_plstr_nsearch_pattern(tstr.str_, tstr.size_, "E", 1) >= 0 ||
+				n2_plstr_nsearch_pattern(tstr.str_, tstr.size_, "e", 1) >= 0)
 			{
 				is_float = N2_TRUE;
 			}
@@ -8566,6 +8580,7 @@ restart:
 	case '(':	++p; token->token_ = N2_TOKEN_LPARENTHESIS; break;
 	case ')':	++p; token->token_ = N2_TOKEN_RPARENTHESIS; break;
 	case ',':	++p; token->token_ = N2_TOKEN_COMMA; break;
+	case '.':	++p; token->token_ = N2_TOKEN_DOT; break;
 
 		// 演算子
 	case '|':
@@ -8966,6 +8981,7 @@ static void n2i_ast_node_dump(n2_state_t* state, int indent, const n2_ast_node_t
 		"ARGUMENTS",
 		"ARGUMENTS_PARTS",
 		"ARGUMENTS_EMPTY_ARG",
+		"ARGUMENTS_KEYWORDED_ARG",
 		"ASSIGN",
 		"LOR_ASSIGN",
 		"LAND_ASSIGN",
@@ -9118,7 +9134,7 @@ static n2_ast_node_t* n2i_parser_parse_func_declare_safe(n2_state_t* state, n2_p
 static n2_ast_node_t* n2i_parser_parse_label_safe(n2_state_t* state, n2_parser_t* p, n2i_parse_context_t* pc, n2_bool_t as_value);
 static n2_ast_node_t* n2i_parser_parse_control_safe(n2_state_t* state, n2_parser_t* p, n2i_parse_context_t* pc);
 static n2_ast_node_t* n2i_parser_parse_command_safe(n2_state_t* state, n2_parser_t* p, n2i_parse_context_t* pc);
-static n2_ast_node_t* n2i_parser_parse_arguments(n2_state_t* state, n2_parser_t* p);
+static n2_ast_node_t* n2i_parser_parse_arguments(n2_state_t* state, n2_parser_t* p, n2_bool_t allow_keyworded_args);
 static n2_ast_node_t* n2i_parser_parse_incdec_safe(n2_state_t* state, n2_parser_t* p, n2i_parse_context_t* pc);
 static n2_ast_node_t* n2i_parser_parse_assign_safe(n2_state_t* state, n2_parser_t* p, n2i_parse_context_t* pc);
 static n2_ast_node_t* n2i_parser_parse_variable_safe(n2_state_t* state, n2_parser_t* p, n2i_parse_context_t* pc);
@@ -10230,7 +10246,7 @@ static n2_ast_node_t* n2i_parser_parse_command_safe(n2_state_t* state, n2_parser
 	if (!n2_token_is_eos_like(next->token_))
 	{
 		n2_parser_unread_token(p, 1);
-		args = n2i_parser_parse_arguments(state, p);
+		args = n2i_parser_parse_arguments(state, p, N2_TRUE);
 		if (!args) { pc->error_ = N2_TRUE; return NULL; }
 	}
 	else
@@ -10243,11 +10259,18 @@ static n2_ast_node_t* n2i_parser_parse_command_safe(n2_state_t* state, n2_parser
 	return res;
 }
 
-static n2_ast_node_t* n2i_parser_parse_arguments(n2_state_t* state, n2_parser_t* p)
+static n2_ast_node_t* n2i_parser_parse_arguments(n2_state_t* state, n2_parser_t* p, n2_bool_t allow_keyworded_args)
 {
 	n2_ast_node_t* res = n2_ast_node_alloc(state, N2_AST_NODE_ARGUMENTS, NULL, NULL);
 	n2_ast_node_t* args = res;
 	n2_bool_t last_token_must_be_comma = N2_FALSE;
+
+	enum
+	{
+		PHASE_ORDERED,
+		PHASE_KEYWORDED
+	};
+	int phase = PHASE_ORDERED;
 
 	for (;;)
 	{
@@ -10263,16 +10286,68 @@ static n2_ast_node_t* n2i_parser_parse_arguments(n2_state_t* state, n2_parser_t*
 		if (last_token_must_be_comma)
 		{
 			N2I_PS_RAISE(state, token, "引数間にはカンマが必要です");
-			n2_ast_node_free(state, args);
-			return NULL;
+			goto fail_exit;
+		}
+
+		// キーワード？
+		const n2_bool_t is_keyworded_arg = token->token_ == N2_TOKEN_DOT;
+		const n2_token_t* keyword_name_token = NULL;
+		if (is_keyworded_arg)
+		{
+			// そもそも有効か？
+			if (!allow_keyworded_args)
+			{
+				N2I_PS_RAISE(state, token, "キーワード引数は有効ではありません");
+				goto fail_exit;
+			}
+
+			// フェーズチェック
+			switch (phase)
+			{
+			case PHASE_ORDERED: phase = PHASE_KEYWORDED; break;
+			default: break;
+			}
+
+			// トークンチェック
+			keyword_name_token = n2_parser_read_token(state, p);
+			if (keyword_name_token->token_ != N2_TOKEN_IDENTIFIER)
+			{
+				N2I_PS_RAISE(state, keyword_name_token, "キーワード引数の名前のパースに失敗、ドットの後はキーワードが必要です");
+				goto fail_exit;
+			}
+
+			token = n2_parser_read_token(state, p);
+			if (token->token_ != N2_TOKEN_ASSIGN)
+			{
+				N2I_PS_RAISE(state, token, "キーワード引数のパースに失敗、キーワードの後は=が必要です");
+				goto fail_exit;
+			}
+
+			// 先読み
+			token = n2_parser_read_token(state, p);
+		}
+		else
+		{
+			// フェーズチェック
+			switch (phase)
+			{
+			case PHASE_KEYWORDED:
+				N2I_PS_RAISE(state, token, "キーワード引数の後に順序引数を渡すことは出来ません（キーワード引数の後はキーワード引数のみ許されます）");
+				goto fail_exit;
+			default: break;
+			}
 		}
 
 		// 引数省略
 		if (token->token_ == N2_TOKEN_COMMA)
 		{
-			n2_ast_node_t* nextarg = n2_ast_node_alloc(state, N2_AST_NODE_ARGUMENTS_EMPTY_ARG, NULL, NULL);
-			args->right_ = n2_ast_node_alloc(state, N2_AST_NODE_ARGUMENTS_PARTS, nextarg, NULL);
-			args = args->right_;
+			// 順序引数なら取得するが、ないならスルー
+			if (!is_keyworded_arg)
+			{
+				n2_ast_node_t* nextarg = n2_ast_node_alloc(state, N2_AST_NODE_ARGUMENTS_EMPTY_ARG, NULL, NULL);
+				args->right_ = n2_ast_node_alloc(state, N2_AST_NODE_ARGUMENTS_PARTS, nextarg, NULL);
+				args = args->right_;
+			}
 			continue;
 		}
 
@@ -10280,7 +10355,16 @@ static n2_ast_node_t* n2i_parser_parse_arguments(n2_state_t* state, n2_parser_t*
 
 		// 実際に値を取得
 		n2_ast_node_t* nextarg = n2_parser_parse_expression(state, p);
-		if (!nextarg) { n2_ast_node_free(state, args); return NULL; }
+		if (!nextarg) { goto fail_exit; }
+
+		// キーワードノードを生成
+		if (keyword_name_token)
+		{
+			n2_ast_node_t* wraparg = n2_ast_node_alloc_token(state, N2_AST_NODE_ARGUMENTS_KEYWORDED_ARG, keyword_name_token, nextarg);
+			nextarg = wraparg;
+		}
+
+		// 引数ノードチェイン
 		args->right_ = n2_ast_node_alloc(state, N2_AST_NODE_ARGUMENTS_PARTS, nextarg, NULL);
 		args = args->right_;
 
@@ -10290,6 +10374,11 @@ static n2_ast_node_t* n2i_parser_parse_arguments(n2_state_t* state, n2_parser_t*
 		else { last_token_must_be_comma = N2_TRUE; n2_parser_unread_token(p, 1); }
 	}
 	return res;
+
+	// 失敗時
+fail_exit:
+	if (args) { n2_ast_node_free(state, args); }
+	return NULL;
 }
 
 static n2_ast_node_t* n2i_parser_parse_incdec_safe(n2_state_t* state, n2_parser_t* p, n2i_parse_context_t* pc)
@@ -10359,7 +10448,7 @@ static n2_ast_node_t* n2i_parser_parse_assign_safe(n2_state_t* state, n2_parser_
 	{
 		if (can_bulk)
 		{
-			expr = n2i_parser_parse_arguments(state, p);
+			expr = n2i_parser_parse_arguments(state, p, N2_FALSE);
 		}
 		else
 		{
@@ -10401,7 +10490,7 @@ static n2_ast_node_t* n2i_parser_parse_variable_safe(n2_state_t* state, n2_parse
 	if (nn->token_ != N2_TOKEN_RPARENTHESIS)
 	{
 		// 引数を取得
-		index_args = n2i_parser_parse_arguments(state, p);
+		index_args = n2i_parser_parse_arguments(state, p, N2_FALSE);
 		if (!index_args) { pc->error_ = N2_TRUE; return NULL; }
 	}
 
@@ -10964,7 +11053,7 @@ static n2_ast_node_t* n2i_parser_parse_identifier_expression_safe(n2_state_t* st
 	}
 
 	// 引数あり
-	n2_ast_node_t* index = n2i_parser_parse_arguments(state, p);
+	n2_ast_node_t* index = n2i_parser_parse_arguments(state, p, N2_TRUE);
 	if (!index) { pc->error_ = N2_TRUE; return NULL; }
 
 	const n2_token_t* nn = n2_parser_read_token(state, p);
@@ -21935,6 +22024,7 @@ typedef struct n2i_codegen_context_t n2i_codegen_context_t;
 struct n2i_codegen_context_t
 {
 	int stack_;
+	int keyworded_args_;
 	const n2_sourcecode_t* sourcecode_;
 	n2i_codegen_shortblockarray_t* shortblocks_;
 	n2_bool_t generate_codelines_;
@@ -22612,6 +22702,19 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 		// nilを入れる
 		n2_opcodearray_pushv(state, opcodes, N2_OPCODE_PUSH_NIL);
 		++c->stack_;
+		break;
+	case N2_AST_NODE_ARGUMENTS_KEYWORDED_ARG:
+		{
+			N2_ASSERT(n->token_);
+			N2_ASSERT(n->token_->token_ == N2_TOKEN_IDENTIFIER);
+			const char* keyword_name = n->token_->content_;
+
+			++c->keyworded_args_;
+
+			// @todo
+			n2i_environment_generate_raise(state, n, "キーワード引数は未実装です(keyword=%s)", keyword_name);
+			return N2_FALSE;
+		}
 		break;
 
 	case N2_AST_NODE_LOR_ASSIGN:
@@ -23459,8 +23562,9 @@ static n2_bool_t n2i_environment_generate(n2_state_t* state, n2_environment_t* e
 	const char* package = sourcecode->package_.str_;
 
 	n2i_codegen_context_t c;
-	c.sourcecode_ = sourcecode;
 	c.stack_ = 0;
+	c.keyworded_args_ = 0;
+	c.sourcecode_ = sourcecode;
 	c.shortblocks_ = n2i_codegen_shortblockarray_alloc(state, 16, 4);
 	c.generate_codelines_ = state->config_.generate_codelines_;
 	c.uselib_ = NULL;
@@ -30683,7 +30787,7 @@ static int n2si_bifunc_picload_common(const n2_funcarg_t* arg, n2_bool_t is_picl
 	if (!n2i_bifunc_internal_fsload(arg, &filebuf, file->str_, N2_TRUE, SIZE_MAX, 0))
 	{
 		n2_buffer_teardown(arg->state_, &filebuf);
-		n2e_funcarg_raise(arg, "%s：ファイル（%s）の読み込みに失敗", label, file);
+		n2e_funcarg_raise(arg, "%s：ファイル（%.*s）の読み込みに失敗", label, file->size_, file->str_);
 		return -1;
 	}
 
@@ -30694,7 +30798,7 @@ static int n2si_bifunc_picload_common(const n2_funcarg_t* arg, n2_bool_t is_picl
 	{
 		n2_buffer_teardown(arg->state_, &filebuf);
 		n2_buffer_teardown(arg->state_, &imagebuf);
-		n2e_funcarg_raise(arg, "%s：ファイル（%s）を画像として読み込もうとしましたが失敗：サポートされてない形式です", label, file);
+		n2e_funcarg_raise(arg, "%s：ファイル（%.*s）を画像として読み込もうとしましたが失敗：サポートされてない形式です", label, file->size_, file->str_);
 		return -1;
 	}
 

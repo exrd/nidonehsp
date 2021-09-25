@@ -32,8 +32,8 @@
 	objsize 200, 20 : pos 20, 160 : chkbox "チェックボックスのテスト", checked
 	objsize 200, 20 : pos 20, 190 : input textInput
 	pos 20, 210 : mesbox multiTextInput, 200, 60
-	objsize 100, 20 : pos 20, 290 : chkbox "斜体", gIsFontItalic : pos 130, 280 : chkbox "シャドウ", gIsFontShadow : pos 250, 280 : chkbox "アウトライン", gIsFontOutline
-	objsize 170, 20 : pos 20, 320 : button gosub "ダイアログ（OK）", *implDialogOk : pos 200, 310 : button gosub "ダイアログ（はい・いいえ）", *implDialogYesNo
+	objsize 100, 20 : pos 20, 290 : chkbox "斜体", gIsFontItalic : pos 130, 290 : chkbox "シャドウ", gIsFontShadow : pos 250, 290 : chkbox "アウトライン", gIsFontOutline
+	objsize 170, 20 : pos 20, 320 : button gosub "ダイアログ（OK）", *implDialogOk : pos 200, 320 : button gosub "ダイアログ（はい・いいえ）", *implDialogYesNo
 	widgetIDLast = stat
 	objsize 60, 20 : pos 540, 400 : button gosub "セーブ", *implSaveTo
 	objsize 60, 20 : pos 610, 400 : button gosub "終わる", *implReturnTo

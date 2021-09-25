@@ -163,12 +163,13 @@
 				],
 				"pattern": [
 					{
-						"regexp": "^\\s*type\\((error|warning)\\)\\s+file\\((.*?)\\)\\s+line\\((\\d+)\\)\\s+column\\((\\d+)\\)\\s+message\\{\\{(.*?)\\}\\}\\s*$",
+						"regexp": "^\\s*type\\((error|warning)\\)\\s+file\\((.*?)\\)\\s+loc\\((\\d+)\\)\\s+line\\((\\d+)\\)\\s+column\\((\\d+)\\)\\s+message\\{\\{(.*?)\\}\\}\\s*$",
 						"severity": 1,
 						"file": 2,
-						"line": 3,
-						"column": 4,
-						"message": 5
+						"location": 3,
+						"line": 4,
+						"column": 5,
+						"message": 6
 					}
 				]
 			}

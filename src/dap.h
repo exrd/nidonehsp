@@ -416,10 +416,27 @@ static n2_bool_t n2ri_dap_push_thread_stacktrace(n2_state_t* s, n2_str_t* t, n2r
 				n2ri_dap_push_source_content(s, t, dap, state, cfcodeline->sourcecode_);
 				n2_str_append_fmt(s, t, "}\n");
 			}
-			n2_str_append_fmt(s, t, ", \"line\": %d\n", cfcodeline ? cfcodeline->line_ + dap->line_base_ : -1);
+
+			const int line = cfcodeline ? cfcodeline->line_ + dap->line_base_ : -1;
+			n2_str_append_fmt(s, t, ", \"line\": %d\n", line);
+
+			// とりあえず行全体にする
+#if 1
+			n2_str_append_fmt(s, t, ", \"column\": %d\n", 0);
+#else
 			n2_str_append_fmt(s, t, ", \"column\": %d\n", 0 + dap->column_base_);
-			//n2_str_append_fmt(s, t, ", \"endLine\": -1\n");
+			n2_str_append_fmt(s, t, ", \"endLine\": %d\n", line);
 			//n2_str_append_fmt(s, t, ", \"endColumn\": -1\n");
+			if (cfcodeline && cfcodeline->line_head_)
+			{
+				const int end_column = n2_plstr_search_pattern(cfcodeline->line_head_, "\n", 1);
+				if (end_column >= 0)
+				{
+					n2_str_append_fmt(s, t, ", \"endColumn\": %d\n", end_column + dap->column_base_);
+				}
+			}
+#endif
+
 			//n2_str_append_fmt(s, t, ", \"canRestart\": false\n");
 			//n2_str_append_fmt(s, t, ", \"instructionPointerReference\": \"\"\n");
 			//n2_str_append_fmt(s, t, ", \"moduleId\": -1\n");
