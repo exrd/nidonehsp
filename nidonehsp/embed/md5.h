@@ -27,12 +27,12 @@
 #include <stdint.h>
 
 #ifndef MD5_MEMCPY
-#include <string.h>    /* for MD5_MEMCPY() */
+#include <string.h>    /* for memcpy() */
 #define MD5_MEMCPY memcpy
 #endif
 
 #ifndef MD5_MEMSET
-#include <string.h>
+#include <string.h>     /* for memset() */
 #define MD5_MEMSET memset
 #endif
 
