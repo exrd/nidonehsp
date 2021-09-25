@@ -8,8 +8,15 @@
 	if (!gIsInitialized) {
 		gIsInitialized = 1
 		gIsFontItalic = 0 : gIsFontShadow = 0 : gIsFontOutline = 0 : gIsFontHeight = 32.0
+		gSaveFilePath = sysreq@n2(sysreq_save_path@n2) + "/save.txt"
 		textInput = "サンプル入力"
 		multiTextInput = "サンプル複数\n行入力"
+		// セーブ読み込み
+		exist gSaveFilePath
+		if (strsize >= 0) {
+			notesel textInput
+			noteload gSaveFilePath
+		}
 	}
 	// ローカル初期化
 	toReturn = 0
@@ -19,15 +26,16 @@
 	enableDisable = 1
 	// GUI初期化
 	gsel 0 : cls
-	objsize 160, 20 : pos 510, 120 : button gosub "ウィジェットの無効化", *implToggleEnable
+	objsize 160, 20 : pos 510, 130 : button gosub "ウィジェットの無効化", *implToggleEnable
 	widgetIDFirst = stat
-	objsize 200, 20 : pos 20, 120 : button gosub "ボタンをおしてください", *implPushButton
-	objsize 200, 20 : pos 20, 150 : chkbox "チェックボックスのテスト", checked
-	objsize 200, 20 : pos 20, 180 : input textInput
+	objsize 200, 20 : pos 20, 130 : button gosub "ボタンをおしてください", *implPushButton
+	objsize 200, 20 : pos 20, 160 : chkbox "チェックボックスのテスト", checked
+	objsize 200, 20 : pos 20, 190 : input textInput
 	pos 20, 210 : mesbox multiTextInput, 200, 60
-	objsize 100, 20 : pos 20, 280 : chkbox "斜体", gIsFontItalic : pos 130, 280 : chkbox "シャドウ", gIsFontShadow : pos 250, 280 : chkbox "アウトライン", gIsFontOutline
-	objsize 170, 20 : pos 20, 310 : button gosub "ダイアログ（OK）", *implDialogOk : pos 200, 310 : button gosub "ダイアログ（はい・いいえ）", *implDialogYesNo
+	objsize 100, 20 : pos 20, 290 : chkbox "斜体", gIsFontItalic : pos 130, 280 : chkbox "シャドウ", gIsFontShadow : pos 250, 280 : chkbox "アウトライン", gIsFontOutline
+	objsize 170, 20 : pos 20, 320 : button gosub "ダイアログ（OK）", *implDialogOk : pos 200, 310 : button gosub "ダイアログ（はい・いいえ）", *implDialogYesNo
 	widgetIDLast = stat
+	objsize 60, 20 : pos 540, 400 : button gosub "セーブ", *implSaveTo
 	objsize 60, 20 : pos 610, 400 : button gosub "終わる", *implReturnTo
 	return
 
@@ -49,6 +57,12 @@
 
 *implPushButton
 	buttonPushed++
+	return
+
+*implSaveTo
+	notesel textInput
+	notesave gSaveFilePath
+	sysreq@n2 sysreq_save_exec@n2
 	return
 
 *implReturnTo
@@ -95,22 +109,23 @@
 			//ut = gettime(gettime_unixtime@n2) : lt = gettime(gettime_localtime@n2) : mes `time(lt=${lt}, ut=${ut}, ${exttime@n2(0, lt)}/${exttime@n2(1, lt)}/${exttime@n2(3, lt)}(${wdays(exttime@n2(2, lt))}) ${exttime@n2(4, lt)}:${exttime@n2(5, lt)}:${exttime@n2(6, lt)}.${exttime@n2(7, lt)})`
 			mes `cwd(${dir_cur})`
 			mes `exe(${dir_exe})`
+			mes `savePath(${sysreq@n2(sysreq_save_path@n2)})`
 #if 0// pget
 			mes `mouse RGB=(${tColR}, ${tColG}, ${tColB})`
 #endif
-		pos 240, 120 : mes buttonPushed > 0 then `ボタンが ${buttonPushed} 回押されました` else ""
-		pos 240, 150 : mes `チェック状態 ${checked}`
-		pos 240, 180 : mes `テキスト入力 ${textInput}`
-		pos 240, 210 : mes `複数行入力\n${multiTextInput}`
+		pos 240, 140 : mes buttonPushed > 0 then `ボタンが ${buttonPushed} 回押されました` else ""
+		pos 240, 160 : mes `チェック状態 ${checked}`
+		pos 240, 190 : mes `テキスト入力 ${textInput}`
+		pos 240, 220 : mes `複数行入力\n${multiTextInput}`
 
 		font "Stick", gIsFontHeight, (gIsFontItalic then 2 else 0)
 		color 255, 0, 255 : objcolor 255, 255, 0
-		tsx = 380 : tsy = 280
+		tsx = 380 : tsy = 290
 		pos tsx, tsy : mes `nidonehspのテキスト表示テスト\n入力＝${textInput}`, (gIsFontShadow then mesopt_shadow else 0) | (gIsFontOutline then mesopt_outline else 0)
 		color 0, 255, 255
 		pos tsx, tsy : line tsx + ginfo_mesx, tsy : line tsx + ginfo_mesx, tsy + ginfo_mesy : line tsx, tsy + ginfo_mesy : line tsx, tsy
 
-		tsx = 20 : tsy = 350
+		tsx = 20 : tsy = 360
 		trad = deg2rad(0.5 * masterFrame)
 		color 255, 255, 222 : grect tsx + 20, tsy + 20, trad, 32, 32
 		pos tsx + 60, tsy + 20 : gmode 3, 64, 64, 192 : grotate SID_ICON, 0, 0, trad, 32, 32
@@ -120,12 +135,12 @@
 		scs = 0xff0000, 0x00ff00, 0x0000ff, 0xffffff : repeat 4 : dxs(cnt) += 40.0 : loop : gmode 0 : gsquare -257, dxs, dys, scs
 		repeat 4 : dxs(cnt) += 40.0 : sxs(cnt) = cnt == 1 || cnt == 2 then 64 else 0 : sys(cnt) = cnt < 2 then 0 else 64 : loop : gmode 0 : gsquare SID_ICON, dxs, dys, sxs, sys
 
-		tsx = 300 : tsy = 350
+		tsx = 300 : tsy = 360
 		gmode 3, , , 128
 		color 255, 0, 0 : garc@n2 tsx + 0, tsy, tsx + 30, tsy + 30, deg2rad(0.8 * masterFrame), deg2rad(180.0 + sin(deg2rad(masterFrame * 2)) * 180.0), -1
 		color 255, 255, 0 : garc@n2 tsx + 30, tsy, tsx + 60, tsy + 30, deg2rad(0.8 * masterFrame), deg2rad(180.0 + sin(deg2rad(masterFrame * 2)) * 180.0), 5
 
-		tsx = 380 : tsy = 360
+		tsx = 380 : tsy = 370
 		dim tpixels, 5, 5
 		tpixels(0, 0) = 0, 0, 1, 0, 0
 		tpixels(1, 0) = 0, 1, 1, 1, 0

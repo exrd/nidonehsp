@@ -4068,6 +4068,8 @@
 				"|`sysreq_system_ram_mb@n2`|`int`|〇|×|システムのメモリ量[MB]。|$",
 				"|`sysreq_battery_seconds@n2`|`int`|〇|×|バッテリーの残り時間[sec]。バッテリーが存在しない場合は`-1`。|$",
 				"|`sysreq_battery_percentage@n2`|`int`|〇|×|バッテリーの残りパーセンテージ[%]。バッテリーが存在しない場合は`-1`。|$",
+				"|`sysreq_save_path@n2`|`str`|〇|×|セーブ用のディレクトリのパスを返す。HTML(emscripten)など、セーブ用の特殊なファイルパスが存在するときはそのパスを、そうでない場合は実行ファイルのパスを返す。$ref(stat)に、パスを正しく取得できたら`1`を、そうでなければ`0`を代入する。|$",
+				"|`sysreq_save_exec@n2`|`int`|〇|×|セーブのコミットを行う。HTML(emscripten)など、セーブ用の特殊な操作が必要な場合はそれを行い、そうでない場合は特に何も処理しない。正しく操作を終えたら`1`を、そうでなければ`0`を返す。|$",
 				"|`sysreq_font_atlas_width@n2`<br>`sysreq_font_atlas_height@n2`|`int`|〇|〇|$ref(fontload@n2)命令で生成するフォントのアトラステクスチャのサイズ|$",
 				"$",
 				"プラットフォームを表す定数は次の通りです。$",
@@ -4166,6 +4168,34 @@
 			],
 			"description": [
 				"$ref(sysreq@n2)におけるリクエストの種類（バッテリー残量）を示す整数の定数です。"
+			],
+			"relationGroup": [
+				"stdConstantSysreq"
+			]
+		},
+		"sysreq_save_path@n2": {
+			"type": "constant",
+			"summary": "セーブ用のディレクトリパスリクエスト",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"$ref(sysreq@n2)におけるリクエストの種類（セーブ用のディレクトリパス）を示す整数の定数です。"
+			],
+			"relationGroup": [
+				"stdConstantSysreq"
+			]
+		},
+		"sysreq_save_exec@n2": {
+			"type": "constant",
+			"summary": "セーブ実行リクエスト",
+			"group": ["basics"],
+			"tag": [],
+			"parameters": [
+			],
+			"description": [
+				"$ref(sysreq@n2)におけるリクエストの種類（セーブ実行）を示す整数の定数です。"
 			],
 			"relationGroup": [
 				"stdConstantSysreq"

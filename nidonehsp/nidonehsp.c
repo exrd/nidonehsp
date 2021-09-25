@@ -18568,6 +18568,8 @@ N2_API const char* n2s_sysreq_get_name(n2s_sysreq_e sysreq, const char* on_faile
 	case N2S_SYSREQ_CPU_CORE_COUNT:			return "cpu_core_count";
 	case N2S_SYSREQ_CPU_CACHE_LINE_SIZE:	return "cpu_cache_line_size";
 	case N2S_SYSREQ_SYSTEM_RAM_MB:			return "system_ram_mb";
+	case N2S_SYSREQ_SAVE_PATH:				return "save_path";
+	case N2S_SYSREQ_SAVE_EXEC:				return "save_exec";
 	case N2S_SYSREQ_BATTERY_SECONDS:		return "battery_seconds";
 	case N2S_SYSREQ_BATTERY_PERCENTAGE:		return "battery_percentage";
 	case N2S_SYSREQ_FONT_ATLAS_WIDTH:		return "font_atlas_width";
@@ -23982,6 +23984,8 @@ N2_API void n2_state_config_init_ex(n2_state_config_t* dst_config, size_t flags)
 	dst_config->enable_script_auto_decode_utf16_ = N2_TRUE;
 	dst_config->enable_script_auto_decode_cp932_ = N2_TRUE;
 
+	dst_config->external_save_path_ = NULL;
+
 	dst_config->standard_init_sdl_with_subsystem_ = N2_FALSE;
 
 	dst_config->standard_window_num_ = N2S_DEFAULT_WINDOW_NUM;
@@ -29032,6 +29036,40 @@ static int n2si_bifunc_sysreq_n2(const n2_funcarg_t* arg)
 		case N2S_SYSREQ_BATTERY_SECONDS: { int seconds = -1; SDL_GetPowerInfo(&seconds, NULL); n2e_funcarg_pushi(arg, seconds); } break;
 		case N2S_SYSREQ_BATTERY_PERCENTAGE: { int percent = -1; SDL_GetPowerInfo(NULL, &percent); n2e_funcarg_pushi(arg, percent); } break;
 #endif
+		case N2S_SYSREQ_SAVE_PATH:
+			{
+				n2_valstr_t* path = n2e_funcarg_pushs(arg, "");
+				if (arg->state_->config_.external_save_path_)
+				{
+					n2_str_set(arg->state_, path, arg->state_->config_.external_save_path_, SIZE_MAX);
+					arg->fiber_->stat_ = 1;
+				}
+				else
+				{
+					n2_str_t selfpath;
+					n2_str_init(&selfpath);
+					const n2_bool_t succeeded = n2h_systemfiledevice_selfpath(arg->state_, &selfpath);
+					if (succeeded)
+					{
+						n2_path_split(arg->state_, path, NULL, NULL, &selfpath);
+					}
+					arg->fiber_->stat_ = succeeded ? 1 : 0;
+					n2_str_teardown(arg->state_, &selfpath);
+				}
+			}
+			break;
+		case N2S_SYSREQ_SAVE_EXEC:
+			{
+				n2_bool_t succeeded = N2_TRUE;
+#if N2_PLATFORM_IS_EMSCRIPTEN
+				// flush idbfs writes
+				EM_ASM(
+					FS.syncfs(function (err) {});
+				);
+#endif
+				n2e_funcarg_pushi(arg, succeeded ? 1 : 0);
+			}
+			break;
 #if N2_CONFIG_USE_N2_STANDARD
 		case N2S_SYSREQ_FONT_ATLAS_WIDTH: n2e_funcarg_pushi(arg, se ? N2_SCAST(n2_valint_t, se->font_atlas_width_) : 0); break;
 		case N2S_SYSREQ_FONT_ATLAS_HEIGHT: n2e_funcarg_pushi(arg, se ? N2_SCAST(n2_valint_t, se->font_atlas_height_) : 0); break;
@@ -31171,6 +31209,8 @@ static void n2i_environment_bind_standards_builtins(n2_state_t* state, n2_pp_con
 		n2i_pp_context_register_macro_rawi(state, ppc, "sysreq_system_ram_mb@n2", N2S_SYSREQ_SYSTEM_RAM_MB);
 		n2i_pp_context_register_macro_rawi(state, ppc, "sysreq_battery_seconds@n2", N2S_SYSREQ_BATTERY_SECONDS);
 		n2i_pp_context_register_macro_rawi(state, ppc, "sysreq_battery_percentage@n2", N2S_SYSREQ_BATTERY_PERCENTAGE);
+		n2i_pp_context_register_macro_rawi(state, ppc, "sysreq_save_path@n2", N2S_SYSREQ_SAVE_PATH);
+		n2i_pp_context_register_macro_rawi(state, ppc, "sysreq_save_exec@n2", N2S_SYSREQ_SAVE_EXEC);
 		n2i_pp_context_register_macro_rawi(state, ppc, "sysreq_font_atlas_width@n2", N2S_SYSREQ_FONT_ATLAS_WIDTH);
 		n2i_pp_context_register_macro_rawi(state, ppc, "sysreq_font_atlas_height@n2", N2S_SYSREQ_FONT_ATLAS_HEIGHT);
 

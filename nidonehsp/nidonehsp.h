@@ -4537,6 +4537,9 @@ enum n2s_sysreq_e
 	N2S_SYSREQ_BATTERY_SECONDS,
 	N2S_SYSREQ_BATTERY_PERCENTAGE,
 
+	N2S_SYSREQ_SAVE_PATH,
+	N2S_SYSREQ_SAVE_EXEC,
+
 	N2S_SYSREQ_FONT_ATLAS_WIDTH,
 	N2S_SYSREQ_FONT_ATLAS_HEIGHT,
 
@@ -5435,6 +5438,9 @@ struct n2_state_config_t
 
 	// スクリプトcp932の自動デコード
 	n2_bool_t enable_script_auto_decode_cp932_;// = N2_TRUE
+
+	// セーブパス（外部指定）
+	const char* external_save_path_;// = NULL
 
 	// SDLの初期化をSubSystemで行うか
 	n2_bool_t standard_init_sdl_with_subsystem_;// = N2_FALSE

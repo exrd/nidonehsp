@@ -247,6 +247,9 @@ int main(int argc, char* argv[])
 		config.generate_debugvars_ = N2_FALSE;// DebugVarも同様（元々無効化されているが）
 		config.max_message_log_ = 0;// logmes無効化
 		config.enable_error_include_push_ = N2_FALSE;// プリプロセス済みのファイルを扱うのでエラーなし
+#if N2_PLATFORM_IS_EMSCRIPTEN
+		config.external_save_path_ = n2ri_em_idbfs_root;// emscriptenのidbfsマウントルートパス
+#endif
 	}
 
 	// デバッグ用
