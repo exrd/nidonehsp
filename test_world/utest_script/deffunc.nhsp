@@ -21,9 +21,18 @@ goto *start_deffunc
 	l = i + j * 6 + l
 	return l
 
+#deffunc func6 int .i = 10
+	return i * 2
+
+#deffunc func7(int .i = 10, int .j = 20)
+	return i * 2 + j * 3
+
+#deffunc func8(int l, int .i = 10, int .j = 20)
+	return i * 2 + j * 3 + l * 4
+
 *start_deffunc
 
-mes "deffunc"
+mes "deffunc(ordered args)"
 	if (func1(10) != 20) { raise }
 	if (func2(10, 20) != 70) { raise }
 	if (func3(10, 20) != 90) { raise }
@@ -33,6 +42,19 @@ mes "deffunc"
 	if (func5(10) != 35) { raise }
 	if (func5(10, 5) != 52) { raise }
 	if (func5(10, 1, 100) != 116) { raise }
+
+mes "deffunc(keyworded args)"
+	if (func6() != 20) { raise }
+	if (func6(.i = 20) != 40) { raise }
+	if (func6(.j = 20) != 20) { raise }
+	if (func7() != 80) { raise }
+	if (func7(.i = 2) != 64) { raise }
+	if (func7(.j = 2) != 26) { raise }
+	if (func7(.i = 3, .j = 2) != 12) { raise }
+	if (func7(.j = 2, .i = 3) != 12) { raise }
+	if (func8(5) != 100) { raise }
+	//if (func8(5, 4) != 100) { raise }// error
+	if (func8(5, .j = 2, .i = 3) != 32) { raise }
 
 //=============================================================================
 // deffunc

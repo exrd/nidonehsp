@@ -2881,6 +2881,30 @@ N2_API void* n2_array_insert(n2_state_t* state, n2_array_t* a, int index, const 
 	return to_element;
 }
 
+N2_API void* n2_array_multiinsert_replicate(n2_state_t* state, n2_array_t* a, int index, size_t num, const void* element)
+{
+	const int n = (index < 0 ? N2_SCAST(int, a->size_) + index : index);
+	if (n < 0 || n > N2_SCAST(int, a->size_)) { return NULL; }
+	n2_array_reserve(state, a, a->size_ + num);
+	if (n == N2_SCAST(int, a->size_))
+	{
+		while (num-- > 0) { n2_array_push(state, a, element); }
+		return n2_array_peek(a, n);
+	}
+	void* to_element = n2_ptr_offset(a->elements_, N2_SCAST(int, a->element_size_) * n);
+	N2_MEMMOVE(n2_ptr_offset(a->elements_, N2_SCAST(int, a->element_size_) * (n + num)), to_element, a->element_size_ * (a->size_ - n));
+	if (element)
+	{
+		for(size_t i = 0; i < num; ++i)
+		{
+			N2_MEMCPY(to_element, element, a->element_size_);
+			to_element = n2_ptr_offset(to_element, a->element_size_);
+		}
+	}
+	a->size_ += num;
+	return to_element;
+}
+
 N2_API int n2_array_find(const n2_array_t* a, n2_array_element_match_func match, const void* key)
 {
 	for (size_t i = 0; i < a->size_; ++i)
@@ -3087,6 +3111,22 @@ N2_API void* n2_sorted_array_find_match(n2_sorted_array_t* a, n2_sorted_array_el
 	return NULL;
 }
 
+N2_API const void* n2_sorted_array_findc_match(const n2_sorted_array_t* a, n2_sorted_array_element_match_func match, const void* key)
+{
+	N2_ASSERT(match);
+	int l = 0, r = N2_SCAST(int, a->a_.size_);
+	while (l < r)
+	{
+		const int m = (l + r) / 2;
+		const void* element = n2_array_peekc(&a->a_, m);
+		const int c = match(a, element, key);
+		if (c == 0) { return element; }
+		else if (c > 0) { r = m; }
+		else { l = m + 1; }
+	}
+	return NULL;
+}
+
 N2_API void* n2_sorted_array_lowerbound_match(n2_sorted_array_t* a, n2_sorted_array_element_match_func match, const void* key)
 {
 	N2_ASSERT(match);
@@ -3163,6 +3203,11 @@ N2_API n2_bool_t n2_sorted_array_erase_at(n2_state_t* state, n2_sorted_array_t* 
 N2_API void* n2_sorted_array_find(n2_sorted_array_t* a, const void* key)
 {
 	return n2_sorted_array_find_match(a, a->match_, key);
+}
+
+N2_API const void* n2_sorted_array_findc(const n2_sorted_array_t* a, const void* key)
+{
+	return n2_sorted_array_findc_match(a, a->match_, key);
 }
 
 N2_API void* n2_sorted_array_lowerbound(n2_sorted_array_t* a, const void* key)
@@ -8974,6 +9019,7 @@ static void n2i_ast_node_dump(n2_state_t* state, int indent, const n2_ast_node_t
 		"CFUNC",
 		"DEFFUNC_PARTS",
 		"DECLARE_PARAM",
+		"DECLARE_KEYWORDED_PARAM",
 		"DECLARE_PARAM_PARTS",
 		"LABEL",
 		"BLOCK_STATEMENTS",
@@ -9055,6 +9101,7 @@ static void n2i_ast_node_dump(n2_state_t* state, int indent, const n2_ast_node_t
 		case N2_AST_NODE_ROOT_PARTS:
 		case N2_AST_NODE_DEFFUNC_PARTS:
 		case N2_AST_NODE_DECLARE_PARAM_PARTS:
+		case N2_AST_NODE_DECLARE_KEYWORDED_PARAM:
 		case N2_AST_NODE_BLOCK_STATEMENTS:
 		case N2_AST_NODE_ARGUMENTS_PARTS:
 			noprint = N2_TRUE;
@@ -9080,6 +9127,7 @@ static void n2i_ast_node_dump(n2_state_t* state, int indent, const n2_ast_node_t
 		case N2_AST_NODE_LINE:
 		case N2_AST_NODE_DEFFUNC_PARTS:
 		case N2_AST_NODE_DECLARE_PARAM:
+		case N2_AST_NODE_DECLARE_KEYWORDED_PARAM:
 		case N2_AST_NODE_DECLARE_PARAM_PARTS:
 		case N2_AST_NODE_BLOCK_STATEMENTS:
 		case N2_AST_NODE_ARGUMENTS_PARTS:
@@ -9748,6 +9796,7 @@ static n2_ast_node_t* n2i_parser_parse_func_declare_safe(n2_state_t* state, n2_p
 	const n2_token_t* nt = n2_parser_read_token(state, p);
 	if (n2_token_is_eos_like(nt->token_))
 	{
+		// 引数なし宣言時
 		n2_parser_unread_token(p, 1);
 	}
 	else
@@ -9755,6 +9804,14 @@ static n2_ast_node_t* n2i_parser_parse_func_declare_safe(n2_state_t* state, n2_p
 		// 左括弧チェック
 		const n2_bool_t has_parenthesis = is_dlfunc ? N2_FALSE : nt->token_ == N2_TOKEN_LPARENTHESIS;// 動的ライブラリ宣言時は括弧は絶対つかない
 		if (!has_parenthesis) { n2_parser_unread_token(p, 1); }
+
+		// フェーズ
+		enum
+		{
+			PHASE_ORDERED,
+			PHASE_KEYWORDED
+		};
+		int phase = PHASE_ORDERED;
 
 		const n2_token_t* preread_e = n2_parser_read_token(state, p);
 		n2_parser_unread_token(p, 1);
@@ -9776,11 +9833,20 @@ static n2_ast_node_t* n2i_parser_parse_func_declare_safe(n2_state_t* state, n2_p
 				}
 
 				// 名前
-				const n2_token_t* param_name = param_name = n2_parser_read_token(state, p);
+				const n2_token_t* param_name = n2_parser_read_token(state, p);
+
+				// キーワード
+				n2_bool_t is_keyworded_param = N2_FALSE;
+				if (param_name->token_ == N2_TOKEN_DOT)
+				{
+					is_keyworded_param = N2_TRUE;
+					param_name = n2_parser_read_token(state, p);
+				}
+
 				if (param_name->token_ != N2_TOKEN_IDENTIFIER)
 				{
 					// パラメータ省略OK？
-					if (!is_dlfunc)
+					if (!is_dlfunc || is_keyworded_param)
 					{
 						N2I_PS_RAISE(state, param_name, "%s：関数（%s）パラメータ名を認識できません（%s）", directive_name, ident->content_, param_name->content_);
 						if (params) { n2_ast_node_free(state, params); }
@@ -9789,6 +9855,28 @@ static n2_ast_node_t* n2i_parser_parse_func_declare_safe(n2_state_t* state, n2_p
 					}
 					n2_parser_unread_token(p, 1);
 					param_name = NULL;
+				}
+
+				// フェーズチェック
+				if (is_keyworded_param)
+				{
+					switch (phase)
+					{
+					case PHASE_ORDERED: phase = PHASE_KEYWORDED; break;
+					default: break;
+					}
+				}
+				else
+				{
+					switch (phase)
+					{
+					case PHASE_KEYWORDED:
+						N2I_PS_RAISE(state, param_name, "キーワード引数の後に順序引数を定義することは出来ません（キーワード引数の後はキーワード引数のみ許されます）");
+						if (params) { n2_ast_node_free(state, params); }
+						pc->error_ = N2_TRUE;
+						return NULL;
+					default: break;
+					}
 				}
 
 				// デフォルト値
@@ -9815,7 +9903,7 @@ static n2_ast_node_t* n2i_parser_parse_func_declare_safe(n2_state_t* state, n2_p
 				n2_ast_node_t* this_param_type = n2_ast_node_alloc_token(state, N2_AST_NODE_DECLARE_PARAM_PARTS, type, this_param_defval);
 				n2_ast_node_t* this_param_name = n2_ast_node_alloc_token(state, N2_AST_NODE_DECLARE_PARAM_PARTS, param_name, NULL);
 				n2_ast_node_t* this_param_parts = n2_ast_node_alloc(state, N2_AST_NODE_DECLARE_PARAM_PARTS, this_param_type, this_param_name);
-				n2_ast_node_t* this_param = n2_ast_node_alloc(state, N2_AST_NODE_DECLARE_PARAM, this_param_parts, NULL);
+				n2_ast_node_t* this_param = n2_ast_node_alloc(state, is_keyworded_param ? N2_AST_NODE_DECLARE_KEYWORDED_PARAM : N2_AST_NODE_DECLARE_PARAM, this_param_parts, NULL);
 
 				if (!params)
 				{
@@ -10319,7 +10407,7 @@ static n2_ast_node_t* n2i_parser_parse_arguments(n2_state_t* state, n2_parser_t*
 			token = n2_parser_read_token(state, p);
 			if (token->token_ != N2_TOKEN_ASSIGN)
 			{
-				N2I_PS_RAISE(state, token, "キーワード引数のパースに失敗、キーワードの後は=が必要です");
+				N2I_PS_RAISE(state, token, "キーワード引数のパースに失敗、キーワードの後は=によって値を指定する必要があります");
 				goto fail_exit;
 			}
 
@@ -11080,7 +11168,7 @@ N2_DEFINE_TARRAY(n2_parser_t*, n2_parserarray, N2_API, n2i_setupfunc_nothing, n2
 
 static void n2i_symbol_init(n2_symbol_t* symbol)
 {
-	symbol->id_ = SIZE_MAX;
+	symbol->id_ = N2_SYMBOL_ID_INVALID;
 	n2_str_init(&symbol->name_);
 }
 
@@ -11154,32 +11242,49 @@ N2_API void n2_symboltable_free(n2_state_t* state, n2_symboltable_t* symboltable
 
 N2_API n2_symbol_t* n2_symboltable_peek(n2_symboltable_t* symboltable, int index)
 {
+	if (index < 0) { return NULL; }
 	return n2_symbolarray_peek(symboltable->symbolarray_, index);
+}
+
+N2_API const n2_symbol_t* n2_symboltable_peekc(const n2_symboltable_t* symboltable, int index)
+{
+	if (index < 0) { return NULL; }
+	return n2_symbolarray_peekc(symboltable->symbolarray_, index);
 }
 
 N2_API n2_symbol_t* n2_symboltable_find(n2_symboltable_t* symboltable, const char* name)
 {
 	if (!name) { return NULL; }
-	int* index = n2_symbolindexmap_find(symboltable->symbolindexmap_, name);
+	const int* index = n2_symbolindexmap_findc(symboltable->symbolindexmap_, name);
 	if (!index) { return NULL; }
 	return n2_symbolarray_peek(symboltable->symbolarray_, *index);
 }
 
-N2_API int n2_symboltable_register(n2_state_t* state, n2_symboltable_t* symboltable, const char* name)
+N2_API const n2_symbol_t* n2_symboltable_findc(const n2_symboltable_t* symboltable, const char* name)
+{
+	if (!name) { return NULL; }
+	const int* index = n2_symbolindexmap_findc(symboltable->symbolindexmap_, name);
+	if (!index) { return NULL; }
+	return n2_symbolarray_peekc(symboltable->symbolarray_, *index);
+}
+
+N2_API n2_symbol_id_t n2_symboltable_register(n2_state_t* state, n2_symboltable_t* symboltable, const char* name)
 {
 	n2_symbol_t* symbol = NULL;
 	if (name) { symbol = n2_symboltable_find(symboltable, name); }
 	if (!symbol)
 	{
+		// 単調増加テーブルなので、ID = Index
 		n2_symbol_t tsymbol;
 		n2i_symbol_init(&tsymbol);
 		if (name) { n2_str_set(state, &tsymbol.name_, name, SIZE_MAX); }
-		int symbolindex = N2_SCAST(int, n2_symbolarray_size(symboltable->symbolarray_));
+		const int symbolindex = N2_SCAST(int, n2_symbolarray_size(symboltable->symbolarray_));
 		symbol = n2_symbolarray_push(state, symboltable->symbolarray_, &tsymbol);
+		symbol->id_ = symbolindex;
 		if (name) { n2_symbolindexmap_insert(state, symboltable->symbolindexmap_, &symbolindex, symbol->name_.str_); }
 	}
 
-	return n2_symbolarray_compute_index(symboltable->symbolarray_, symbol);
+	return symbol ? symbol->id_ : N2_SYMBOL_ID_INVALID;
 }
 
 //=============================================================================
@@ -12771,6 +12876,11 @@ N2_API void n2_value_swap(n2_value_t* lhs, n2_value_t* rhs)
 	*rhs = t;
 }
 
+N2_API void n2_value_setnil(n2_state_t* state, n2_value_t* val)
+{
+	n2i_value_teardown(state, val);
+}
+
 N2_API void n2_value_seti(n2_state_t* state, n2_value_t* val, n2_valint_t v)
 {
 	n2i_value_teardown(state, val);
@@ -13964,9 +14074,10 @@ static n2_pc_t n2i_opcode_dump(n2_state_t* state, int indent, const n2_codeimage
 			const n2_opcode_t arg_num_flags = opcodes[pc + 2];
 			n2_func_t* func = NULL;
 			if (e) { func = n2_functable_peek(e->functable_, funcindex); }
-			const int arg_num = N2_SCAST(int, arg_num_flags & 0xffff);
-			const size_t exflags = N2_SCAST(size_t, (arg_num_flags >> 16) & 0xffff);
-			n2i_printf(state, ": %s[%d=%s] ARG[%d] F[%zx]", op == N2_OPCODE_COMMAND ? "COMMAND" : "FUNCTION", funcindex, func ? func->name_ : "-", arg_num, exflags);
+			const int ordered_arg_num = N2_SCAST(int, arg_num_flags & 0x0fff);
+			const int keyworded_arg_num = N2_SCAST(int, (arg_num_flags >> 12) & 0x0fff);
+			const size_t exflags = N2_SCAST(size_t, (arg_num_flags >> 24) & 0xff);
+			n2i_printf(state, ": %s[%d=%s] OARG[%d] KWARG[%d] F[%zx]", op == N2_OPCODE_COMMAND ? "COMMAND" : "FUNCTION", funcindex, func ? func->name_ : "-", ordered_arg_num, keyworded_arg_num, exflags);
 			offset += 2;
 		}
 		break;
@@ -14055,14 +14166,20 @@ static void n2i_func_init(n2_state_t* state, n2_func_t* dst, const char* name)
 	}
 	dst->flags_ = 0;
 	dst->callback_ = NULL;
-	dst->user_ = NULL;
+	dst->call_user_ = NULL;
 	dst->pc_ = -1;
-	dst->params_ = NULL;
+	dst->reserved_stack_num_ = 0;
+	dst->ordered_params_ = NULL;
+	dst->keyworded_params_ = NULL;
+	dst->local_vars_ = NULL;
 	dst->alias_func_ = NULL;
 	dst->module_id_ = -1;
 	n2_str_init(&dst->libprocname_);
 	dst->lib_ = NULL;
 	dst->libproc_ = NULL;
+
+	dst->freefunc_ = NULL;
+	dst->user_ = NULL;
 }
 
 static void n2i_func_setas_callback(n2_state_t* state, n2_func_t* dst, n2_func_e funce, n2_func_callback_t callback, void* funcuser)
@@ -14071,7 +14188,7 @@ static void n2i_func_setas_callback(n2_state_t* state, n2_func_t* dst, n2_func_e
 	dst->func_ = funce;
 	dst->flags_ |= N2_FUNCFLAG_DEFINED;
 	dst->callback_ = callback;
-	dst->user_ = funcuser;
+	dst->call_user_ = funcuser;
 	dst->module_id_ = -1;
 }
 
@@ -14086,12 +14203,48 @@ static void n2i_func_setas_alias(n2_state_t* state, n2_func_t* dst, n2_func_t* t
 
 static void n2i_func_teardown(n2_state_t* state, n2_func_t* func)
 {
+	if (func->freefunc_) { func->freefunc_(state, func); }
 	if (func->name_) { n2_free(state, func->name_); func->name_ = NULL; }
 	if (func->short_name_) { n2_free(state, func->short_name_); func->short_name_ = NULL; }
-	if (func->params_) { n2_funcparamarray_free(state, func->params_); func->params_ = NULL; }
+	if (func->ordered_params_) { n2_funcparamarray_free(state, func->ordered_params_); func->ordered_params_ = NULL; }
+	if (func->keyworded_params_) { n2_funcparamarray_free(state, func->keyworded_params_); func->keyworded_params_ = NULL; }
+	if (func->local_vars_) { n2_funclocalvararray_free(state, func->local_vars_); func->local_vars_ = NULL; }
 	n2_str_teardown(state, &func->libprocname_);
 	func->lib_ = NULL;
 	func->libproc_ = NULL;
+}
+
+N2_API const n2_func_param_t* n2_func_find_param_named(const n2_func_t* func, const char* name, size_t name_length)
+{
+	if (!func) { return NULL; }
+	if (!name) { return NULL; }
+	if (name_length == SIZE_MAX) { name_length = N2_STRLEN(name); }
+	for (size_t phase = 0; phase < 2; ++phase)// 雑にループ回す
+	{
+		const n2_funcparamarray_t* param_array = phase ? func->keyworded_params_ : func->ordered_params_;
+		if (!param_array) { continue; }
+		for (size_t i = 0, l = n2_funcparamarray_size(param_array); i < l; ++i)
+		{
+			const n2_func_param_t* param = n2_funcparamarray_peekc(param_array, N2_SCAST(int, i));
+			if (param->name_.size_ <= 0) { continue; }
+			if (n2_plstr_ncmp_sized_fast(param->name_.str_, param->name_.size_, name, name_length) == 0) { return param; }
+		}
+	}
+	return NULL;
+}
+
+N2_API const n2_func_local_var_t* n2_func_find_local_var_named(const n2_func_t* func, const char* name, size_t name_length)
+{
+	if (!func || !func->local_vars_) { return NULL; }
+	if (!name) { return NULL; }
+	if (name_length == SIZE_MAX) { name_length = N2_STRLEN(name); }
+	for (size_t i = 0, l = n2_funcparamarray_size(func->local_vars_); i < l; ++i)
+	{
+		const n2_func_local_var_t* local_var = n2_funclocalvararray_peekc(func->local_vars_, N2_SCAST(int, i));
+		if (local_var->name_.size_ <= 0) { continue; }
+		if (n2_plstr_ncmp_sized_fast(local_var->name_.str_, local_var->name_.size_, name, name_length) == 0) { return local_var; }
+	}
+	return NULL;
 }
 
 static void n2i_funcarray_freefunc(n2_state_t* state, n2_array_t* a, void* element)
@@ -14141,9 +14294,18 @@ static void n2i_funcindexmap_postalloc(n2_state_t* state, n2_functable_t* functa
 N2_DEFINE_TARRAY(n2_func_t, n2_funcarray, N2_API, n2i_setupfunc_nothing, n2i_funcarray_freefunc);
 N2_DEFINE_TSORTED_ARRAY(int, void, char, n2_funcindexmap, N2_API, n2i_funcindexmap_setupfunc, n2i_freefunc_nothing);
 
+static void n2i_func_param_init(n2_func_param_t* func_param)
+{
+	n2_str_init(&func_param->name_);
+	func_param->name_id_ = N2_SYMBOL_ID_INVALID;
+	func_param->type_ = N2_FUNC_PARAM_INT;
+	func_param->stack_index_ = -1;
+	func_param->keyworded_ = N2_FALSE;
+	func_param->omittable_ = N2_FALSE;
+}
 static void n2i_func_param_teardown(n2_state_t* state, n2_func_param_t* func_param)
 {
-	if (func_param->name_) { n2_free(state, func_param->name_); }
+	n2_str_teardown(state, &func_param->name_);
 }
 
 static const struct
@@ -14200,14 +14362,26 @@ static void n2i_funcparamarray_freefunc(n2_state_t* state, n2_array_t* a, void* 
 	n2_func_param_t* func_param = N2_RCAST(n2_func_param_t*, element);
 	n2i_func_param_teardown(state, func_param);
 }
-static int n2i_funcparamarray_matchfunc(const n2_array_t* a, const void* pkey, const void* key)
+N2_DEFINE_TARRAY(n2_func_param_t, n2_funcparamarray, N2_API, n2i_setupfunc_nothing, n2i_funcparamarray_freefunc);
+
+static void n2i_func_local_var_init(n2_func_local_var_t* func_local)
+{
+	n2_str_init(&func_local->name_);
+	func_local->name_id_ = N2_SYMBOL_ID_INVALID;
+	func_local->stack_index_ = -1;
+}
+static void n2i_func_local_var_teardown(n2_state_t* state, n2_func_local_var_t* func_local)
+{
+	n2_str_teardown(state, &func_local->name_);
+}
+
+static void n2i_funclocalvararray_freefunc(n2_state_t* state, n2_array_t* a, void* element)
 {
 	N2_UNUSE(a);
-	const n2_func_param_t* param = N2_RCAST(const n2_func_param_t*, pkey);
-	if (!param->name_) { return key ? -1 : 0; }
-	return n2_plstr_cmp_case(param->name_, N2_RCAST(const char*, key));
+	n2_func_local_var_t* func_local = N2_RCAST(n2_func_local_var_t*, element);
+	n2i_func_local_var_teardown(state, func_local);
 }
-N2_DEFINE_TARRAY(n2_func_param_t, n2_funcparamarray, N2_API, n2i_setupfunc_nothing, n2i_funcparamarray_freefunc);
+N2_DEFINE_TARRAY(n2_func_local_var_t, n2_funclocalvararray, N2_API, n2i_setupfunc_nothing, n2i_funclocalvararray_freefunc);
 
 N2_API n2_functable_t* n2_functable_alloc(n2_state_t* state, size_t initial_buffer_size, size_t expand_step)
 {
@@ -14678,8 +14852,8 @@ return -1; }
 	N2_ASSERT(func);
 	n2_modinstance_incref(arg->state_, instance);
 	n2e_funcarg_pushmodinst(arg, instance);
-	const size_t call_arg_num = 1;// instance分
-	return n2e_funcarg_callfunc(arg, func, call_arg_num);
+	const size_t call_oarg_num = 1;// instance分
+	return n2e_funcarg_callfunc(arg, func, call_oarg_num, 0);
 }
 
 // コアモジュール
@@ -14707,20 +14881,9 @@ static void n2i_crmodule_modclass_free(n2_state_t* state, n2_fiber_t* f, n2_modu
 	N2_UNUSE(instance);
 }
 
-typedef struct n2i_crplaceholderclass_instance_t n2i_crplaceholderclass_instance_t;
-
-typedef void (*n2i_crplaceholderclass_freefunc_t)(n2_state_t* state, n2_fiber_t* f, n2i_crplaceholderclass_instance_t* instance);
-
-struct n2i_crplaceholderclass_instance_t
-{
-	n2_modinstance_t instance_;
-	void* instance_exuser_;
-	n2i_crplaceholderclass_freefunc_t instance_freefunc_;
-};
-
 static n2_modinstance_t* n2i_crmodule_placeholderclass_alloc(n2_state_t* state, n2_fiber_t* f, n2_module_t* emodule)
 {
-	n2i_crplaceholderclass_instance_t* phinstance = N2_TMALLOC(n2i_crplaceholderclass_instance_t, state);
+	n2_crplaceholderclass_instance_t* phinstance = N2_TMALLOC(n2_crplaceholderclass_instance_t, state);
 	phinstance->instance_exuser_ = NULL;
 	phinstance->instance_freefunc_ = NULL;
 	n2_modinstance_t* instance = N2_RCAST(n2_modinstance_t*, phinstance);
@@ -14731,7 +14894,7 @@ static n2_modinstance_t* n2i_crmodule_placeholderclass_alloc(n2_state_t* state, 
 static void n2i_crmodule_placeholderclass_free(n2_state_t* state, n2_fiber_t* f, n2_module_t* emodule, n2_modinstance_t* instance)
 {
 	N2_UNUSE(emodule);
-	n2i_crplaceholderclass_instance_t* phinstance = N2_SCAST(n2i_crplaceholderclass_instance_t*, instance);
+	n2_crplaceholderclass_instance_t* phinstance = N2_SCAST(n2_crplaceholderclass_instance_t*, instance);
 	if (phinstance->instance_freefunc_) { phinstance->instance_freefunc_(state, f, phinstance); }
 }
 
@@ -21517,8 +21680,10 @@ static void n2i_callframe_init(n2_callframe_t* cf)
 	cf->shortframe_cursor_ = 0;
 	cf->csflags_ = 0;
 	cf->base_ = 0;
-	cf->arg_num_ = 0;
-	cf->original_arg_num_ = 0;
+	cf->total_arg_num_ = 0;
+	cf->ordered_arg_num_ = 0;
+	cf->original_ordered_arg_num_ = 0;
+	cf->keyworded_arg_num_ = 0;
 	cf->local_vars_ = NULL;
 #if N2_CONFIG_USE_DEBUGGING
 	cf->debugvarpool_ = NULL;
@@ -21626,8 +21791,8 @@ N2_API n2_fiber_t* n2_fiber_alloc(n2_state_t* state, n2_environment_t* e, int id
 	fiber->values_ = n2_valuearray_alloc(state, 64, 64);
 	fiber->callstate_.flags_ = 0;
 	fiber->callstate_.base_ = 0;
-	fiber->callstate_.arg_num_ = 0;
-	fiber->callstate_.original_arg_num_ = 0;
+	fiber->callstate_.ordered_arg_num_ = 0;
+	fiber->callstate_.original_ordered_arg_num_ = 0;
 	fiber->callstate_.func_ = NULL;
 	fiber->callstate_.label_ = NULL;
 #if N2_CONFIG_USE_DEBUGGING
@@ -21729,6 +21894,7 @@ N2_API n2_bool_t n2_fiber_is_finished(const n2_fiber_t* fiber)
 N2_API n2_environment_t* n2_environment_alloc(n2_state_t* state)
 {
 	n2_environment_t* e = N2_TMALLOC(n2_environment_t, state);
+	e->symboltable_ = n2_symboltable_alloc(state, 0, 128);
 	e->parsers_ = n2_parserarray_alloc(state, 0, 128);
 	e->asts_ = n2_astarray_alloc(state, 0, 128);
 	e->codeimage_ = n2_codeimage_alloc(state);
@@ -21782,6 +21948,7 @@ N2_API void n2_environment_free(n2_state_t* state, n2_environment_t* e)
 	n2_codeimage_free(state, e->codeimage_);
 	n2_astarray_free(state, e->asts_);
 	n2_parserarray_free(state, e->parsers_);
+	n2_symboltable_free(state, e->symboltable_);
 #if N2_CONFIG_USE_DEBUGGING
 	if (e->debugvarroot_) { n2_debugvarpool_push(state, e->debugvarpool_, e->debugvarroot_); e->debugvarroot_ = NULL; }
 	if (e->debugvarpool_) { n2_debugvarpool_free(state, e->debugvarpool_); e->debugvarpool_ = NULL; }
@@ -22473,8 +22640,10 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 			n2_str_teardown(state, &func_fullname);
 
 			// パラメータ準備
-			N2_ASSERT(!func->params_);
-			func->params_ = n2_funcparamarray_alloc(state, 0, 4);
+			N2_ASSERT(!func->ordered_params_);
+			func->ordered_params_ = n2_funcparamarray_alloc(state, 0, 4);
+			N2_ASSERT(!func->keyworded_params_);
+			func->keyworded_params_ = n2_funcparamarray_alloc(state, 0, 4);
 
 			// 動的ライブラリ
 			if (is_dlfunc)
@@ -22494,9 +22663,13 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 				// モジュール変数なら勝手に入れる
 				if (is_modfunc)
 				{
-					n2_func_param_t* param = n2_funcparamarray_push(state, func->params_, NULL);
-					param->name_ = n2_plstr_clone(state, "thismod");
+					n2_func_param_t* param = n2_funcparamarray_push(state, func->ordered_params_, NULL);
+					n2i_func_param_init(param);
+					n2_str_set(state, &param->name_, "thismod", SIZE_MAX);
+					param->name_id_ = n2_symboltable_register(state, e->symboltable_, param->name_.str_);
 					param->type_ = N2_FUNC_PARAM_MODVAR;
+					param->stack_index_ = func->reserved_stack_num_++;
+					param->keyworded_ = N2_FALSE;
 					param->omittable_ = N2_FALSE;
 				}
 
@@ -22530,10 +22703,15 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 		break;
 
 	case N2_AST_NODE_DECLARE_PARAM:
+	case N2_AST_NODE_DECLARE_KEYWORDED_PARAM:
 		{
+			const n2_bool_t is_keyworded_param = n->node_ == N2_AST_NODE_DECLARE_KEYWORDED_PARAM;
+
 			n2_func_t* func = c->func_;
 			N2_ASSERT(func);
-			N2_ASSERT(func->params_);
+			N2_ASSERT(func->ordered_params_);
+			N2_ASSERT(func->keyworded_params_);
+			n2_funcparamarray_t* target_params = is_keyworded_param ? func->keyworded_params_ : func->ordered_params_;
 
 			const n2_bool_t is_dlfunc = func->func_ == N2_FUNC_DLFUNC;
 
@@ -22549,11 +22727,25 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 
 			const n2_func_param_e paramtype = n2_func_param_from_token(typedefval->token_, is_dlfunc);
 			N2_ASSERT(paramtype != N2_FUNC_PARAM_UNKNOWN);
-			n2_func_param_t* param = n2_funcparamarray_push(state, func->params_, NULL);
-			const int paramindex = n2_funcparamarray_compute_index(func->params_, param);
-			param->name_ = ident->token_ ? n2_plstr_clone(state, ident->token_->content_) : NULL;
+			n2_func_param_t* param = n2_funcparamarray_push(state, target_params, NULL);
+			n2i_func_param_init(param);
+			const int stackindex = func->reserved_stack_num_++;// ローカル引数など、後から追加されたりもするので、スタックインデックスは都度計算
+			if (ident->token_)
+			{
+				// 名前重複チェック
+				if (n2_func_find_param_named(func, ident->token_->content_, SIZE_MAX))
+				{
+					n2i_environment_generate_raise(state, n, "関数（%s）のパラメータ名（%s）が重複しています、同名のパラメータが２回宣言されている？", func->name_, ident->token_->content_);
+					return N2_FALSE;
+				}
+				// OKなので保存
+				n2_str_set(state, &param->name_, ident->token_->content_, SIZE_MAX);
+				param->name_id_ = n2_symboltable_register(state, e->symboltable_, param->name_.str_);
+			}
 			param->type_ = paramtype;
-			param->omittable_ = (paramtype == N2_FUNC_PARAM_LOCAL || typedefval->left_);// 省略できる基本条件
+			param->stack_index_ = stackindex;
+			param->keyworded_ = is_keyworded_param;
+			param->omittable_ = (is_keyworded_param || paramtype == N2_FUNC_PARAM_LOCAL || typedefval->left_);// 省略できる基本条件
 			if (paramtype == N2_FUNC_PARAM_VAR || paramtype == N2_FUNC_PARAM_ARRAY) { param->omittable_ = N2_FALSE; }// 一部の省略できない型
 
 			// スクリプト関数なら引数処理を書いていく
@@ -22571,14 +22763,14 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 					{
 						// オリジナル引数の数
 						n2_opcodearray_pushv(state, opcodes, N2_OPCODE_TEST_ORIGINAL_ARG_NUM);
-						n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, paramindex));
+						n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, stackindex));
 						++c->stack_;
 					}
 					else
 					{
 						// スタック値のnilチェック
 						n2_opcodearray_pushv(state, opcodes, N2_OPCODE_PUSH_STACK);
-						n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, paramindex));
+						n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, stackindex));
 						++c->stack_;
 						n2_opcodearray_pushv(state, opcodes, N2_OPCODE_TEST_NIL);
 					}
@@ -22592,7 +22784,7 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 					{
 						// 変数代入のための仕込み
 						n2_opcodearray_pushv(state, opcodes, N2_OPCODE_PUSH_STACK);
-						n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, paramindex));
+						n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, stackindex));
 						++c->stack_;
 					}
 					// 値を取得
@@ -22608,7 +22800,7 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 					{
 						// スタックへ保存
 						n2_opcodearray_pushv(state, opcodes, N2_OPCODE_STORE_STACK);
-						n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, paramindex));
+						n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, stackindex));
 						--c->stack_;
 					}
 					// ifの辻褄合わせ
@@ -22659,9 +22851,14 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 	case N2_AST_NODE_COMMAND:
 		{
 			const int top = c->stack_;
+			const int keyworded_top = c->keyworded_args_;
 			if (n->left_) { if (!n2i_environment_generate_walk(state, e, n->left_, c)) { return N2_FALSE; } }
 			const int arg_num = c->stack_ - top;
 			N2_ASSERT(arg_num >= 0);
+			const int keyworded_arg_num = c->keyworded_args_ - keyworded_top;
+			N2_ASSERT(keyworded_arg_num >= 0);
+			const int ordered_arg_num = arg_num - keyworded_arg_num * 2;
+			N2_ASSERT(ordered_arg_num >= 0);
 
 			N2_ASSERT(n->token_->token_ == N2_TOKEN_IDENTIFIER || n->token_->token_ == N2_TOKEN_IDENTIFIER_FQ);
 			const char* command_name = n->token_->content_;
@@ -22686,10 +22883,13 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 
 			n2_opcodearray_pushv(state, opcodes, N2_OPCODE_COMMAND);
 			n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, funcindex));
-			n2_opcodearray_pushv(state, opcodes, (arg_num & 0xffff) | N2_SCAST(n2_opcode_t, (n->exflags_ & 0xffff) << 16));
+			n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, (ordered_arg_num & 0x0fff) | ((keyworded_arg_num & 0x0fff) << 12) | ((N2_SCAST(int, n->exflags_) & 0xff) << 24)));
 
 			n2_str_teardown(state, &fullname); n2_str_teardown(state, &fullname_global);
+
+			// スタックを戻す
 			c->stack_ = top;
+			c->keyworded_args_ = keyworded_top;
 		}
 		break;
 
@@ -22709,11 +22909,18 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 			N2_ASSERT(n->token_->token_ == N2_TOKEN_IDENTIFIER);
 			const char* keyword_name = n->token_->content_;
 
-			++c->keyworded_args_;
+			// シンボルIDを書き込み
+			const int symbol_id = n2_symboltable_register(state, e->symboltable_, keyword_name);
+			n2_opcodearray_pushv(state, opcodes, N2_OPCODE_PUSH_SINT);
+			n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, symbol_id));
+			++c->stack_;
 
-			// @todo
-			n2i_environment_generate_raise(state, n, "キーワード引数は未実装です(keyword=%s)", keyword_name);
-			return N2_FALSE;
+			// 値の書き込み
+			if (n->left_) { if (!n2i_environment_generate_walk(state, e, n->left_, c)) { return N2_FALSE; } }
+			if (n->right_) { if (!n2i_environment_generate_walk(state, e, n->right_, c)) { return N2_FALSE; } }
+
+			// キーワード引数換算
+			++c->keyworded_args_;
 		}
 		break;
 
@@ -22847,12 +23054,10 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 			// ローカル変数
 			if (!accepted)
 			{
-				const int paramindex = (c->func_ && c->func_->params_ ? n2_funcparamarray_find(c->func_->params_, n2i_funcparamarray_matchfunc, ident) : -1);
-				if (paramindex >= 0)
+				const n2_func_param_t* func_param = c->func_ ? n2_func_find_param_named(c->func_, ident, SIZE_MAX) : NULL;
+				if (func_param)
 				{
-					const n2_func_param_t* param = n2_funcparamarray_peek(c->func_->params_, paramindex);
-					N2_ASSERT(param);
-					if (arg_num > 0 && param->type_ != N2_FUNC_PARAM_LOCAL && param->type_ != N2_FUNC_PARAM_ARRAY)
+					if (arg_num > 0 && func_param->type_ != N2_FUNC_PARAM_LOCAL && func_param->type_ != N2_FUNC_PARAM_ARRAY)
 					{
 						n2i_environment_generate_raise(state, n, "関数の引数（%s）は次元を持たない値のため括弧によるアクセスはできません", ident);
 						n2_str_teardown(state, &fullname); n2_str_teardown(state, &fullname_global);
@@ -22865,7 +23070,21 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 						return N2_FALSE;
 					}
 					n2_opcodearray_pushv(state, opcodes, N2_OPCODE_PUSH_STACK);
-					n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, paramindex));
+					n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, func_param->stack_index_));
+					accepted = N2_TRUE;
+				}
+
+				const n2_func_local_var_t* func_local = c->func_ ? n2_func_find_local_var_named(c->func_, ident, SIZE_MAX) : NULL;
+				if (func_local)
+				{
+					if (arg_num > N2_VARIABLE_DIM)
+					{
+						n2i_environment_generate_raise(state, n, "ローカル変数（%s）の添え字は%d次元までです", ident, N2_VARIABLE_DIM);
+						n2_str_teardown(state, &fullname); n2_str_teardown(state, &fullname_global);
+						return N2_FALSE;
+					}
+					n2_opcodearray_pushv(state, opcodes, N2_OPCODE_PUSH_STACK);
+					n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, func_local->stack_index_));
 					accepted = N2_TRUE;
 				}
 			}
@@ -23161,8 +23380,14 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 	case N2_AST_NODE_IDENTIFIER_EXPR:
 		{
 			const int top = c->stack_;
+			const int keyworded_top = c->keyworded_args_;
 			if (n->left_) { if (!n2i_environment_generate_walk(state, e, n->left_, c)) { return N2_FALSE; } }
 			const int arg_num = c->stack_ - top;
+			N2_ASSERT(arg_num >= 0);
+			const int keyworded_arg_num = c->keyworded_args_ - keyworded_top;
+			N2_ASSERT(keyworded_arg_num >= 0);
+			const int ordered_arg_num = arg_num - keyworded_arg_num * 2;
+			N2_ASSERT(ordered_arg_num >= 0);
 
 			N2_ASSERT(n->token_->token_ == N2_TOKEN_IDENTIFIER || n->token_->token_ == N2_TOKEN_IDENTIFIER_FQ);
 			const char* ident = n->token_->content_;
@@ -23177,12 +23402,10 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 			// ローカル変数
 			if (!accepted)
 			{
-				const int paramindex = (c->func_ && c->func_->params_ ? n2_funcparamarray_find(c->func_->params_, n2i_funcparamarray_matchfunc, ident) : -1);
-				if (paramindex >= 0)
+				const n2_func_param_t* func_param = c->func_ ? n2_func_find_param_named(c->func_, ident, SIZE_MAX) : NULL;
+				if (func_param)
 				{
-					const n2_func_param_t* param = n2_funcparamarray_peek(c->func_->params_, paramindex);
-					N2_ASSERT(param);
-					if (arg_num > 0 && param->type_ != N2_FUNC_PARAM_LOCAL && param->type_ != N2_FUNC_PARAM_ARRAY)
+					if (arg_num > 0 && func_param->type_ != N2_FUNC_PARAM_LOCAL && func_param->type_ != N2_FUNC_PARAM_ARRAY)
 					{
 						n2i_environment_generate_raise(state, n, "関数の引数（%s）は次元を持たない値のため括弧によるアクセスはできません", ident);
 						n2_str_teardown(state, &fullname); n2_str_teardown(state, &fullname_global);
@@ -23194,8 +23417,34 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 						n2_str_teardown(state, &fullname); n2_str_teardown(state, &fullname_global);
 						return N2_FALSE;
 					}
+					if (keyworded_arg_num > 0)
+					{
+						n2i_environment_generate_raise(state, n, "ローカル変数（%s）の添え字にキーワード引数は使えません", ident);
+						n2_str_teardown(state, &fullname); n2_str_teardown(state, &fullname_global);
+						return N2_FALSE;
+					}
 					n2_opcodearray_pushv(state, opcodes, N2_OPCODE_PUSH_STACK);
-					n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, paramindex));
+					n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, func_param->stack_index_));
+					accepted = N2_TRUE;
+				}
+
+				const n2_func_local_var_t* func_local = c->func_ ? n2_func_find_local_var_named(c->func_, ident, SIZE_MAX) : NULL;
+				if (func_local)
+				{
+					if (arg_num > N2_VARIABLE_DIM)
+					{
+						n2i_environment_generate_raise(state, n, "ローカル変数（%s）の添え字は%d次元までです", ident, N2_VARIABLE_DIM);
+						n2_str_teardown(state, &fullname); n2_str_teardown(state, &fullname_global);
+						return N2_FALSE;
+					}
+					if (keyworded_arg_num > 0)
+					{
+						n2i_environment_generate_raise(state, n, "ローカル変数（%s）の添え字にキーワード引数は使えません", ident);
+						n2_str_teardown(state, &fullname); n2_str_teardown(state, &fullname_global);
+						return N2_FALSE;
+					}
+					n2_opcodearray_pushv(state, opcodes, N2_OPCODE_PUSH_STACK);
+					n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, func_local->stack_index_));
 					accepted = N2_TRUE;
 				}
 			}
@@ -23211,6 +23460,12 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 						if (arg_num > N2_VARIABLE_DIM)
 						{
 							n2i_environment_generate_raise(state, n, "モジュールローカル変数（%s）の添え字は%d次元までです", ident, N2_VARIABLE_DIM);
+							n2_str_teardown(state, &fullname); n2_str_teardown(state, &fullname_global);
+							return N2_FALSE;
+						}
+						if (keyworded_arg_num > 0)
+						{
+							n2i_environment_generate_raise(state, n, "モジュールローカル変数（%s）の添え字にキーワード引数は使えません", ident);
 							n2_str_teardown(state, &fullname); n2_str_teardown(state, &fullname_global);
 							return N2_FALSE;
 						}
@@ -23251,7 +23506,7 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 					const int funcindex = n2_funcarray_compute_index(e->functable_->funcarray_, func);
 					n2_opcodearray_pushv(state, opcodes, N2_OPCODE_FUNCTION);
 					n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, funcindex));
-					n2_opcodearray_pushv(state, opcodes, (arg_num & 0xffff) | (0));
+					n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, (ordered_arg_num & 0x0fff) | ((keyworded_arg_num & 0x0fff) << 12) | (0)));
 					accepted = N2_TRUE;
 				}
 			}
@@ -23840,8 +24095,10 @@ static void n2i_execute_fill_to_callframe(n2_state_t* state, n2_callframe_t* cf,
 	cf->caller_label_ = f->callstate_.label_;
 	cf->csflags_ = f->callstate_.flags_;
 	cf->base_ = f->callstate_.base_;
-	cf->arg_num_ = f->callstate_.arg_num_;
-	cf->original_arg_num_ = f->callstate_.arg_num_;
+	cf->total_arg_num_ = f->callstate_.total_arg_num_;
+	cf->ordered_arg_num_ = f->callstate_.ordered_arg_num_;
+	cf->original_ordered_arg_num_ = f->callstate_.ordered_arg_num_;
+	cf->keyworded_arg_num_ = f->callstate_.keyworded_arg_num_;
 	cf->shortframe_cursor_ = n2_shortframearray_size(f->shortframes_);
 	// 変数領域を委譲
 	cf->local_vars_ = f->curscope_local_vars_; f->curscope_local_vars_ = NULL;
@@ -23866,7 +24123,7 @@ static void n2i_execute_fill_to_callframe(n2_state_t* state, n2_callframe_t* cf,
 			for (size_t i = 0, l = n2_debugvararray_size(cf->debugvarargs_); i < l; ++i)
 			{
 				n2_debugvariable_t* debugvar = n2_debugvararray_peekv(cf->debugvarargs_, N2_SCAST(int, i), NULL);
-				N2_ASSERT(debugvar->type_ == N2_DEBUGVARIABLE_FUNCTIONARG);
+				N2_ASSERT(debugvar->type_ == N2_DEBUGVARIABLE_FUNCTION_OARG || debugvar->type_ == N2_DEBUGVARIABLE_FUNCTION_KWARG);
 				debugvar->v_.funcarg_.callframe_index_ = callframe_index;
 			}
 		}
@@ -23884,14 +24141,27 @@ static void n2i_execute_post_setup_callframe(n2_state_t* state, n2_callframe_t* 
 	if (state->config_.generate_debugvars_ && f->callstate_.func_)
 	{
 		const n2_func_t* func = f->callstate_.func_;
-		const size_t func_param_num = func->params_ ? n2_funcparamarray_size(func->params_) : f->callstate_.arg_num_;
-		if (func_param_num > 0)
+
+		const size_t ordered_param_num = func->ordered_params_ ? n2_funcparamarray_size(func->ordered_params_) : f->callstate_.ordered_arg_num_;
+		const size_t keyworded_param_num = func->keyworded_params_ ? n2_funcparamarray_size(func->keyworded_params_) : 0;
+
+		if (ordered_param_num > 0 || keyworded_param_num > 0)
 		{
-			f->callstate_.debugvarargs_ = n2_debugvararray_alloc_user(state, func_param_num, 0, f->environment_->debugvarpool_);
-			for (size_t i = 0; i < func_param_num; ++i)
+			f->callstate_.debugvarargs_ = n2_debugvararray_alloc_user(state, ordered_param_num + keyworded_param_num, 0, f->environment_->debugvarpool_);
+
+			for (size_t i = 0; i < ordered_param_num; ++i)
 			{
 				n2_debugvariable_t* debugvar = n2_debugvarpool_pop_or_alloc(state, f->environment_->debugvarpool_);
-				debugvar->type_ = N2_DEBUGVARIABLE_FUNCTIONARG;
+				debugvar->type_ = N2_DEBUGVARIABLE_FUNCTION_OARG;
+				debugvar->v_.funcarg_.fiber_ = f;
+				debugvar->v_.funcarg_.callframe_index_ = -1;
+				debugvar->v_.funcarg_.arg_index_ = N2_SCAST(int, i);
+				n2_debugvararray_pushv(state, f->callstate_.debugvarargs_, debugvar);
+			}
+			for (size_t i = 0; i < keyworded_param_num; ++i)
+			{
+				n2_debugvariable_t* debugvar = n2_debugvarpool_pop_or_alloc(state, f->environment_->debugvarpool_);
+				debugvar->type_ = N2_DEBUGVARIABLE_FUNCTION_KWARG;
 				debugvar->v_.funcarg_.fiber_ = f;
 				debugvar->v_.funcarg_.callframe_index_ = -1;
 				debugvar->v_.funcarg_.arg_index_ = N2_SCAST(int, i);
@@ -23928,7 +24198,7 @@ static n2_bool_t n2i_execute_rewind_to_callframe(n2_state_t* state, n2_fiber_t* 
 		for (size_t i = 0, l = n2_debugvararray_size(f->callstate_.debugvarargs_); i < l; ++i)
 		{
 			n2_debugvariable_t* debugvar = n2_debugvararray_peekv(f->callstate_.debugvarargs_, N2_SCAST(int, i), NULL);
-			N2_ASSERT(debugvar->type_ == N2_DEBUGVARIABLE_FUNCTIONARG);
+			N2_ASSERT(debugvar->type_ == N2_DEBUGVARIABLE_FUNCTION_OARG || debugvar->type_ == N2_DEBUGVARIABLE_FUNCTION_KWARG);
 			debugvar->v_.funcarg_.callframe_index_ = -1;
 		}
 	}
@@ -23964,8 +24234,8 @@ static n2_bool_t n2i_execute_rewind_to_callframe(n2_state_t* state, n2_fiber_t* 
 	f->callstate_.label_ = cf->caller_label_;
 	f->callstate_.flags_ = cf->csflags_;
 	f->callstate_.base_ = cf->base_;
-	f->callstate_.arg_num_ = cf->arg_num_;
-	f->callstate_.original_arg_num_ = cf->arg_num_;
+	f->callstate_.ordered_arg_num_ = cf->ordered_arg_num_;
+	f->callstate_.original_ordered_arg_num_ = cf->ordered_arg_num_;
 	if (cf->next_pc_ >= 0) { f->pc_ = cf->next_pc_; }
 	f->op_pc_ = f->pc_;// op_pcは即同期しておく
 	return N2_TRUE;
@@ -24292,10 +24562,10 @@ static int n2i_execute_dynlib_call(const n2_funcarg_t* arg)
 		return -1;
 	}
 
-	const size_t arg_num = n2e_funcarg_argnum(arg);
-	if (arg_num != n2_funcparamarray_size(func->params_))
+	const size_t arg_num = n2e_funcarg_oargnum(arg);
+	if (arg_num != n2_funcparamarray_size(func->ordered_params_))
 	{
-		n2e_funcarg_raise(arg, "%s：引数の数（%zu）が期待（%zu）と違います。", func->name_, arg_num, n2_funcparamarray_size(func->params_));
+		n2e_funcarg_raise(arg, "%s：引数の数（%zu）が期待（%zu）と違います。", func->name_, arg_num, n2_funcparamarray_size(func->ordered_params_));
 		return -1;
 	}
 
@@ -24309,8 +24579,8 @@ static int n2i_execute_dynlib_call(const n2_funcarg_t* arg)
 
 	for (size_t i = 0; i < arg_num; ++i)
 	{
-		const n2_func_param_t* param = n2_funcparamarray_peek(func->params_, N2_SCAST(int, i));
-		const n2_value_t* argval = n2e_funcarg_getarg(arg, N2_SCAST(int, i));
+		const n2_func_param_t* param = n2_funcparamarray_peek(func->ordered_params_, N2_SCAST(int, i));
+		const n2_value_t* argval = n2e_funcarg_getoarg(arg, N2_SCAST(int, i));
 		switch (param->type_)
 		{
 		case N2_FUNC_PARAM_INT:
@@ -24336,7 +24606,7 @@ static int n2i_execute_dynlib_call(const n2_funcarg_t* arg)
 			{
 				if (!argval || argval->type_ != N2_VALUE_STRING)
 				{
-					n2e_funcarg_raise(arg, "%s：引数（%zu番目＝%s）が文字列ではありません。", func->name_, i, param->name_ ? param->name_ : "(unnamed)");
+					n2e_funcarg_raise(arg, "%s：引数（%zu番目＝%s）が文字列ではありません。", func->name_, i, param->name_.str_ ? param->name_.str_ : "(unnamed)");
 					return -1;
 				}
 				const n2_str_t* argstr = n2_value_get_strc(argval);
@@ -24371,7 +24641,7 @@ static int n2i_execute_dynlib_call(const n2_funcarg_t* arg)
 			{
 				if (!argval || argval->type_ != N2_VALUE_VARIABLE)
 				{
-					n2e_funcarg_raise(arg, "%s：引数（%zu番目＝%s）が変数ではありません。", func->name_, i, param->name_ ? param->name_ : "(unnamed)");
+					n2e_funcarg_raise(arg, "%s：引数（%zu番目＝%s）が変数ではありません。", func->name_, i, param->name_.str_ ? param->name_.str_ : "(unnamed)");
 					return -1;
 				}
 				void* element_ptr = n2_variable_element_ptr(argval->field_.varvalue_.var_, argval->field_.varvalue_.aptr_);
@@ -24447,7 +24717,7 @@ static int n2i_execute_dynlib_call(const n2_funcarg_t* arg)
 		case N2_FUNC_PARAM_LOCAL:
 		case N2_FUNC_PARAM_MODVAR:
 		default:
-			n2e_funcarg_raise(arg, "%s：引数（%zu番目＝%s）を評価できません。対応していない型です", func->name_, i, param->name_ ? param->name_ : "(unnamed)");
+			n2e_funcarg_raise(arg, "%s：引数（%zu番目＝%s）を評価できません。対応していない型です", func->name_, i, param->name_.str_ ? param->name_.str_ : "(unnamed)");
 			return -1;
 		}
 
@@ -24487,7 +24757,7 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 	const n2_pc_t code_size = N2_SCAST(n2_pc_t, n2_opcodearray_size(e->codeimage_->opcodes_));
 
 #define N2_EI_ENSURE_VS_FNUM(num) \
-	N2_ASSERT((num) <= (N2_SCAST(int, n2_valuearray_size(f->values_)) - f->callstate_.base_ - f->callstate_.arg_num_))
+	N2_ASSERT((num) <= (N2_SCAST(int, n2_valuearray_size(f->values_)) - f->callstate_.base_ - f->callstate_.ordered_arg_num_))
 
 	for (;;)
 	{
@@ -24800,7 +25070,9 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 				f->callstate_.label_ = NULL;
 				f->callstate_.flags_ = 0;
 				f->callstate_.base_ = N2_SCAST(int, n2_valuearray_size(f->values_));
-				f->callstate_.arg_num_ = f->callstate_.original_arg_num_ = 0;
+				f->callstate_.total_arg_num_ = 0;
+				f->callstate_.ordered_arg_num_ = f->callstate_.original_ordered_arg_num_ = 0;
+				f->callstate_.keyworded_arg_num_ = 0;
 
 				n2i_execute_post_setup_callframe(state, lcf, f);
 
@@ -25162,7 +25434,7 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 			{
 				const n2_opcode_t stackindex = c[*pc + 1];
 				++(*pc);
-				const n2_bool_t test_result = f->callstate_.original_arg_num_ > stackindex;
+				const n2_bool_t test_result = f->callstate_.original_ordered_arg_num_ > stackindex;
 				n2_valuearray_pushv(state, f->values_, n2_value_alloci(state, test_result ? 1 : 0));
 			}
 			break;
@@ -25488,12 +25760,18 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 				}
 				// 変数領域を確保
 				if (!f->curscope_local_vars_) { f->curscope_local_vars_ = n2_vararray_alloc(state, 0, 4); }
+
+				// ここでは、スタックの操作をして関数実行が可能な状態を用意する
+				// 入力として | BASE | ordered_arg * N | keyworded_arg(SymbolID:int, Value:Value) * M |
+				// 出力として | BASE | ordered_param * N | keyworded_param(Value:Value) * M | local variables |
+				// に変形する
+
 				// arityチェック
-				const int arg_num = f->callstate_.original_arg_num_;
-				const int func_arity = N2_SCAST(int, n2_funcparamarray_size(func->params_));
-				if (arg_num > func_arity)
+				const int oarg_num = f->callstate_.original_ordered_arg_num_;
+				const int func_arity = N2_SCAST(int, n2_funcparamarray_size(func->ordered_params_));
+				if (oarg_num > func_arity)
 				{
-					n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "関数（%s）呼び出しの引数の数（%d）が想定（%d）より多いです", func->name_, arg_num, func_arity);
+					n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "関数（%s）呼び出しの引数の数（%d）が想定（%d）より多いです", func->name_, oarg_num, func_arity);
 					return N2_FALSE;
 				}
 				// modfunc系？
@@ -25503,41 +25781,55 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 					//funcmod = n2_modulearray_peek(e->functable_->funcarray_, func->module_id_);
 					//N2_ASSERT(funcmod);
 				}
-				// type/omitチェック
+
+				// ローカルスタックの数だけ場所を用意する
+				{
+					const int required_grow_local_stack_num = func->reserved_stack_num_ - oarg_num;
+					N2_ASSERT(required_grow_local_stack_num >= 0);
+					if (required_grow_local_stack_num > 0)
+					{
+						n2_value_t** nvalues = n2_valuearray_multiinsert_replicate(state, f->values_, f->callstate_.base_ + oarg_num, required_grow_local_stack_num, NULL);
+						for (int si = 0; si < required_grow_local_stack_num; ++si) { nvalues[si] = n2_value_allocnil(state); }
+					}
+				}
+
+				// ordered param の type/omitチェック
 				for (int i = 0; i < func_arity; ++i)
 				{
-					const n2_func_param_t* func_param = n2_funcparamarray_peekc(func->params_, i);
+					const n2_func_param_t* func_param = n2_funcparamarray_peekc(func->ordered_params_, i);
 					N2_ASSERT(func_param);
 					n2_value_t* arg_val = n2_valuearray_peekv(f->values_, f->callstate_.base_ + i, NULL);
-					const n2_bool_t arg_omitted = !arg_val || arg_val->type_ == N2_VALUE_NIL;
+					N2_ASSERT(arg_val);
+					const n2_bool_t arg_exist = i < oarg_num;
+					const n2_bool_t arg_omitted = !arg_exist || arg_val->type_ == N2_VALUE_NIL;
 					if (!func_param->omittable_ && arg_omitted)
 					{
-						n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "関数（%s）の引数（%d＝%s）は省略できません", func->name_, i, func_param->name_);
+						n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "関数（%s）の引数（%d＝%s）は省略できません", func->name_, i, func_param->name_.str_);
 						return N2_FALSE;
 					}
 					if (arg_omitted)
 					{
 						// そもそも引数として渡ってきてないなら生成する
-						if (!arg_val)
+						if (!arg_exist)
 						{
+							N2_ASSERT(arg_val->type_ == N2_VALUE_NIL);// 生成時のままなので、nilのはず
+
 							switch (func_param->type_)
 							{
 								// 変数新規確保
 							case N2_FUNC_PARAM_LOCAL:
 								{
-									n2_variable_t* var = n2_variable_alloc(state, f->environment_, func_param->name_);
+									n2_variable_t* var = n2_variable_alloc(state, f->environment_, func_param->name_.str_);
 									n2_vararray_pushv(state, f->curscope_local_vars_, var);
-									n2_valuearray_pushv(state, f->values_, n2_value_allocvar(state, var, -1));
+									n2_value_setvar(state, arg_val, var, -1);
 								}
 								break;
 							default:
-								// nil を入れる
-								n2_valuearray_pushv(state, f->values_, n2_value_allocnil(state));
 								break;
 							}
 
-							// こっそり足す
-							++f->callstate_.arg_num_;
+							// こっそり足して、存在していたことにする
+							++f->callstate_.ordered_arg_num_;
 						}
 					}
 					else
@@ -25555,7 +25847,7 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 						case N2_FUNC_PARAM_STR:
 							if (n2_value_get_type(arg_val) != N2_VALUE_STRING)
 							{
-								n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "関数（%s）の引数（%d＝%s）が文字列型ではありません", func->name_, i, func_param->name_);
+								n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "関数（%s）の引数（%d＝%s）が文字列型ではありません", func->name_, i, func_param->name_.str_);
 								return N2_FALSE;
 							}
 							n2_value_isolate(state, f, arg_val, N2_TRUE);
@@ -25563,7 +25855,7 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 						case N2_FUNC_PARAM_LABEL:
 							if (n2_value_get_type(arg_val) != N2_VALUE_LABEL)
 							{
-								n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "関数（%s）の引数（%d＝%s）がラベル型ではありません", func->name_, i, func_param->name_);
+								n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "関数（%s）の引数（%d＝%s）がラベル型ではありません", func->name_, i, func_param->name_.str_);
 								return N2_FALSE;
 							}
 							n2_value_isolate(state, f, arg_val, N2_TRUE);
@@ -25573,19 +25865,19 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 						case N2_FUNC_PARAM_ARRAY:
 							if (arg_val->type_ != N2_VALUE_VARIABLE)
 							{
-								n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "関数（%s）の引数（%d＝%s）が変数ではありません", func->name_, i, func_param->name_);
+								n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "関数（%s）の引数（%d＝%s）が変数ではありません", func->name_, i, func_param->name_.str_);
 								return N2_FALSE;
 							}
 							if (func_param->type_ == N2_FUNC_PARAM_ARRAY && arg_val->field_.varvalue_.aptr_ >= 0)
 							{
-								n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "関数（%s）の引数（%d＝%s）がarrayを期待しましたが変数の1要素が渡されました", func->name_, i, func_param->name_);
+								n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "関数（%s）の引数（%d＝%s）がarrayを期待しましたが変数の1要素が渡されました", func->name_, i, func_param->name_.str_);
 								return N2_FALSE;
 							}
 							break;
 							// 別途変数確保
 						case N2_FUNC_PARAM_LOCAL:
 							{
-								n2_variable_t* var = n2_variable_alloc(state, f->environment_, func_param->name_);
+								n2_variable_t* var = n2_variable_alloc(state, f->environment_, func_param->name_.str_);
 								n2_vararray_pushv(state, f->curscope_local_vars_, var);
 								if (!n2_variable_set(state, f, var, -1, arg_val)) { return N2_FALSE; }
 								n2_value_setvar(state, arg_val, var, -1);
@@ -25597,13 +25889,13 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 								n2_value_isolate(state, f, arg_val, N2_TRUE);
 								if (arg_val->type_ != N2_VALUE_MODINST)
 								{
-									n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "関数（%s）の引数（%d＝%s）がモジュール変数型ではありませんでした", func->name_, i, func_param->name_);
+									n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "関数（%s）の引数（%d＝%s）がモジュール変数型ではありませんでした", func->name_, i, func_param->name_.str_);
 									return N2_FALSE;
 								}
 								n2_valmodinst_t* modinst = n2_value_get_modinst(arg_val);
 								if (!modinst->instance_)
 								{
-									n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "関数（%s）の引数（%d＝%s）のモジュール変数がNULLでした。既にdelmod等で削除されています", func->name_, i, func_param->name_);
+									n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "関数（%s）の引数（%d＝%s）のモジュール変数がNULLでした。既にdelmod等で削除されています", func->name_, i, func_param->name_.str_);
 									return N2_FALSE;
 								}
 
@@ -25624,6 +25916,53 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 							break;
 						}
 					}
+				}
+
+				// keyworded param
+				const size_t kwarg_num = f->callstate_.keyworded_arg_num_;
+				const size_t kwarg_inst_num = kwarg_num * 2;
+				const int kwarg_base = N2_SCAST(int, n2_valuearray_size(f->values_)) - N2_SCAST(int, kwarg_inst_num);
+				N2_ASSERT(kwarg_base >= f->callstate_.base_);
+
+				const size_t keyworded_param_num = n2_funcparamarray_size(func->keyworded_params_);
+				if (keyworded_param_num > 0 && kwarg_num > 0)
+				{
+					for (size_t kpi = 0; kpi < keyworded_param_num; ++kpi)
+					{
+						const n2_func_param_t* param = n2_funcparamarray_peekc(func->keyworded_params_, N2_SCAST(int, kpi));
+						if (param->name_id_ == N2_SYMBOL_ID_INVALID) { continue; }
+						for (size_t kai = 0; kai < kwarg_num; ++kai)
+						{
+							const n2_value_t* ka = n2_valuearray_peekcv(f->values_, kwarg_base + N2_SCAST(int, kai) * 2, NULL);
+							// @todo とりあえずINT想定だが、そうでないパターンも用意すべき？
+							if (!ka || ka->type_ != N2_VALUE_INT) { continue; }
+							const n2_symbol_id_t kasymid = N2_SCAST(n2_symbol_id_t, ka->field_.ivalue_);
+							if (kasymid == param->name_id_)
+							{
+								// 見つかったので、スワップして取得
+								N2_ASSERT(param->stack_index_ >= 0);
+								n2_value_t* kpv = n2_valuearray_peekv(f->values_, f->callstate_.base_ + param->stack_index_, NULL);
+								N2_ASSERT(kpv);
+								n2_value_t* kav = n2_valuearray_peekv(f->values_, kwarg_base + N2_SCAST(int, kai) * 2 + 1, NULL);
+								N2_ASSERT(kav);
+								n2_value_swap(kpv, kav);
+								break;
+							}
+						}
+					}
+				}
+				if (kwarg_num > 0)
+				{
+					// 最後に移動したキーワード引数を消す
+					n2_valuearray_erase_num(state, f->values_, kwarg_base, kwarg_inst_num);
+					f->callstate_.keyworded_arg_num_ = 0;
+					N2_ASSERT(f->callstate_.total_arg_num_ >= N2_SCAST(int, kwarg_inst_num));
+					f->callstate_.total_arg_num_ -= N2_SCAST(int, kwarg_inst_num);
+				}
+
+				// local variables
+				{
+					// @todo
 				}
 
 #if N2_CONFIG_USE_DEBUGGING
@@ -25684,7 +26023,9 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 					f->callstate_.label_ = label;
 					f->callstate_.flags_ = 0;
 					f->callstate_.base_ = N2_SCAST(int, n2_valuearray_size(f->values_));
-					f->callstate_.arg_num_ = f->callstate_.original_arg_num_ = 0;
+					f->callstate_.total_arg_num_ = 0;
+					f->callstate_.ordered_arg_num_ = f->callstate_.original_ordered_arg_num_ = 0;
+					f->callstate_.keyworded_arg_num_ = 0;
 
 					n2i_execute_post_setup_callframe(state, lcf, f);
 
@@ -25711,8 +26052,9 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 
 				const n2_opcode_t funcindex = c[*pc + 1];
 				const n2_opcode_t arg_num_flags = c[*pc + 2];
-				const int arg_num = N2_SCAST(int, arg_num_flags & 0xffff);
-				const size_t exflags = N2_SCAST(size_t, (arg_num_flags >> 16) & 0xffff);
+				const int ordered_arg_num = N2_SCAST(int, arg_num_flags & 0x0fff);
+				const int keyworded_arg_num = N2_SCAST(int, (arg_num_flags >> 12) & 0x0fff);
+				const size_t exflags = N2_SCAST(size_t, (arg_num_flags >> 24) & 0xff);
 
 				// コマンド/関数呼び出し
 				const n2_func_t* original_func = n2_functable_peek(e->functable_, funcindex);
@@ -25732,6 +26074,7 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 				}
 
 				// コールフレーム準備
+				const int arg_num = ordered_arg_num + keyworded_arg_num * 2;
 				N2_EI_ENSURE_VS_FNUM(arg_num);
 				n2_callframe_t* lcf = n2_callframearray_push(state, f->callframes_, NULL);
 				n2i_callframe_init(lcf);
@@ -25743,8 +26086,10 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 				f->callstate_.func_ = original_func;
 				f->callstate_.label_ = NULL;
 				f->callstate_.flags_ = exflags;
-				f->callstate_.base_ = N2_SCAST(int, n2_valuearray_size(f->values_)) - N2_SCAST(int, arg_num);
-				f->callstate_.arg_num_ = f->callstate_.original_arg_num_ = N2_SCAST(int, arg_num);
+				f->callstate_.base_ = N2_SCAST(int, n2_valuearray_size(f->values_)) - arg_num;
+				f->callstate_.total_arg_num_ = arg_num;
+				f->callstate_.ordered_arg_num_ = f->callstate_.original_ordered_arg_num_ = ordered_arg_num;
+				f->callstate_.keyworded_arg_num_ = keyworded_arg_num;
 
 				n2i_execute_post_setup_callframe(state, lcf, f);
 
@@ -25760,6 +26105,7 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 							n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "関数（%s）を呼び出そうとしましたがまだ定義されていません", func->name_);
 							return N2_FALSE;
 						}
+
 						// 外部関数呼び出し用の処理
 						f->op_pc_ = -1;// 実行されているPCをクリア（コールスタックのみでる）
 
@@ -25768,7 +26114,7 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 						funcarg.state_ = state;
 						funcarg.fiber_ = f;
 						funcarg.func_ = func;
-						funcarg.funcuser_ = func->user_;
+						funcarg.funcuser_ = func->call_user_;
 
 						// 呼び出し
 						res_num = func->callback_(&funcarg);
@@ -26243,7 +26589,9 @@ static n2_bool_t n2si_environment_update_widget_dirty(n2_state_t* state, n2_fibe
 							f->callstate_.label_ = label;
 							f->callstate_.flags_ = 0;
 							f->callstate_.base_ = N2_SCAST(int, n2_valuearray_size(f->values_));
-							f->callstate_.arg_num_ = f->callstate_.original_arg_num_ = 0;
+							f->callstate_.total_arg_num_ = 0;
+							f->callstate_.ordered_arg_num_ = f->callstate_.original_ordered_arg_num_ = 0;
+							f->callstate_.keyworded_arg_num_ = 0;
 
 							n2i_execute_post_setup_callframe(state, lcf, f);
 
@@ -26404,9 +26752,14 @@ N2_API size_t n2e_funcarg_csflags(const n2_funcarg_t* arg)
 	return arg->fiber_->callstate_.flags_;
 }
 
-N2_API size_t n2e_funcarg_argnum(const n2_funcarg_t* arg)
+N2_API size_t n2e_funcarg_oargnum(const n2_funcarg_t* arg)
 {
-	return N2_SCAST(size_t, arg->fiber_->callstate_.arg_num_);
+	return N2_SCAST(size_t, arg->fiber_->callstate_.ordered_arg_num_);
+}
+
+N2_API size_t n2e_funcarg_kwargnum(const n2_funcarg_t* arg)
+{
+	return N2_SCAST(size_t, arg->fiber_->callstate_.keyworded_arg_num_);
 }
 
 N2_API size_t n2e_funcarg_stacktop(const n2_funcarg_t* arg)
@@ -26420,11 +26773,11 @@ N2_API n2_value_t* n2e_funcarg_get(const n2_funcarg_t* arg, int index)
 	return n2e_funcarg_getraw(arg, index);
 }
 
-N2_API n2_value_t* n2e_funcarg_getarg(const n2_funcarg_t* arg, int index)
+N2_API n2_value_t* n2e_funcarg_getoarg(const n2_funcarg_t* arg, int index)
 {
-	const int arg_num = arg->fiber_->callstate_.arg_num_;
-	if (index >= arg_num || index < -arg_num) { return NULL; }
-	if (index < 0) { index += arg_num; }
+	const int ordered_arg_num = arg->fiber_->callstate_.ordered_arg_num_;
+	if (index >= ordered_arg_num || index < -ordered_arg_num) { return NULL; }
+	if (index < 0) { index += ordered_arg_num; }
 	return n2_valuearray_peekv(arg->fiber_->values_, arg->fiber_->callstate_.base_ + index, NULL);
 }
 
@@ -26491,9 +26844,10 @@ N2_API void n2e_funcarg_pushmodinst(const n2_funcarg_t* arg, n2_modinstance_t* i
 	n2_valuearray_pushv(arg->state_, arg->fiber_->values_, n2_value_allocmodinst(arg->state_, instance));
 }
 
-N2_API int n2e_funcarg_callfunc(const n2_funcarg_t* arg, const n2_func_t* func, size_t arg_num)
+N2_API int n2e_funcarg_callfunc(const n2_funcarg_t* arg, const n2_func_t* func, size_t ordered_arg_num, size_t keyworded_arg_num)
 {
-	if (arg_num > n2e_funcarg_stacktop(arg))
+	const size_t total_arg_num = ordered_arg_num + keyworded_arg_num * 2;
+	if (total_arg_num > n2e_funcarg_stacktop(arg))
 	{
 		n2i_raise_fiber_exception(arg->state_, arg->fiber_, N2_ERROR_RUNTIME, "関数呼び出しの引数の数がたりません（内部エラー）");
 		return -1;
@@ -26522,8 +26876,10 @@ N2_API int n2e_funcarg_callfunc(const n2_funcarg_t* arg, const n2_func_t* func, 
 
 	f->callstate_.func_ = func;
 	f->callstate_.label_ = NULL;
-	f->callstate_.base_ = N2_SCAST(int, n2_valuearray_size(f->values_)) - N2_SCAST(int, arg_num);
-	f->callstate_.arg_num_ = f->callstate_.original_arg_num_ = N2_SCAST(int, arg_num);
+	f->callstate_.base_ = N2_SCAST(int, n2_valuearray_size(f->values_)) - N2_SCAST(int, total_arg_num);
+	f->callstate_.total_arg_num_ = N2_SCAST(int, total_arg_num);
+	f->callstate_.ordered_arg_num_ = f->callstate_.original_ordered_arg_num_ = N2_SCAST(int, ordered_arg_num);
+	f->callstate_.keyworded_arg_num_ = N2_SCAST(int, keyworded_arg_num);
 
 	n2i_execute_post_setup_callframe(state, lcf, f);
 
@@ -26538,6 +26894,7 @@ N2_API int n2e_funcarg_callfunc(const n2_funcarg_t* arg, const n2_func_t* func, 
 				n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "関数（%s）を呼び出そうとしましたがまだ定義されていません", func->name_);
 				return N2_FALSE;
 			}
+
 			// 外部関数呼び出し用の処理
 			f->op_pc_ = -1;// 実行されているPCをクリア（コールスタックのみでる）
 
@@ -26546,7 +26903,7 @@ N2_API int n2e_funcarg_callfunc(const n2_funcarg_t* arg, const n2_func_t* func, 
 			funcarg.state_ = state;
 			funcarg.fiber_ = f;
 			funcarg.func_ = func;
-			funcarg.funcuser_ = func->user_;
+			funcarg.funcuser_ = func->call_user_;
 
 			// 呼び出し
 			res_num = func->callback_(&funcarg);
@@ -26651,9 +27008,9 @@ static n2_bool_t n2i_bifunc_internal_fssave(const n2_funcarg_t* arg, size_t* dst
 
 static int n2i_bifunc_end(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 1) { n2e_funcarg_raise(arg, "end：引数の数（%d）が期待（%d）と違います", arg_num, 0); return -1; }
-	const n2_value_t* exval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* exval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t ex = exval ? n2e_funcarg_eval_int(arg, exval) : 0;
 	arg->fiber_->fiber_state_ = N2_FIBER_STATE_END;
 	arg->fiber_->exit_code_ = N2_SCAST(int, ex);
@@ -26662,7 +27019,7 @@ static int n2i_bifunc_end(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_stop(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 0) { n2e_funcarg_raise(arg, "stop：引数の数（%d）が期待（%d）と違います", arg_num, 0); return -1; }
 	arg->fiber_->fiber_state_ = N2_FIBER_STATE_STOPPED;
 	return 0;
@@ -26670,9 +27027,9 @@ static int n2i_bifunc_stop(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_raise(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 1) { n2e_funcarg_raise(arg, "raise：引数の数（%d）が多すぎます", arg_num); return -1; }
-	const n2_value_t* mesval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* mesval = n2e_funcarg_getoarg(arg, 0);
 	// 一度確保してから、自動でメモリ回収されるようにスタックに積む
 	n2_valstr_t* mes = mesval ? n2e_funcarg_eval_str(arg, mesval) : n2_str_alloc_fmt(arg->state_, "raiseによる例外が発生しました");
 	n2_valstr_t* stackmes = n2e_funcarg_pushs(arg, mes->str_);
@@ -26683,9 +27040,9 @@ static int n2i_bifunc_raise(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_exit(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 1) { n2e_funcarg_raise(arg, "exit：引数の数（%d）が多すぎます", arg_num); return -1; }
-	const n2_value_t* exval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* exval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t ex = exval ? n2e_funcarg_eval_int(arg, exval) : 0;
 	arg->fiber_->fiber_state_ = N2_FIBER_STATE_END;
 	arg->fiber_->exit_code_ = N2_SCAST(int, ex);
@@ -26694,18 +27051,18 @@ static int n2i_bifunc_exit(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_isnil(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "isnil：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
-	const n2_value_t* val = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* val = n2e_funcarg_getoarg(arg, 0);
 	n2e_funcarg_pushi(arg, n2_value_get_type(val) == N2_VALUE_NIL ? 1 : 0);
 	return 1;
 }
 
 static int n2i_bifunc_str(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "str：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
-	const n2_value_t* val = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* val = n2e_funcarg_getoarg(arg, 0);
 	n2e_funcarg_eval_str_and_push(arg, val);
 	return 1;
 }
@@ -26713,11 +27070,11 @@ static int n2i_bifunc_str(const n2_funcarg_t* arg)
 static int n2i_bifunc_dim_common(const n2_funcarg_t* arg, n2_value_e valtype, const char* label, n2_bool_t has_granule_size)
 {
 	const int min_arg_num = has_granule_size ? 2 : 1;
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < min_arg_num) { n2e_funcarg_raise(arg, "%s：引数がたりません", label); return -1; }
 	if (arg_num > min_arg_num + N2_VARIABLE_DIM) { n2e_funcarg_raise(arg, "%s：引数が多すぎます、配列は%d次元までです", label, N2_VARIABLE_DIM); return -1; }
 
-	const n2_value_t* var = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* var = n2e_funcarg_getoarg(arg, 0);
 	if (var->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "%s：対象が変数ではありません", label); return -1; }
 	if (var->field_.varvalue_.aptr_ >= 0) { n2e_funcarg_raise(arg, "%s：対象の変数の配列要素が指定されています", label); return -1; }
 
@@ -26726,7 +27083,7 @@ static int n2i_bifunc_dim_common(const n2_funcarg_t* arg, n2_value_e valtype, co
 
 	if (has_granule_size)
 	{
-		const n2_value_t* nval = n2e_funcarg_getarg(arg, 1);
+		const n2_value_t* nval = n2e_funcarg_getoarg(arg, 1);
 		const n2_valint_t num = n2e_funcarg_eval_int(arg, nval);
 		if (num <= 0)
 		{
@@ -26737,7 +27094,7 @@ static int n2i_bifunc_dim_common(const n2_funcarg_t* arg, n2_value_e valtype, co
 	}
 	for (int i = 0; i < arg_num - min_arg_num; ++i)
 	{
-		const n2_value_t* nval = n2e_funcarg_getarg(arg, i + min_arg_num);
+		const n2_value_t* nval = n2e_funcarg_getoarg(arg, i + min_arg_num);
 		const n2_valint_t num = n2e_funcarg_eval_int(arg, nval);
 		if (num <= 0)
 		{
@@ -26758,10 +27115,10 @@ static int n2i_bifunc_ldim(const n2_funcarg_t* arg) { return n2i_bifunc_dim_comm
 
 static int n2i_bifunc_vartype(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "vartype：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
 
-	const n2_value_t* val = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* val = n2e_funcarg_getoarg(arg, 0);
 	if (val->type_ == N2_VALUE_VARIABLE)
 	{
 		n2e_funcarg_pushi(arg, n2_value_get_type(val));
@@ -26789,10 +27146,10 @@ static int n2i_bifunc_vartype(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_varsize(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "varsize：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
 
-	const n2_value_t* val = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* val = n2e_funcarg_getoarg(arg, 0);
 	if (val->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "varsize：対象が変数ではありません"); return -1; }
 
 	const n2_variable_t* var = val->field_.varvalue_.var_;
@@ -26805,10 +27162,10 @@ static int n2i_bifunc_varsize(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_varptr(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "varptr：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
 
-	const n2_value_t* val = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* val = n2e_funcarg_getoarg(arg, 0);
 	if (val->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "varptr：対象が変数ではありません"); return -1; }
 
 	void* element_ptr = n2_variable_element_ptr(val->field_.varvalue_.var_, val->field_.varvalue_.aptr_);
@@ -26818,10 +27175,10 @@ static int n2i_bifunc_varptr(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_varuse(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "varuse：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
 
-	const n2_value_t* val = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* val = n2e_funcarg_getoarg(arg, 0);
 	if (val->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "varuse：対象が変数ではありません"); return -1; }
 
 	n2_valint_t resval = 0;
@@ -26837,10 +27194,10 @@ static int n2i_bifunc_varuse(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_length_common(const n2_funcarg_t* arg, int dim, const char* label)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "%s：引数の数（%d）が期待（%d）と違います", label, arg_num, 1); return -1; }
 
-	const n2_value_t* val = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* val = n2e_funcarg_getoarg(arg, 0);
 	if (val->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "%s：対象が変数ではありません", label); return -1; }
 	if (val->field_.varvalue_.aptr_ >= 0) { n2e_funcarg_raise(arg, "%s：対象の変数の配列要素が指定されています", label); return -1; }
 
@@ -26856,10 +27213,10 @@ static int n2i_bifunc_length4(const n2_funcarg_t* arg) { return n2i_bifunc_lengt
 
 static int n2i_bifunc_poke_common(const n2_funcarg_t* arg, const char* label, size_t byte_size)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 3) { n2e_funcarg_raise(arg, "%s：引数の数（%d）が期待（%d）と違います", label, arg_num, 3); return -1; }
 
-	const n2_value_t* varval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* varval = n2e_funcarg_getoarg(arg, 0);
 	if (varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "%s：対象が変数ではありません", label); return -1; }
 
 	n2_variable_t* var = varval->field_.varvalue_.var_;
@@ -26873,10 +27230,10 @@ static int n2i_bifunc_poke_common(const n2_funcarg_t* arg, const char* label, si
 		return -1;
 	}
 
-	const n2_value_t* offsetval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* offsetval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t offset = n2e_funcarg_eval_int(arg, offsetval);
 
-	const n2_value_t* writeval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* writeval = n2e_funcarg_getoarg(arg, 2);
 	const n2_bool_t allow_write_string = byte_size == 1;
 
 	if (allow_write_string && n2_value_get_type(writeval) == N2_VALUE_STRING)
@@ -26938,10 +27295,10 @@ static int n2i_bifunc_llpoke(const n2_funcarg_t* arg) { return n2i_bifunc_poke_c
 
 static int n2i_bifunc_peek_common(const n2_funcarg_t* arg, const char* label, size_t byte_size)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 2) { n2e_funcarg_raise(arg, "%s：引数の数（%d）が期待（%d）と違います", label, arg_num, 2); return -1; }
 
-	const n2_value_t* varval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* varval = n2e_funcarg_getoarg(arg, 0);
 	if (varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "%s：対象が変数ではありません", label); return -1; }
 
 	n2_variable_t* var = varval->field_.varvalue_.var_;
@@ -26955,7 +27312,7 @@ static int n2i_bifunc_peek_common(const n2_funcarg_t* arg, const char* label, si
 		return -1;
 	}
 
-	const n2_value_t* offsetval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* offsetval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t offset = n2e_funcarg_eval_int(arg, offsetval);
 
 	if (offset < 0 || (offset + N2_SCAST(n2_valint_t, byte_size)) > N2_SCAST(n2_valint_t, data_size))
@@ -27027,10 +27384,10 @@ static int n2i_variable_sort_cmpfunc(const n2_array_t* a, const void* lkey, cons
 
 static int n2i_bifunc_sort_common(const n2_funcarg_t* arg, const char* label, n2_bool_t is_val)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 1 || arg_num > 2) { n2e_funcarg_raise(arg, "%s：引数の数（%d）が期待（%d - %d）と違います", label, arg_num, 1, 2); return -1; }
 
-	const n2_value_t* varval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* varval = n2e_funcarg_getoarg(arg, 0);
 	if (varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "%s：対象が変数ではありません", label); return -1; }
 	if (varval->field_.varvalue_.aptr_ >= 0) { n2e_funcarg_raise(arg, "%s：対象の変数の配列要素が指定されています", label); return -1; }
 	n2_variable_t* var = varval->field_.varvalue_.var_;
@@ -27057,7 +27414,7 @@ static int n2i_bifunc_sort_common(const n2_funcarg_t* arg, const char* label, n2
 	n2_bool_t is_reverse = N2_FALSE;
 	if (arg_num > 1)
 	{
-		const n2_value_t* rval = n2e_funcarg_getarg(arg, 1);
+		const n2_value_t* rval = n2e_funcarg_getoarg(arg, 1);
 		const n2_valint_t ri = n2e_funcarg_eval_int(arg, rval);
 		is_reverse = ri == 0 ? N2_FALSE : N2_TRUE;
 	}
@@ -27138,10 +27495,10 @@ static int n2i_sortnote_cmpfunc(const n2_array_t* a, const void* lkey, const voi
 static int n2i_bifunc_sortnote(const n2_funcarg_t* arg)
 {
 	const char* label = "sortnote";
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 1 || arg_num > 2) { n2e_funcarg_raise(arg, "%s：引数の数（%d）が期待（%d - %d）と違います", label, arg_num, 1, 2); return -1; }
 
-	const n2_value_t* varval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* varval = n2e_funcarg_getoarg(arg, 0);
 	if (varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "%s：対象が変数ではありません", label); return -1; }
 	n2_variable_t* var = varval->field_.varvalue_.var_;
 	n2_str_t* varstr = n2_variable_get_str(var, varval->field_.varvalue_.aptr_);
@@ -27156,7 +27513,7 @@ static int n2i_bifunc_sortnote(const n2_funcarg_t* arg)
 	n2_bool_t is_reverse = N2_FALSE;
 	if (arg_num > 1)
 	{
-		const n2_value_t* rval = n2e_funcarg_getarg(arg, 1);
+		const n2_value_t* rval = n2e_funcarg_getoarg(arg, 1);
 		const n2_valint_t ri = n2e_funcarg_eval_int(arg, rval);
 		is_reverse = ri == 0 ? N2_FALSE : N2_TRUE;
 	}
@@ -27217,14 +27574,14 @@ static int n2i_bifunc_sortnote(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_sortget(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 2) { n2e_funcarg_raise(arg, "sortget：引数の数（%d）が期待（%d）と違います", arg_num, 2); return -1; }
 
-	const n2_value_t* varval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* varval = n2e_funcarg_getoarg(arg, 0);
 	if (varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "sortget：対象が変数ではありません"); return -1; }
 	n2_variable_t* var = varval->field_.varvalue_.var_;
 
-	const n2_value_t* indexval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* indexval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t index = n2e_funcarg_eval_int(arg, indexval);
 
 	if (index < 0 || index >= N2_SCAST(n2_valint_t, n2_intarray_size(&arg->fiber_->sort_indices_))) { n2e_funcarg_raise(arg, "sortget：取得しようとしたインデックス（%" N2_VALINT_PRI "）が配列の範囲（%zu）を超えています", index, n2_intarray_size(&arg->fiber_->sort_indices_)); return -1; }
@@ -27239,7 +27596,7 @@ static int n2i_bifunc_sortget(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_radomize(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 1) { n2e_funcarg_raise(arg, "randomize：引数が多すぎます"); return -1; }
 
 	uint64_t seed = 0;
@@ -27249,7 +27606,7 @@ static int n2i_bifunc_radomize(const n2_funcarg_t* arg)
 	}
 	else
 	{
-		const n2_value_t* nval = n2e_funcarg_getarg(arg, 0);
+		const n2_value_t* nval = n2e_funcarg_getoarg(arg, 0);
 		seed = N2_SCAST(uint64_t, n2e_funcarg_eval_int(arg, nval));
 	}
 	n2h_random_init(&arg->fiber_->environment_->random_, seed);
@@ -27258,9 +27615,9 @@ static int n2i_bifunc_radomize(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_rnd(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "rnd：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
-	const n2_value_t* nval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* nval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t i = n2e_funcarg_eval_int(arg, nval);
 	if (i <= 0) { n2e_funcarg_raise(arg, "rnd：引数0に0以下の値（%" N2_VALINT_PRI "）が渡されました", i); return -1; }
 	const uint64_t r = n2h_random_next_range(&arg->fiber_->environment_->random_, N2_SCAST(uint64_t, i));
@@ -27270,9 +27627,9 @@ static int n2i_bifunc_rnd(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_rndf(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 1) { n2e_funcarg_raise(arg, "rndf：引数の数（%d）が期待（0 - %d）と違います", arg_num, 1); return -1; }
-	const n2_value_t* nval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* nval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valfloat_t i = nval && nval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, nval) : 1;
 	if (i <= 0) { n2e_funcarg_raise(arg, "rndf：引数0に0以下の値（%" N2_VALFLOAT_PRI "）が渡されました", i); return -1; }
 	const double r = n2h_random_next_float(&arg->fiber_->environment_->random_);
@@ -27283,13 +27640,13 @@ static int n2i_bifunc_rndf(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_limit(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 1 || arg_num > 3) { n2e_funcarg_raise(arg, "limit：引数の数（%d）が期待（%d - %d）と違います", arg_num, 1, 3); return -1; }
-	const n2_value_t* nval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* nval = n2e_funcarg_getoarg(arg, 0);
 	n2_valint_t n = n2e_funcarg_eval_int(arg, nval);
-	const n2_value_t* mival = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* mival = n2e_funcarg_getoarg(arg, 1);
 	if (mival && mival->type_ != N2_VALUE_NIL) { n2_valint_t mi = n2e_funcarg_eval_int(arg, mival); n = N2_MAX(n, mi); }
-	const n2_value_t* maval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* maval = n2e_funcarg_getoarg(arg, 2);
 	if (maval && maval->type_ != N2_VALUE_NIL) { n2_valint_t ma = n2e_funcarg_eval_int(arg, maval); n = N2_MIN(n, ma); }
 	n2e_funcarg_pushi(arg, n);
 	return 1;
@@ -27297,13 +27654,13 @@ static int n2i_bifunc_limit(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_limitf(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 1 || arg_num > 3) { n2e_funcarg_raise(arg, "limitf：引数の数（%d）が期待（%d - %d）と違います", arg_num, 1, 3); return -1; }
-	const n2_value_t* nval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* nval = n2e_funcarg_getoarg(arg, 0);
 	n2_valfloat_t n = n2e_funcarg_eval_float(arg, nval);
-	const n2_value_t* mival = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* mival = n2e_funcarg_getoarg(arg, 1);
 	if (mival && mival->type_ != N2_VALUE_NIL) { const n2_valfloat_t mi = n2e_funcarg_eval_float(arg, mival); n = N2_MAX(n, mi); }
-	const n2_value_t* maval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* maval = n2e_funcarg_getoarg(arg, 2);
 	if (maval && maval->type_ != N2_VALUE_NIL) { const n2_valfloat_t ma = n2e_funcarg_eval_float(arg, maval); n = N2_MIN(n, ma); }
 	n2e_funcarg_pushf(arg, n);
 	return 1;
@@ -27312,9 +27669,9 @@ static int n2i_bifunc_limitf(const n2_funcarg_t* arg)
 #define N2I_DEFINE_BIFUNC_1I(name, exp) \
 	static int n2i_bifunc_##name(const n2_funcarg_t* arg) \
 	{ \
-		const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg)); \
+		const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg)); \
 		if (arg_num != 1) { n2e_funcarg_raise(arg, #name "：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; } \
-		const n2_value_t* nval = n2e_funcarg_getarg(arg, 0); \
+		const n2_value_t* nval = n2e_funcarg_getoarg(arg, 0); \
 		const n2_valint_t i = n2e_funcarg_eval_int(arg, nval); \
 		n2e_funcarg_pushi(arg, exp(i)); \
 		return 1; \
@@ -27323,11 +27680,11 @@ static int n2i_bifunc_limitf(const n2_funcarg_t* arg)
 #define N2I_DEFINE_BIFUNC_3I(name, exp) \
 	static int n2i_bifunc_##name(const n2_funcarg_t* arg) \
 	{ \
-		const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg)); \
+		const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg)); \
 		if (arg_num != 3) { n2e_funcarg_raise(arg, #name "：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; } \
-		const n2_value_t* xval = n2e_funcarg_getarg(arg, 0); \
-		const n2_value_t* yval = n2e_funcarg_getarg(arg, 1); \
-		const n2_value_t* zval = n2e_funcarg_getarg(arg, 2); \
+		const n2_value_t* xval = n2e_funcarg_getoarg(arg, 0); \
+		const n2_value_t* yval = n2e_funcarg_getoarg(arg, 1); \
+		const n2_value_t* zval = n2e_funcarg_getoarg(arg, 2); \
 		const n2_valint_t x = n2e_funcarg_eval_int(arg, xval); \
 		const n2_valint_t y = n2e_funcarg_eval_int(arg, yval); \
 		const n2_valint_t z = n2e_funcarg_eval_int(arg, zval); \
@@ -27338,9 +27695,9 @@ static int n2i_bifunc_limitf(const n2_funcarg_t* arg)
 #define N2I_DEFINE_BIFUNC_1F(name, exp) \
 	static int n2i_bifunc_##name(const n2_funcarg_t* arg) \
 	{ \
-		const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg)); \
+		const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg)); \
 		if (arg_num != 1) { n2e_funcarg_raise(arg, #name "：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; } \
-		const n2_value_t* nval = n2e_funcarg_getarg(arg, 0); \
+		const n2_value_t* nval = n2e_funcarg_getoarg(arg, 0); \
 		const n2_valfloat_t f = n2e_funcarg_eval_float(arg, nval); \
 		n2e_funcarg_pushf(arg, exp(f)); \
 		return 1; \
@@ -27349,10 +27706,10 @@ static int n2i_bifunc_limitf(const n2_funcarg_t* arg)
 #define N2I_DEFINE_BIFUNC_2F(name, exp) \
 	static int n2i_bifunc_##name(const n2_funcarg_t* arg) \
 	{ \
-		const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg)); \
+		const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg)); \
 		if (arg_num != 2) { n2e_funcarg_raise(arg, #name "：引数の数（%d）が期待（%d）と違います", arg_num, 2); return -1; } \
-		const n2_value_t* xval = n2e_funcarg_getarg(arg, 0); \
-		const n2_value_t* yval = n2e_funcarg_getarg(arg, 1); \
+		const n2_value_t* xval = n2e_funcarg_getoarg(arg, 0); \
+		const n2_value_t* yval = n2e_funcarg_getoarg(arg, 1); \
 		const n2_valfloat_t x = n2e_funcarg_eval_float(arg, xval); \
 		const n2_valfloat_t y = n2e_funcarg_eval_float(arg, yval); \
 		n2e_funcarg_pushf(arg, exp(x, y)); \
@@ -27362,11 +27719,11 @@ static int n2i_bifunc_limitf(const n2_funcarg_t* arg)
 #define N2I_DEFINE_BIFUNC_3F(name, exp) \
 	static int n2i_bifunc_##name(const n2_funcarg_t* arg) \
 	{ \
-		const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg)); \
+		const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg)); \
 		if (arg_num != 3) { n2e_funcarg_raise(arg, #name "：引数の数（%d）が期待（%d）と違います", arg_num, 2); return -1; } \
-		const n2_value_t* xval = n2e_funcarg_getarg(arg, 0); \
-		const n2_value_t* yval = n2e_funcarg_getarg(arg, 1); \
-		const n2_value_t* zval = n2e_funcarg_getarg(arg, 2); \
+		const n2_value_t* xval = n2e_funcarg_getoarg(arg, 0); \
+		const n2_value_t* yval = n2e_funcarg_getoarg(arg, 1); \
+		const n2_value_t* zval = n2e_funcarg_getoarg(arg, 2); \
 		const n2_valfloat_t x = n2e_funcarg_eval_float(arg, xval); \
 		const n2_valfloat_t y = n2e_funcarg_eval_float(arg, yval); \
 		const n2_valfloat_t z = n2e_funcarg_eval_float(arg, zval); \
@@ -27401,13 +27758,13 @@ N2I_DEFINE_BIFUNC_1F(ceil, N2_CEIL);
 
 static int n2i_bifunc_lerpf(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 3) { n2e_funcarg_raise(arg, "lerpf：引数の数（%d）が期待（%d）と違います", arg_num, 3); return -1; }
-	const n2_value_t* lowval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* lowval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valfloat_t low = n2e_funcarg_eval_float(arg, lowval);
-	const n2_value_t* highval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* highval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valfloat_t high = n2e_funcarg_eval_float(arg, highval);
-	const n2_value_t* rateval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* rateval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valfloat_t rate = n2e_funcarg_eval_float(arg, rateval);
 	n2e_funcarg_pushf(arg, low * (1 - rate) + high * rate);
 	return 1;
@@ -27415,13 +27772,13 @@ static int n2i_bifunc_lerpf(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_setease(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 3) { n2e_funcarg_raise(arg, "setease：引数の数（%d）が期待（%d - %d）と違います", arg_num, 0, 3); return -1; }
-	const n2_value_t* lowval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* lowval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valfloat_t low = lowval && lowval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, lowval) : 0;
-	const n2_value_t* highval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* highval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valfloat_t high = highval && highval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, highval) : 1;
-	const n2_value_t* typeval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* typeval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valint_t type = typeval && typeval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, typeval) : N2_EASE_LINEAR;
 	arg->fiber_->ease_type_ = type;
 	arg->fiber_->ease_start_ = low;
@@ -27491,11 +27848,11 @@ static double n2i_bifunc_getease_internal(const n2_funcarg_t* arg, double rate)
 
 static int n2i_bifunc_getease(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 2) { n2e_funcarg_raise(arg, "getease：引数の数（%d）が期待（%d - %d）と違います", arg_num, 0, 3); return -1; }
-	const n2_value_t* eval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* eval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t e = eval && eval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, eval) : 0;
-	const n2_value_t* highval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* highval = n2e_funcarg_getoarg(arg, 1);
 	n2_valint_t high = highval && highval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, highval) : -1;
 	if (high <= 0) { high = 4096; }
 	const double rate = N2_SCAST(double, e) / N2_SCAST(double, high);
@@ -27505,11 +27862,11 @@ static int n2i_bifunc_getease(const n2_funcarg_t* arg)
 }
 static int n2i_bifunc_geteasef(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 2) { n2e_funcarg_raise(arg, "geteasef：引数の数（%d）が期待（%d - %d）と違います", arg_num, 0, 3); return -1; }
-	const n2_value_t* eval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* eval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valfloat_t e = eval && eval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, eval) : 0;
-	const n2_value_t* highval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* highval = n2e_funcarg_getoarg(arg, 1);
 	n2_valfloat_t high = highval && highval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, highval) : -1;
 	if (high <= 0) { high = 4096; }
 	const double rate = e / high;
@@ -27519,15 +27876,15 @@ static int n2i_bifunc_geteasef(const n2_funcarg_t* arg)
 }
 static int n2i_bifunc_ease_n2(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 4) { n2e_funcarg_raise(arg, "ease@n2：引数の数（%d）が期待（%d - %d）と違います", arg_num, 0, 4); return -1; }
-	const n2_value_t* typeval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* typeval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t type = typeval && typeval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, typeval) : 0;
-	const n2_value_t* rateval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* rateval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valfloat_t rate = rateval && rateval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, rateval) : 0;
-	const n2_value_t* lowval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* lowval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valfloat_t low = lowval && lowval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, lowval) : 0;
-	const n2_value_t* highval = n2e_funcarg_getarg(arg, 3);
+	const n2_value_t* highval = n2e_funcarg_getoarg(arg, 3);
 	const n2_valfloat_t high = highval && highval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, highval) : 1;
 	const double r = n2i_bifunc_getease_internal_typed(rate, type, low, high);
 	n2e_funcarg_pushf(arg, r);
@@ -27536,9 +27893,9 @@ static int n2i_bifunc_ease_n2(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_strlen(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "strlen：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
-	const n2_value_t* val = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* val = n2e_funcarg_getoarg(arg, 0);
 	if (n2_value_get_type(val) != N2_VALUE_STRING) { n2e_funcarg_raise(arg, "strlen：対象が文字列ではありません"); return -1; }
 	const n2_valstr_t* str = n2_value_get_strc(val);
 	n2e_funcarg_pushi(arg, N2_SCAST(n2_valint_t, N2_STRNLEN(str->str_, str->buffer_size_)));
@@ -27547,13 +27904,13 @@ static int n2i_bifunc_strlen(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_getstr(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 2 || arg_num > 5) { n2e_funcarg_raise(arg, "getstr：引数の数（%d）が期待（%d - %d）と違います", arg_num, 2, 5); return -1; }
 
-	const n2_value_t* tovarval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* tovarval = n2e_funcarg_getoarg(arg, 0);
 	if (tovarval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "getstr：代入対象が変数ではありません"); return -1; }
 
-	const n2_value_t* varval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* varval = n2e_funcarg_getoarg(arg, 1);
 	if (varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "getstr：読み取り対象が変数ではありません"); return -1; }
 	n2_variable_t* var = varval->field_.varvalue_.var_;
 	const int aptr = varval->field_.varvalue_.aptr_;
@@ -27562,7 +27919,7 @@ static int n2i_bifunc_getstr(const n2_funcarg_t* arg)
 	const void* data = n2_variable_map_data(&data_size, var, aptr);
 	if (!data || data_size <= 0) { n2e_funcarg_raise(arg, "getstr：読み取り対象の変数は直接読み取れるデータ領域が存在しない型です"); return -1; }
 
-	const n2_value_t* offsetval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* offsetval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valint_t offset = offsetval && offsetval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, offsetval) : 0;
 	if (offset < 0 || offset > N2_SCAST(n2_valint_t, data_size))
 	{
@@ -27571,11 +27928,11 @@ static int n2i_bifunc_getstr(const n2_funcarg_t* arg)
 	}
 	const size_t readbound = data_size - N2_SCAST(size_t, offset);
 
-	const n2_value_t* separatorval = n2e_funcarg_getarg(arg, 3);
+	const n2_value_t* separatorval = n2e_funcarg_getoarg(arg, 3);
 	const n2_valint_t separator = separatorval && separatorval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, separatorval) : 0;
 	if (separator < 0 || separator > 255) { 		n2e_funcarg_raise(arg, "getstr：区切り文字のASCIIコード（%" N2_VALINT_PRI ")の値が不正です", separator); return -1; }
 
-	const n2_value_t* readmaxval = n2e_funcarg_getarg(arg, 4);
+	const n2_value_t* readmaxval = n2e_funcarg_getoarg(arg, 4);
 	n2_valint_t readmax = readmaxval && readmaxval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, readmaxval) : 1024;
 	readmax = N2_MIN(readmax, N2_SCAST(n2_valint_t, readbound));
 
@@ -27605,7 +27962,7 @@ struct n2i_bifunc_split_phcontext_t
 	n2_szarray_t separators_;
 };
 
-static void n2i_bifunc_split_phmodinst_freefunc(n2_state_t* state, n2_fiber_t* f, n2i_crplaceholderclass_instance_t* instance)
+static void n2i_bifunc_split_phmodinst_freefunc(n2_state_t* state, n2_fiber_t* f, n2_crplaceholderclass_instance_t* instance)
 {
 	N2_UNUSE(f);
 	n2i_bifunc_split_phcontext_t* phcontext  = N2_RCAST(n2i_bifunc_split_phcontext_t*, instance->instance_exuser_);
@@ -27615,14 +27972,14 @@ static void n2i_bifunc_split_phmodinst_freefunc(n2_state_t* state, n2_fiber_t* f
 
 static int n2i_bifunc_split(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 3) { n2e_funcarg_raise(arg, "split：引数の数（%d）が期待（%d - ）と違います", arg_num, 3); return -1; }
-	n2_value_t* targetval = n2e_funcarg_getarg(arg, 0);
+	n2_value_t* targetval = n2e_funcarg_getoarg(arg, 0);
 	//n2_valstr_t* target = targetval ? n2_value_get_str(targetval) : NULL;
 	n2_valstr_t* target = targetval ? n2e_funcarg_eval_str_and_push(arg, targetval) : NULL;
 	if (!target) { n2e_funcarg_raise(arg, "split：最初の引数が文字列ではありません。splitの対象は文字列である必要があります。"); return -1; }
 	//n2_str_update_size(target);
-	const n2_value_t* separatorval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* separatorval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valstr_t* separator = n2e_funcarg_eval_str_and_push(arg, separatorval);
 	// 残りの引数の変数チェック
 	const int outvar_argbias = 2;
@@ -27632,7 +27989,7 @@ static int n2i_bifunc_split(const n2_funcarg_t* arg)
 	int outputvarnum = 0;
 	for (int i = outvar_argbias; i < arg_num; ++i)
 	{
-		n2_value_t* outputvar = n2e_funcarg_getarg(arg, i);
+		n2_value_t* outputvar = n2e_funcarg_getoarg(arg, i);
 		if (!outputvar || outputvar->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "split：%d番目の代入先（%d番目の引数）が変数ではありません", i - outvar_argbias, i); return -1; }
 		// どうせ文字列型にするので、先に空文字を代入しておく
 		n2_variable_set(arg->state_, arg->fiber_, outputvar->field_.varvalue_.var_, outputvar->field_.varvalue_.aptr_, tstrval);
@@ -27642,7 +27999,7 @@ static int n2i_bifunc_split(const n2_funcarg_t* arg)
 	n2_module_t* phmodule = n2_moduletable_peek(arg->fiber_->environment_->moduletable_, arg->fiber_->environment_->module_core_placeholderclass_id_);
 	N2_ASSERT(phmodule);
 	n2_modinstance_t* modinst = n2e_funcarg_createmodinst(arg, phmodule);
-	n2i_crplaceholderclass_instance_t* phinst = N2_RCAST(n2i_crplaceholderclass_instance_t*, modinst);
+	n2_crplaceholderclass_instance_t* phinst = N2_RCAST(n2_crplaceholderclass_instance_t*, modinst);
 	n2i_bifunc_split_phcontext_t* phcontext  = N2_TMALLOC(n2i_bifunc_split_phcontext_t, arg->state_);
 	n2_szarray_setup(arg->state_, &phcontext->separators_, 32, 32);
 	phinst->instance_exuser_ = phcontext;
@@ -27673,8 +28030,8 @@ static int n2i_bifunc_split(const n2_funcarg_t* arg)
 		const int iarg = i + outvar_argbias;
 		n2_value_t* outputvar = NULL;
 		int outputaptr_bias = 0;
-		if (iarg >= arg_num) { outputvar = n2e_funcarg_getarg(arg, -1); outputaptr_bias = iarg - arg_num + 1; }
-		else { outputvar = n2e_funcarg_getarg(arg, iarg); }
+		if (iarg >= arg_num) { outputvar = n2e_funcarg_getoarg(arg, -1); outputaptr_bias = iarg - arg_num + 1; }
+		else { outputvar = n2e_funcarg_getoarg(arg, iarg); }
 		if (!outputvar) { continue; }
 		if (outputvar->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "split：内部エラー発生（%d番目の出力先が変数ではない）", i); return -1; }
 		size_t npos = n2_szarray_peekcv(&phcontext->separators_, i, 0);
@@ -27690,13 +28047,13 @@ static int n2i_bifunc_split(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_strrep(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 3) { n2e_funcarg_raise(arg, "strrep：引数の数（%d）が期待（%d）と違います", arg_num, 3); return -1; }
-	n2_value_t* targetval = n2e_funcarg_getarg(arg, 0);
+	n2_value_t* targetval = n2e_funcarg_getoarg(arg, 0);
 	if (n2_value_get_type(targetval) != N2_VALUE_STRING) { n2e_funcarg_raise(arg, "strrep：対象が文字列ではありません"); return -1; }
-	const n2_value_t* srcval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* srcval = n2e_funcarg_getoarg(arg, 1);
 	if (n2_value_get_type(srcval) != N2_VALUE_STRING) { n2e_funcarg_raise(arg, "strrep：検索文字列が文字列ではありません"); return -1; }
-	const n2_value_t* toval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* toval = n2e_funcarg_getoarg(arg, 2);
 	if (n2_value_get_type(toval) != N2_VALUE_STRING) { n2e_funcarg_raise(arg, "strrep：置換文字列が文字列ではありません"); return -1; }
 	n2_valstr_t* str = n2_value_get_str(targetval);
 	n2_str_update_size(str);// 一応内容を更新しておく
@@ -27707,11 +28064,11 @@ static int n2i_bifunc_strrep(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_instr(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 3) { n2e_funcarg_raise(arg, "instr：引数の数（%d）が期待（%d）と違います", arg_num, 3); return -1; }
-	const n2_value_t* val = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* val = n2e_funcarg_getoarg(arg, 0);
 	if (n2_value_get_type(val) != N2_VALUE_STRING) { n2e_funcarg_raise(arg, "instr：対象が文字列ではありません"); return -1; }
-	const n2_value_t* offsetval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* offsetval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t offset = n2e_funcarg_eval_int(arg, offsetval);
 	if (offset < 0)
 	{
@@ -27720,7 +28077,7 @@ static int n2i_bifunc_instr(const n2_funcarg_t* arg)
 	}
 	else
 	{
-		const n2_value_t* patternval = n2e_funcarg_getarg(arg, 2);
+		const n2_value_t* patternval = n2e_funcarg_getoarg(arg, 2);
 		if (n2_value_get_type(patternval) != N2_VALUE_STRING) { n2e_funcarg_raise(arg, "instr：検索文字列が文字列ではありません"); return -1; }
 		const n2_valstr_t* str = n2_value_get_strc(val);
 		n2e_funcarg_pushi(arg, n2_str_find(str, n2_value_get_plstr(patternval), SIZE_MAX, N2_SCAST(size_t, offset)));
@@ -27730,13 +28087,13 @@ static int n2i_bifunc_instr(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_strmid(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 3) { n2e_funcarg_raise(arg, "strmid：引数の数（%d）が期待（%d）と違います", arg_num, 3); return -1; }
-	const n2_value_t* val = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* val = n2e_funcarg_getoarg(arg, 0);
 	if (n2_value_get_type(val) != N2_VALUE_STRING) { n2e_funcarg_raise(arg, "strmid：対象が文字列ではありません"); return -1; }
-	const n2_value_t* offsetval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* offsetval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t offset = n2e_funcarg_eval_int(arg, offsetval);
-	const n2_value_t* getval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* getval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valint_t get = n2e_funcarg_eval_int(arg, getval);
 	const n2_valstr_t* str = n2_value_get_strc(val);
 	n2_valstr_t* dst = n2e_funcarg_pushs(arg, "");
@@ -27753,13 +28110,13 @@ static int n2i_bifunc_strmid(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_strtrim(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 1 || arg_num > 3) { n2e_funcarg_raise(arg, "strtrim：引数の数（%d）が期待（%d - %d）と違います", arg_num, 1, 3); return -1; }
-	const n2_value_t* val = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* val = n2e_funcarg_getoarg(arg, 0);
 	if (n2_value_get_type(val) != N2_VALUE_STRING) { n2e_funcarg_raise(arg, "strtrim：対象が文字列ではありません"); return -1; }
-	const n2_value_t* swval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* swval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t sw = swval ? n2e_funcarg_eval_int(arg, swval) : 0;
-	const n2_value_t* cpval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* cpval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valint_t cp = cpval && cpval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, cpval) : ' ';
 	char cpstr[N2_CODEPOINT_MAX_BUFFER_SIZE]; N2_MEMSET(cpstr, 0, sizeof(cpstr));
 	if (!n2_encoding_utf8_print(cpstr, N2_ARRAYDIM(cpstr), N2_SCAST(n2_codepoint_t, cp))) { n2e_funcarg_raise(arg, "strtrim：除去するコードポイント（%" N2_VALINT_PRI "）が不正です", cp); return -1; }
@@ -27778,9 +28135,9 @@ static int n2i_bifunc_strtrim(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_strf(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 1) { n2e_funcarg_raise(arg, "strf：引数の数（%d）が期待（%d - ）と違います", arg_num, 1); return -1; }
-	const n2_value_t* fmtval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* fmtval = n2e_funcarg_getoarg(arg, 0);
 	if (n2_value_get_type(fmtval) != N2_VALUE_STRING) { n2e_funcarg_raise(arg, "strf：対象が文字列ではありません"); return -1; }
 	const n2_valstr_t* fmtstr = n2_value_get_strc(fmtval);
 	const char* fmt = fmtstr->str_;
@@ -27821,7 +28178,7 @@ static int n2i_bifunc_strf(const n2_funcarg_t* arg)
 		const char* e = fmt + cursor;
 		n2_str_set(arg->state_, tmpformatter, b, e - b);
 		// ここまで来たら値の準備をする
-		const n2_value_t* printval = n2e_funcarg_getarg(arg, 1 + printvalindex++);
+		const n2_value_t* printval = n2e_funcarg_getoarg(arg, 1 + printvalindex++);
 		if (!printval)
 		{
 			n2e_funcarg_raise(arg, "strf：%d番目の書式指定子に対応する値がありません", printvalindex);
@@ -27897,12 +28254,12 @@ static int n2i_bifunc_strf(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_getpath(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 2) { n2e_funcarg_raise(arg, "getpath：引数の数（%d）が期待（%d）と違います", arg_num, 2); return -1; }
-	const n2_value_t* pathval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* pathval = n2e_funcarg_getoarg(arg, 0);
 	if (n2_value_get_type(pathval) != N2_VALUE_STRING) { n2e_funcarg_raise(arg, "getpath：対象が文字列ではありません"); return -1; }
 	const n2_valstr_t* pathstr = n2_value_get_strc(pathval);
-	const n2_value_t* swval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* swval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t sw = n2e_funcarg_eval_int(arg, swval);
 	n2_valstr_t* dst = n2e_funcarg_pushs(arg, "");
 	n2_str_copy_to(arg->state_, dst, pathstr);
@@ -27927,9 +28284,9 @@ static int n2i_bifunc_getpath(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_cnvwtos(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "cnvwtos：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
-	const n2_value_t* strval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* strval = n2e_funcarg_getoarg(arg, 0);
 	if (n2_value_get_type(strval) != N2_VALUE_STRING) { n2e_funcarg_raise(arg, "cnvwtos：対象が文字列ではありません", arg_num, 1); return -1; }
 	const n2_str_t* str = n2_value_get_strc(strval);
 	N2_ASSERT(str);
@@ -27942,11 +28299,11 @@ static int n2i_bifunc_cnvwtos(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_cnvstow(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "cnvstow：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
-	n2_value_t* varval = n2e_funcarg_getarg(arg, 0);
+	n2_value_t* varval = n2e_funcarg_getoarg(arg, 0);
 	if (varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "cnvstow：対象の引数が変数ではありません"); return -1; }
-	const n2_value_t* strval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* strval = n2e_funcarg_getoarg(arg, 1);
 	n2_str_t* str = n2e_funcarg_eval_str_and_push(arg, strval);
 	n2_str_t* converted = n2e_funcarg_pushs(arg, "");
 	n2_encoding_utf16ne_convert_from_utf8(arg->state_, converted, str->str_, str->size_, '?');
@@ -27959,9 +28316,9 @@ static int n2i_bifunc_cnvstow(const n2_funcarg_t* arg)
 #if N2_CONFIG_USE_ENCODING_CP932
 static int n2i_bifunc_cnvatos(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "cnvatos：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
-	const n2_value_t* strval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* strval = n2e_funcarg_getoarg(arg, 0);
 	if (n2_value_get_type(strval) != N2_VALUE_STRING) { n2e_funcarg_raise(arg, "cnvatos：対象が文字列ではありません", arg_num, 1); return -1; }
 	const n2_str_t* str = n2_value_get_strc(strval);
 	N2_ASSERT(str);
@@ -27973,11 +28330,11 @@ static int n2i_bifunc_cnvatos(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_cnvstoa(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "cnvstoa：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
-	n2_value_t* varval = n2e_funcarg_getarg(arg, 0);
+	n2_value_t* varval = n2e_funcarg_getoarg(arg, 0);
 	if (varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "cnvstoa：対象の引数が変数ではありません"); return -1; }
-	const n2_value_t* strval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* strval = n2e_funcarg_getoarg(arg, 1);
 	n2_str_t* str = n2e_funcarg_eval_str_and_push(arg, strval);
 	n2_str_t* converted = n2e_funcarg_pushs(arg, "");
 	n2_encoding_cp932_convert_from_utf8(arg->state_, converted, str->str_, str->size_, '?');
@@ -27990,12 +28347,12 @@ static int n2i_bifunc_cnvstoa(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_strcodepoints_n2(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 2) { n2e_funcarg_raise(arg, "strcodepoints@n2：引数の数（%d）が期待（%d）と違います", arg_num, 2); return -1; }
-	n2_value_t* varval = n2e_funcarg_getarg(arg, 0);
+	n2_value_t* varval = n2e_funcarg_getoarg(arg, 0);
 	if (varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "strcodepoints@n2：対象の引数が変数ではありません"); return -1; }
 	if (varval->field_.varvalue_.aptr_ >= 0) { n2e_funcarg_raise(arg, "strcodepoints@n2：対象の変数の配列要素が指定されています"); return -1; }
-	const n2_value_t* strval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* strval = n2e_funcarg_getoarg(arg, 1);
 	const n2_str_t* str = n2e_funcarg_eval_str_and_push(arg, strval);
 	n2_variable_t* var = varval->field_.varvalue_.var_;
 	size_t varlength[N2_VARIABLE_DIM] = {str->size_ + 1/*at most*/, 0};
@@ -28022,9 +28379,9 @@ static int n2i_bifunc_strcodepoints_n2(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_reintfb2d_n2(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "reintfb2d：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
-	const n2_value_t* fromval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* fromval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t from = fromval && fromval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, fromval) : 0;
 	const int32_t from32 = N2_SCAST(int32_t, from);
 	float tof = 0; N2_MEMCPY(&tof, &from32, sizeof(float));
@@ -28034,9 +28391,9 @@ static int n2i_bifunc_reintfb2d_n2(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_reintd2fb_n2(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "reintd2fb：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
-	const n2_value_t* fromval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* fromval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valfloat_t from = fromval && fromval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, fromval) : 0;
 	const float fromf = N2_SCAST(float, from);
 	int32_t tofb = 0; N2_MEMCPY(&tofb, &fromf, sizeof(float));
@@ -28046,9 +28403,9 @@ static int n2i_bifunc_reintd2fb_n2(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_exist(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "exist：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
-	const n2_value_t* pathval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* pathval = n2e_funcarg_getoarg(arg, 0);
 	n2_valstr_t* path = n2e_funcarg_eval_str_and_push(arg, pathval);
 	n2h_filesystem_filestat_t filestat;
 	n2h_filesystem_filestat_init(&filestat);
@@ -28062,9 +28419,9 @@ static int n2i_bifunc_exist(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_delete(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "delete：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
-	const n2_value_t* pathval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* pathval = n2e_funcarg_getoarg(arg, 0);
 	n2_valstr_t* path = n2e_funcarg_eval_str_and_push(arg, pathval);
 	n2_bool_t succeeded = N2_FALSE;
 	if (!succeeded && arg->state_->filesystem_ && n2h_filesystem_remove(arg->state_, arg->state_->filesystem_, path->str_, N2_TRUE, N2_FALSE)) { succeeded = N2_TRUE; }
@@ -28075,9 +28432,9 @@ static int n2i_bifunc_delete(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_dirinfo(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "dirinfo：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
-	const n2_value_t* modeval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* modeval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t mode = n2e_funcarg_eval_int(arg, modeval);
 	n2_valstr_t* dirpath = n2e_funcarg_pushs(arg, "");
 	// ここはdefineなどせずに直接分岐で中身を取り出す
@@ -28134,13 +28491,13 @@ static n2_bool_t n2h_bifunc_dirlist_callback_func(n2_state_t* state, const n2h_f
 
 static int n2i_bifunc_dirlist(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 2 || arg_num > 3) { n2e_funcarg_raise(arg, "dirlist：引数の数（%d）が期待（%d - %d）と違います", arg_num, 2, 3); return -1; }
-	n2_value_t* varval = n2e_funcarg_getarg(arg, 0);
+	n2_value_t* varval = n2e_funcarg_getoarg(arg, 0);
 	if (varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "dirlist：対象の引数が変数ではありません"); return -1; }
-	const n2_value_t* filemaskval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* filemaskval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valstr_t* filemask = n2e_funcarg_eval_str_and_push(arg, filemaskval);
-	const n2_value_t* modeval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* modeval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valint_t mode = (modeval && modeval->type_ != N2_VALUE_NIL) ? n2e_funcarg_eval_int(arg, modeval) : 0;
 	n2_valstr_t* filepaths = n2e_funcarg_pushs(arg, "");
 	n2_value_t* filepathsval = n2e_funcarg_get(arg, -1);
@@ -28161,9 +28518,9 @@ static int n2i_bifunc_dirlist(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_chdir(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "chdir：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
-	const n2_value_t* pathval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* pathval = n2e_funcarg_getoarg(arg, 0);
 	n2_valstr_t* path = n2e_funcarg_eval_str_and_push(arg, pathval);
 	if (!n2h_systemfiledevice_chdir(arg->state_, path->str_, path->size_)) { n2e_funcarg_raise(arg, "chdir：移動しようとしたディレクトリ（%s）が存在しないか無効です。", path->str_); return -1; }
 	return 0;
@@ -28171,9 +28528,9 @@ static int n2i_bifunc_chdir(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_mkdir(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "mkdir：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
-	const n2_value_t* pathval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* pathval = n2e_funcarg_getoarg(arg, 0);
 	n2_valstr_t* path = n2e_funcarg_eval_str_and_push(arg, pathval);
 	if (!n2h_systemfiledevice_mkdir(arg->state_, path->str_, path->size_, 0)) { n2e_funcarg_raise(arg, "mkdir：生成しようとしたディレクトリ（%s）が存在しないか無効です。", path->str_); return -1; }
 	return 0;
@@ -28188,9 +28545,9 @@ static n2_bool_t n2i_bifunc_internal_notecheck(const n2_funcarg_t* arg, const ch
 
 static int n2i_bifunc_notesel(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "notesel：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
-	const n2_value_t* noteval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* noteval = n2e_funcarg_getoarg(arg, 0);
 	if (noteval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "notesel：対象が変数ではありません"); return -1; }
 	if (n2_value_get_type(noteval) != N2_VALUE_STRING)
 	{
@@ -28204,7 +28561,7 @@ static int n2i_bifunc_notesel(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_noteunsel(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 0) { n2e_funcarg_raise(arg, "noteunsel：引数の数（%d）が期待（%d）と違います", arg_num, 0); return -1; }
 	arg->fiber_->notevar_ = NULL;
 	arg->fiber_->noteaptr_ = -1;
@@ -28214,15 +28571,15 @@ static int n2i_bifunc_noteunsel(const n2_funcarg_t* arg)
 static int n2i_bifunc_noteadd(const n2_funcarg_t* arg)
 {
 	const char* label = "noteadd";
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 1 || arg_num > 3) { n2e_funcarg_raise(arg, "%s：引数の数（%d）が期待（%d - %d）と違います", label, arg_num, 1, 3); return -1; }
 	if (!n2i_bifunc_internal_notecheck(arg, label)) { return -1; }
-	const n2_value_t* strval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* strval = n2e_funcarg_getoarg(arg, 0);
 	n2_valstr_t* str = n2e_funcarg_eval_str_and_push(arg, strval);
 	n2_str_append(arg->state_, str, "\n", 1);
-	const n2_value_t* lineval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* lineval = n2e_funcarg_getoarg(arg, 1);
 	n2_valint_t line = lineval && lineval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, lineval) : -1;
-	const n2_value_t* modeval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* modeval = n2e_funcarg_getoarg(arg, 2);
 	n2_valint_t mode = modeval && modeval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, modeval) : 0;
 	n2_variable_t* var = arg->fiber_->notevar_;
 	const int aptr = arg->fiber_->noteaptr_;
@@ -28263,10 +28620,10 @@ static int n2i_bifunc_noteadd(const n2_funcarg_t* arg)
 static int n2i_bifunc_notedel(const n2_funcarg_t* arg)
 {
 	const char* label = "notedel";
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "%s：引数の数（%d）が期待（%d）と違います", label, arg_num, 1); return -1; }
 	if (!n2i_bifunc_internal_notecheck(arg, label)) { return -1; }
-	const n2_value_t* lineval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* lineval = n2e_funcarg_getoarg(arg, 0);
 	n2_valint_t line = lineval && lineval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, lineval) : 0;
 	n2_variable_t* var = arg->fiber_->notevar_;
 	const int aptr = arg->fiber_->noteaptr_;
@@ -28289,13 +28646,13 @@ static int n2i_bifunc_notedel(const n2_funcarg_t* arg)
 static int n2i_bifunc_noteget(const n2_funcarg_t* arg)
 {
 	const char* label = "noteget";
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 1 || arg_num > 2) { n2e_funcarg_raise(arg, "%s：引数の数（%d）が期待（%d - %d）と違います", label, arg_num, 1, 2); return -1; }
 	if (!n2i_bifunc_internal_notecheck(arg, label)) { return -1; }
-	const n2_value_t* tovarval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* tovarval = n2e_funcarg_getoarg(arg, 0);
 	if (tovarval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "%s：対象が変数ではありません", label); return -1; }
 	n2_variable_t* tovar = tovarval->field_.varvalue_.var_;
-	const n2_value_t* lineval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* lineval = n2e_funcarg_getoarg(arg, 1);
 	n2_valint_t line = lineval && lineval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, lineval) : 0;
 	n2_variable_t* var = arg->fiber_->notevar_;
 	const int aptr = arg->fiber_->noteaptr_;
@@ -28322,13 +28679,13 @@ static int n2i_bifunc_noteget(const n2_funcarg_t* arg)
 static int n2i_bifunc_noteload(const n2_funcarg_t* arg)
 {
 	const char* label = "noteload";
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 1 || arg_num > 2) { n2e_funcarg_raise(arg, "%s：引数の数（%d）が期待（%d - %d）と違います", label, arg_num, 1, 2); return -1; }
 	if (!n2i_bifunc_internal_notecheck(arg, label)) { return -1; }
-	const n2_value_t* filepathval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* filepathval = n2e_funcarg_getoarg(arg, 0);
 	N2_ASSERT(filepathval);
 	const n2_str_t* filepath = n2e_funcarg_eval_str_and_push(arg, filepathval);
-	const n2_value_t* readsizeval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* readsizeval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t readsize = readsizeval && readsizeval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, readsizeval) : -1;
 
 	n2_variable_t* var = arg->fiber_->notevar_;
@@ -28348,10 +28705,10 @@ static int n2i_bifunc_noteload(const n2_funcarg_t* arg)
 static int n2i_bifunc_notesave(const n2_funcarg_t* arg)
 {
 	const char* label = "notesave";
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "%s：引数の数（%d）が期待（%d）と違います", label, arg_num, 1); return -1; }
 	if (!n2i_bifunc_internal_notecheck(arg, label)) { return -1; }
-	const n2_value_t* filepathval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* filepathval = n2e_funcarg_getoarg(arg, 0);
 	N2_ASSERT(filepathval);
 	const n2_str_t* filepath = n2e_funcarg_eval_str_and_push(arg, filepathval);
 
@@ -28372,9 +28729,9 @@ static int n2i_bifunc_notesave(const n2_funcarg_t* arg)
 static int n2si_bifunc_assert(const n2_funcarg_t* arg)
 {
 #if N2_CONFIG_USE_DEBUGGING
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "assert：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
-	const n2_value_t* evval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* evval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t ev = n2e_funcarg_eval_int(arg, evval);
 	if (!ev)
 	{
@@ -28397,9 +28754,9 @@ static int n2si_bifunc_assert(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_logmes(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "logmes：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
-	const n2_value_t* sval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* sval = n2e_funcarg_getoarg(arg, 0);
 	n2_valstr_t* s = n2e_funcarg_eval_str_and_push(arg, sval);
 	n2i_fiber_logmes(arg->state_, arg->fiber_, s);
 	return 0;
@@ -28407,9 +28764,9 @@ static int n2si_bifunc_logmes(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_newmod(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 2) { n2e_funcarg_raise(arg, "newmod：引数の数（%d）が期待（%d）より少ないです", arg_num, 2); return -1; }
-	const n2_value_t* varval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* varval = n2e_funcarg_getoarg(arg, 0);
 	if (varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "newmod：対象が変数ではありません"); return -1; }
 	n2_variable_t* var = varval->field_.varvalue_.var_;
 	const int aptr = varval->field_.varvalue_.aptr_;
@@ -28432,7 +28789,7 @@ static int n2i_bifunc_newmod(const n2_funcarg_t* arg)
 		n2_variable_redim(arg->state_, var, nlength);
 	}
 	// 実際に生成するモジュールを確定
-	const n2_value_t* modval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* modval = n2e_funcarg_getoarg(arg, 1);
 	if (n2_value_get_type(modval) != N2_VALUE_MODINST) { n2e_funcarg_raise(arg, "newmod：生成するモジュールとしてモジュールが指定されていません"); return -1; }
 	const n2_modinstance_t* modinst = n2_value_get_modinstc(modval)->instance_;
 	if (modinst == NULL || modinst->module_id_ != arg->fiber_->environment_->module_core_modclass_id_) { n2e_funcarg_raise(arg, "newmod：生成するモジュールとしてモジュールが指定されていません"); return -1; }
@@ -28461,8 +28818,8 @@ static int n2i_bifunc_newmod(const n2_funcarg_t* arg)
 			n2_value_swap(dst, src);
 		}
 		// 呼び出し
-		const size_t call_arg_num = N2_SCAST(size_t, arg_num - 2 + 1);
-		if (n2e_funcarg_callfunc(arg, func, call_arg_num) < 0) { return -1; }
+		const size_t call_oarg_num = N2_SCAST(size_t, arg_num - 2 + 1);
+		if (n2e_funcarg_callfunc(arg, func, call_oarg_num, 0) < 0) { return -1; }
 	}
 	// セットしたインデックスを返す
 	n2e_funcarg_pushi(arg, N2_SCAST(n2_valint_t, setindex));
@@ -28471,9 +28828,9 @@ static int n2i_bifunc_newmod(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_delmod(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "delmod：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
-	const n2_value_t* varval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* varval = n2e_funcarg_getoarg(arg, 0);
 	if (varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "delmod：対象が変数ではありません"); return -1; }
 	n2_variable_t* var = varval->field_.varvalue_.var_;
 	const int aptr = varval->field_.varvalue_.aptr_;
@@ -28514,9 +28871,9 @@ static int n2i_bifunc_exttime_common(const n2_funcarg_t* arg, const char* label,
 
 static int n2i_bifunc_gettime(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 1) { n2e_funcarg_raise(arg, "gettime：引数の数（%d）が期待（0 - %d）と違います", arg_num, 1); return -1; }
-	const n2_value_t* fval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* fval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t f = fval && fval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, fval) : 0;
 	const n2h_unixtime_t lcoaltime = n2h_unixtime_now(N2_TRUE);
 	return n2i_bifunc_exttime_common(arg, "gettime", lcoaltime, f);
@@ -28524,13 +28881,13 @@ static int n2i_bifunc_gettime(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_exttime_n2(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 2 || arg_num > 3) { n2e_funcarg_raise(arg, "exttime：引数の数（%d）が期待（%d - %d）と違います", arg_num, 2, 3); return -1; }
-	const n2_value_t* fval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* fval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t f = fval && fval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, fval) : 0;
-	const n2_value_t* tval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* tval = n2e_funcarg_getoarg(arg, 1);
 	n2_valfloat_t t = tval && tval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, tval) : 0;
-	const n2_value_t* tmodeval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* tmodeval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valint_t tmode = tmodeval && tmodeval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, tmodeval) : N2_TIMEMODE_LOCALTIME;
 	switch (tmode)
 	{
@@ -28544,16 +28901,16 @@ static int n2i_bifunc_exttime_n2(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_bload(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 2 || arg_num > 4) { n2e_funcarg_raise(arg, "bload：引数の数（%d）が期待（%d - %d）と違います", arg_num, 2, 4); return -1; }
-	const n2_value_t* filepathval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* filepathval = n2e_funcarg_getoarg(arg, 0);
 	N2_ASSERT(filepathval);
 	const n2_str_t* filepath = n2e_funcarg_eval_str_and_push(arg, filepathval);
-	const n2_value_t* varval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* varval = n2e_funcarg_getoarg(arg, 1);
 	if (varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "bload：対象が変数ではありません"); return -1; }
-	const n2_value_t* readsizeval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* readsizeval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valint_t readsize = readsizeval && readsizeval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, readsizeval) : -1;
-	const n2_value_t* readoffsetval = n2e_funcarg_getarg(arg, 3);
+	const n2_value_t* readoffsetval = n2e_funcarg_getoarg(arg, 3);
 	const n2_valint_t readoffset = readoffsetval && readoffsetval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, readoffsetval) : -1;
 
 	n2_variable_t* var = varval->field_.varvalue_.var_;
@@ -28586,16 +28943,16 @@ static int n2i_bifunc_bload(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_bsave(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 2 || arg_num > 4) { n2e_funcarg_raise(arg, "bsave：引数の数（%d）が期待（%d - %d）と違います", arg_num, 2, 4); return -1; }
-	const n2_value_t* filepathval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* filepathval = n2e_funcarg_getoarg(arg, 0);
 	N2_ASSERT(filepathval);
 	const n2_str_t* filepath = n2e_funcarg_eval_str_and_push(arg, filepathval);
-	const n2_value_t* varval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* varval = n2e_funcarg_getoarg(arg, 1);
 	if (varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "bsave：対象が変数ではありません"); return -1; }
-	const n2_value_t* writesizeval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* writesizeval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valint_t writesize = writesizeval && writesizeval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, writesizeval) : -1;
-	const n2_value_t* writeoffsetval = n2e_funcarg_getarg(arg, 3);
+	const n2_value_t* writeoffsetval = n2e_funcarg_getoarg(arg, 3);
 	const n2_valint_t writeoffset = writeoffsetval && writeoffsetval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, writeoffsetval) : -1;
 
 	n2_variable_t* var = varval->field_.varvalue_.var_;
@@ -28614,11 +28971,11 @@ static int n2i_bifunc_bsave(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_bcopy(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 2) { n2e_funcarg_raise(arg, "bcopy：引数の数（%d）が期待（%d）と違います", arg_num, 2); return -1; }
-	const n2_value_t* srcfilepathval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* srcfilepathval = n2e_funcarg_getoarg(arg, 0);
 	const n2_str_t* srcfilepath = n2e_funcarg_eval_str_and_push(arg, srcfilepathval);
-	const n2_value_t* dstfilepathval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* dstfilepathval = n2e_funcarg_getoarg(arg, 1);
 	const n2_str_t* dstfilepath = n2e_funcarg_eval_str_and_push(arg, dstfilepathval);
 
 	n2_bool_t succeeded = N2_TRUE;
@@ -28654,11 +29011,11 @@ static int n2i_bifunc_bcopy(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_exec(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 1 || arg_num > 2) { n2e_funcarg_raise(arg, "exec：引数の数（%d）が期待（%d - %d）と違います", arg_num, 1, 2); return -1; }
-	const n2_value_t* shval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* shval = n2e_funcarg_getoarg(arg, 0);
 	const n2_str_t* sh = n2e_funcarg_eval_str_and_push(arg, shval);
-	const n2_value_t* modeval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* modeval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t mode = modeval && modeval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, modeval) : 0;
 
 	n2_valint_t result = -1;
@@ -28901,10 +29258,10 @@ static void n2i_environment_bind_basic_builtins(n2_state_t* state, n2_pp_context
 
 static int n2i_bifunc_print(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	for (int i =0 ; i < arg_num; ++i)
 	{
-		const n2_value_t* a = n2e_funcarg_getarg(arg, i);
+		const n2_value_t* a = n2e_funcarg_getoarg(arg, i);
 		n2_str_t* s = n2e_funcarg_eval_str(arg, a);
 		if (s)
 		{
@@ -28917,10 +29274,10 @@ static int n2i_bifunc_print(const n2_funcarg_t* arg)
 
 static int n2i_bifunc_mes(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	for (int i = 0 ; i < arg_num; ++i)
 	{
-		const n2_value_t* a = n2e_funcarg_getarg(arg, i);
+		const n2_value_t* a = n2e_funcarg_getoarg(arg, i);
 		n2_str_t* s = n2e_funcarg_eval_str(arg, a);
 		if (s)
 		{
@@ -29122,9 +29479,9 @@ N2SI_DEFINE_BISYSVAR_SE_SWIN_1I(hinstance, 0);
 
 static int n2si_bifunc_sysreq_n2(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 1 || arg_num > 2) { n2e_funcarg_raise(arg, "sysreq@n2：引数の数（%d）が期待（%d - %d）と違います", arg_num, 1, 2); return -1; }
-	const n2_value_t* reqval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* reqval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t req = reqval && reqval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, reqval) : 0;
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	if (arg_num <= 1)
@@ -29187,7 +29544,7 @@ static int n2si_bifunc_sysreq_n2(const n2_funcarg_t* arg)
 #define N2I_RAISE_ON_NO_STDENV() \
 	if (!se) { n2e_funcarg_raise(arg, "sysreq@n2：標準環境が未初期かです"); return -1; }
 
-		const n2_value_t* reqsetval = n2e_funcarg_getarg(arg, 1);
+		const n2_value_t* reqsetval = n2e_funcarg_getoarg(arg, 1);
 		switch (req)
 		{
 #if N2_CONFIG_USE_N2_STANDARD
@@ -29208,12 +29565,12 @@ static int n2si_bifunc_sysreq_n2(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_gsel(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 2) { n2e_funcarg_raise(arg, "gsel：引数の数（%d）が期待（0 - %d）より多いです", arg_num, 2); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
-	const n2_value_t* idval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* idval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t id = idval && idval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, idval) : 0;
-	const n2_value_t* modeval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* modeval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t mode = modeval && idval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, modeval) : 0;
 	n2s_window_t* nw = id >= 0 ? n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL) : NULL;
 	if (!nw) { n2e_funcarg_raise(arg, "gsel：スクリーンID（%" N2_VALINT_PRI "）が初期化されていません。", id); return -1; }
@@ -29256,43 +29613,43 @@ static int n2si_bifunc_gsel(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_pos(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 2) { n2e_funcarg_raise(arg, "pos：引数の数（%d）が期待（0 - %d）より多いです", arg_num, 2); return -1; }
 	if (arg_num <= 0) { return 0; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* xval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* xval = n2e_funcarg_getoarg(arg, 0);
 	if (xval && n2_value_get_type(xval) != N2_VALUE_NIL) { nw->posx_ = n2e_funcarg_eval_int(arg, xval); }
-	const n2_value_t* yval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* yval = n2e_funcarg_getoarg(arg, 1);
 	if (yval && n2_value_get_type(yval) != N2_VALUE_NIL) { nw->posy_ = n2e_funcarg_eval_int(arg, yval); }
 	return 0;
 }
 
 static int n2si_bifunc_color(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 3) { n2e_funcarg_raise(arg, "color：引数の数（%d）が期待（0 - %d）より多いです", arg_num, 3); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* rval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* rval = n2e_funcarg_getoarg(arg, 0);
 	nw->ginfo_r_ = n2si_u8channel_clamp(N2_SCAST(int, rval ? n2e_funcarg_eval_int(arg, rval) : 0));
-	const n2_value_t* gval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* gval = n2e_funcarg_getoarg(arg, 1);
 	nw->ginfo_g_ = n2si_u8channel_clamp(N2_SCAST(int, gval ? n2e_funcarg_eval_int(arg, gval) : 0));
-	const n2_value_t* bval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* bval = n2e_funcarg_getoarg(arg, 2);
 	nw->ginfo_b_ = n2si_u8channel_clamp(N2_SCAST(int, bval ? n2e_funcarg_eval_int(arg, bval) : 0));
 	return 0;
 }
 
 static int n2si_bifunc_rgbcolor(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "rgbcolor：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* rgbval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* rgbval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t rgb = n2e_funcarg_eval_int(arg, rgbval);
 	nw->ginfo_r_ = N2_SCAST(uint8_t, (rgb >> 16) & 0xff);
 	nw->ginfo_g_ = N2_SCAST(uint8_t, (rgb >> 8) & 0xff);
@@ -29302,16 +29659,16 @@ static int n2si_bifunc_rgbcolor(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_hsvcolor(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 3) { n2e_funcarg_raise(arg, "hsvcolor：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* hval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* hval = n2e_funcarg_getoarg(arg, 0);
 	const float h = N2_SCAST(float, N2_FMOD(N2_SCAST(double, hval ? n2e_funcarg_eval_int(arg, hval) : 0) / 192, 1));
-	const n2_value_t* sval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* sval = n2e_funcarg_getoarg(arg, 1);
 	const float s = n2_fsaturate(N2_SCAST(float, sval ? n2e_funcarg_eval_int(arg, sval) : 0) / 255);
-	const n2_value_t* vval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* vval = n2e_funcarg_getoarg(arg, 2);
 	const float v = n2_fsaturate(N2_SCAST(float, vval ? n2e_funcarg_eval_int(arg, vval) : 0) / 255);
 	const n2s_u8color_t rgb = n2s_fcolor_to_u8color(n2s_hsv_to_fcolor(n2_fvec3(h, s, v), 0));
 	nw->ginfo_r_ = rgb.r_;
@@ -29322,34 +29679,34 @@ static int n2si_bifunc_hsvcolor(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_objcolor(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 3) { n2e_funcarg_raise(arg, "objcolor：引数の数（%d）が期待（0 - %d）より多いです", arg_num, 3); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* rval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* rval = n2e_funcarg_getoarg(arg, 0);
 	nw->objcolor_r_ = n2si_u8channel_clamp(N2_SCAST(int, rval ? n2e_funcarg_eval_int(arg, rval) : 0));
-	const n2_value_t* gval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* gval = n2e_funcarg_getoarg(arg, 1);
 	nw->objcolor_g_ = n2si_u8channel_clamp(N2_SCAST(int, gval ? n2e_funcarg_eval_int(arg, gval) : 0));
-	const n2_value_t* bval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* bval = n2e_funcarg_getoarg(arg, 2);
 	nw->objcolor_b_ = n2si_u8channel_clamp(N2_SCAST(int, bval ? n2e_funcarg_eval_int(arg, bval) : 0));
 	return 0;
 }
 
 static int n2si_bifunc_gmode(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 4) { n2e_funcarg_raise(arg, "gmode：引数の数（%d）が期待（0 - %d）と違います", arg_num, 4); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* copymodeval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* copymodeval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t copymode = copymodeval && n2_value_get_type(copymodeval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, copymodeval) : 0;
-	const n2_value_t* wval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* wval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t w = wval && n2_value_get_type(wval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, wval) : 32;
-	const n2_value_t* hval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* hval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valint_t h = hval && n2_value_get_type(hval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, hval) : 32;
-	const n2_value_t* aval = n2e_funcarg_getarg(arg, 3);
+	const n2_value_t* aval = n2e_funcarg_getoarg(arg, 3);
 	const n2_valint_t a = aval && n2_value_get_type(aval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, aval) : 0;
 	if (w < 0 || h < 0) { n2e_funcarg_raise(arg, "gmode：コピーするサイズ（W=%" N2_VALINT_PRI ", H=%" N2_VALINT_PRI "）が不正です", w, h); return -1; }
 	nw->gmode_ = N2_SCAST(n2s_gmode_e, (copymode >= 0 && copymode < N2S_MAX_GMODE ? copymode : N2S_GMODE_COPY));
@@ -29360,16 +29717,16 @@ static int n2si_bifunc_gmode(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_gmulcolor(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 3) { n2e_funcarg_raise(arg, "gmulcolor：引数の数（%d）が期待（0 - %d）と違います", arg_num, 3); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* rval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* rval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t r = rval && n2_value_get_type(rval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, rval) : 255;
-	const n2_value_t* gval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* gval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t g = gval && n2_value_get_type(gval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, gval) : 255;
-	const n2_value_t* bval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* bval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valint_t b = bval && n2_value_get_type(bval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, bval) : 255;
 	nw->ginfo_mulr_ = n2si_u8channel_clamp(N2_SCAST(int, r));
 	nw->ginfo_mulg_ = n2si_u8channel_clamp(N2_SCAST(int, g));
@@ -29379,12 +29736,12 @@ static int n2si_bifunc_gmulcolor(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_redraw(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 5) { n2e_funcarg_raise(arg, "redraw：引数の数（%d）が期待（0 - %d）と違います", arg_num, 5); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* modeval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* modeval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t mode = modeval && n2_value_get_type(modeval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, modeval) : 1;
 	// その他のパラメータは無視
 	nw->redraw_ = (mode & 1) ? N2_TRUE : N2_FALSE;
@@ -29395,23 +29752,23 @@ static int n2si_bifunc_redraw(const n2_funcarg_t* arg)
 #if N2_CONFIG_USE_IMAGE_READ_LIB
 static int n2si_bifunc_imgunpack_n2(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 2 || arg_num > 4) { n2e_funcarg_raise(arg, "imgunpack@n2：引数の数（%d）が期待（%d - %d）と違います", arg_num, 2, 4); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
-	const n2_value_t* tovarval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* tovarval = n2e_funcarg_getoarg(arg, 0);
 	if (!tovarval || tovarval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "imgunpack@n2：書き込み対象が変数ではありません"); return -1; }
 	if (tovarval->field_.varvalue_.aptr_ >= 0) { n2e_funcarg_raise(arg, "imgunpack@n2：書き込み対象の変数として変数（%s）の要素（%d）が指定されています", tovarval->field_.varvalue_.var_->name_, tovarval->field_.varvalue_.aptr_); return -1; }
 	n2_variable_t* tovar = tovarval->field_.varvalue_.var_;
-	const n2_value_t* fromvarval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* fromvarval = n2e_funcarg_getoarg(arg, 1);
 	if (!fromvarval || fromvarval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "imgunpack@n2：読み込み対象が変数ではありません"); return -1; }
 	n2_variable_t* fromvar = fromvarval->field_.varvalue_.var_;
 	const int fromaptr = fromvarval->field_.varvalue_.aptr_;
 	size_t from_data_size = 0;
 	const void* from_data = n2_variable_map_data(&from_data_size, fromvar, fromaptr);
 	if (!from_data || from_data_size <= 0) { n2e_funcarg_raise(arg, "imgunpack@n2：読み込み対象の変数はバイト列として読み込めるメモリ領域を持っていません"); return -1; }
-	const n2_value_t* sizeval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* sizeval = n2e_funcarg_getoarg(arg, 2);
 	n2_valint_t size = sizeval && sizeval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, sizeval) : -1;
-	const n2_value_t* offsetval = n2e_funcarg_getarg(arg, 3);
+	const n2_value_t* offsetval = n2e_funcarg_getoarg(arg, 3);
 	const n2_valint_t offset = offsetval && offsetval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, offsetval) : 0;
 	if (offset < 0 || offset > N2_SCAST(n2_valint_t, from_data_size)) { n2e_funcarg_raise(arg, "imgunpack@n2：読み込みオフセット（%" N2_VALINT_PRI "）が読み込める範囲（0 - %zu）外です", offset, from_data_size); return -1; }
 	const n2_valint_t readable_size = N2_SCAST(n2_valint_t, from_data_size) - offset;
@@ -29449,21 +29806,21 @@ static int n2si_bifunc_imgunpack_n2(const n2_funcarg_t* arg)
 #if N2_CONFIG_USE_IMAGE_WRITE_LIB
 static int n2si_bifunc_imgpack_n2(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 4 || arg_num > 5) { n2e_funcarg_raise(arg, "imgpack@n2：引数の数（%d）が期待（%d - %d）と違います", arg_num, 4, 5); return -1; }
-	const n2_value_t* tovarval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* tovarval = n2e_funcarg_getoarg(arg, 0);
 	if (!tovarval || tovarval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "imgpack@n2：書き込み対象が変数ではありません"); return -1; }
 	if (tovarval->field_.varvalue_.aptr_ >= 0) { n2e_funcarg_raise(arg, "imgpack@n2：書き込み対象の変数として変数（%s）の要素（%d）が指定されています", tovarval->field_.varvalue_.var_->name_, tovarval->field_.varvalue_.aptr_); return -1; }
 	n2_variable_t* tovar = tovarval->field_.varvalue_.var_;
-	const n2_value_t* fromvarval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* fromvarval = n2e_funcarg_getoarg(arg, 1);
 	if (!fromvarval || fromvarval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "imgpack@n2：読み込み対象が変数ではありません"); return -1; }
 	if (fromvarval->field_.varvalue_.aptr_ >= 0) { n2e_funcarg_raise(arg, "imgpack@n2：読み込み対象の変数として変数（%s）の要素（%d）が指定されています", fromvarval->field_.varvalue_.var_->name_, fromvarval->field_.varvalue_.aptr_); return -1; }
 	if (fromvarval->field_.varvalue_.var_->type_ != N2_VALUE_INT) { n2e_funcarg_raise(arg, "imgpack@n2：読み込み対象の変数がint型ではありません"); return -1; }
-	const n2_value_t* wval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* wval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valint_t w = wval && wval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, wval) : 0;
-	const n2_value_t* hval = n2e_funcarg_getarg(arg, 3);
+	const n2_value_t* hval = n2e_funcarg_getoarg(arg, 3);
 	const n2_valint_t h = hval && hval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, hval) : 0;
-	const n2_value_t* fileformatval = n2e_funcarg_getarg(arg, 4);
+	const n2_value_t* fileformatval = n2e_funcarg_getoarg(arg, 4);
 	const n2_valint_t fileformat = fileformatval && fileformatval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, fileformatval) : N2_IMAGE_FILE_PNG;
 	if (w <= 0 || h <= 0) { n2e_funcarg_raise(arg, "imgpack@n2：イメージのサイズ指定（%" N2_VALINT_PRI " x %" N2_VALINT_PRI "）が不正です", w, h); return -1; }
 	n2_variable_t* fromvar = fromvarval->field_.varvalue_.var_;
@@ -29509,16 +29866,16 @@ static int n2si_bifunc_imgpack_n2(const n2_funcarg_t* arg)
 #if N2_CONFIG_USE_SDL_LIB
 static int n2si_bifunc_screen_common(const n2_funcarg_t* arg, const char* label, n2_bool_t bgscr)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 3) { n2e_funcarg_raise(arg, "%s：引数の数（%d）が期待（0 - %d）より多いです", label, arg_num, 3); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
-	const n2_value_t* idval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* idval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t id = idval && idval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, idval) : 0;
 	if (id < 0 || id > N2_SCAST(n2_valint_t, n2s_windowarray_size(se->windows_))) { n2e_funcarg_raise(arg, "%s：スクリーンID（%" N2_VALINT_PRI "）が範囲外（%zu - %zu）です", label, id, 0, n2s_windowarray_size(se->windows_)); return -1; }
 	if (id != 0) { n2e_funcarg_raise(arg, "%s：スクリーンID（%" N2_VALINT_PRI "）は0以外使えません", label, id); return -1; }
-	const n2_value_t* wval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* wval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t w = wval && n2_value_get_type(wval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, wval) : N2_SCAST(n2_valint_t, arg->state_->config_.standard_window_default_width_);
-	const n2_value_t* hval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* hval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valint_t h = hval && n2_value_get_type(hval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, hval) : N2_SCAST(n2_valint_t, arg->state_->config_.standard_window_default_height_);
 	if (w < N2S_WINDOW_SIZE_MIN || w > N2S_WINDOW_SIZE_MAX || h < N2S_WINDOW_SIZE_MIN || h > N2S_WINDOW_SIZE_MAX) { n2e_funcarg_raise(arg, "%s：ウィンドウの大きさの指定（x=%" N2_VALINT_PRI ", y=%" N2_VALINT_PRI "）が不正（サポートされてないサイズ）です", label, w, h); return -1; }
 	n2si_environment_flush_commandbuffer(arg->state_, se);// コマンドはフラッシュしておく
@@ -29585,16 +29942,16 @@ static int n2si_bifunc_bgscr(const n2_funcarg_t* arg) { return n2si_bifunc_scree
 
 static int n2si_bifunc_buffer(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 4) { n2e_funcarg_raise(arg, "buffer：引数の数（%d）が期待（0 - %d）より多いです", arg_num, 4); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
-	const n2_value_t* idval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* idval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t id = idval && idval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, idval) : 0;
 	if (id < 0 || id > N2_SCAST(n2_valint_t, n2s_windowarray_size(se->windows_))) { n2e_funcarg_raise(arg, "buffer：スクリーンID（%" N2_VALINT_PRI "）が範囲外（%zu - %zu）です", id, 0, n2s_windowarray_size(se->windows_)); return -1; }
 	if (id == 0) { n2e_funcarg_raise(arg, "buffer：スクリーンID（%" N2_VALINT_PRI "）はbufferに指定できません", id); return -1; }
-	const n2_value_t* wval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* wval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t w = wval && n2_value_get_type(wval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, wval) : N2_SCAST(n2_valint_t, arg->state_->config_.standard_window_default_width_);
-	const n2_value_t* hval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* hval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valint_t h = hval && n2_value_get_type(hval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, hval) : N2_SCAST(n2_valint_t, arg->state_->config_.standard_window_default_height_);
 	if (w <= 0 || h <= 0) { n2e_funcarg_raise(arg, "buffer：スクリーンの大きさの指定（x=%" N2_VALINT_PRI ", y=%" N2_VALINT_PRI "）が不正です", w, h); return -1; }
 	// それ以降のパラメータは無視
@@ -29612,13 +29969,13 @@ static int n2si_bifunc_buffer(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_cls(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 0 || arg_num > 1) { n2e_funcarg_raise(arg, "cls：引数の数（%d）が期待（%d - %d）と違います", arg_num, 0, 1); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
 	n2si_environment_flush_commandbuffer(arg->state_, se);// コマンドはフラッシュしておく
-	const n2_value_t* colval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* colval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t col = colval && colval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, colval) : 0;
 	n2s_u8color_t ccol = n2s_u8color(255, 255, 255, 255);
 	switch (col)
@@ -29637,12 +29994,12 @@ static int n2si_bifunc_cls(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_title(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "title：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* strval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* strval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valstr_t* str = n2e_funcarg_eval_str_and_push(arg, strval);
 	n2si_window_set_title(arg->state_, nw, str->str_);
 	return 0;
@@ -29650,16 +30007,16 @@ static int n2si_bifunc_title(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_dialog(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 3) { n2e_funcarg_raise(arg, "dialog：引数の数（%d）が期待（0 - %d）と違います", arg_num, 3); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* strval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* strval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valstr_t* str = strval && strval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_str_and_push(arg, strval) : n2e_funcarg_pushs(arg, "");
-	const n2_value_t* modeval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* modeval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t mode = modeval && modeval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, modeval) : 0;
-	const n2_value_t* titleval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* titleval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valstr_t* title = titleval && titleval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_str_and_push(arg, titleval) : n2e_funcarg_pushs(arg, "");
 	n2_bool_t has_result = N2_FALSE;
 	int buttonid = 0;
@@ -29711,9 +30068,9 @@ static int n2si_bifunc_dialog(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_wait(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "wait：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
-	const n2_value_t* val = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* val = n2e_funcarg_getoarg(arg, 0);
 	n2_valint_t wait_val = n2e_funcarg_eval_int(arg, val);
 	arg->fiber_->fiber_state_ = N2_FIBER_STATE_YIELD_AWAIT;
 	arg->fiber_->yield_await_duration_ms_ = N2_MAX(0, wait_val) * 10;
@@ -29722,9 +30079,9 @@ static int n2si_bifunc_wait(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_await(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 1) { n2e_funcarg_raise(arg, "await：引数の数（%d）が期待（0 - %d）と違います", arg_num, 1); return -1; }
-	const n2_value_t* val = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* val = n2e_funcarg_getoarg(arg, 0);
 	n2_valint_t wait_val = val && val->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, val) : 0;
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	const uint64_t now_time = SDL_GetPerformanceCounter();
@@ -29742,7 +30099,7 @@ static int n2si_bifunc_await(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_systimer_n2(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 0) { n2e_funcarg_raise(arg, "systimer@n2：引数の数（%d）が期待（%d）と違います", arg_num, 0); return -1; }
 	n2e_funcarg_pushf(arg, N2_SCAST(n2_valfloat_t, SDL_GetPerformanceCounter()) / N2_SCAST(n2_valfloat_t, SDL_GetPerformanceFrequency()) * 1000);
 	return 1;
@@ -29750,13 +30107,13 @@ static int n2si_bifunc_systimer_n2(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_texfilter_n2(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 4) { n2e_funcarg_raise(arg, "line：引数の数（%d）が期待（0 - %d）と違います", arg_num, 4); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
-	const n2_value_t* idval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* idval = n2e_funcarg_getoarg(arg, 0);
 	n2_valint_t id = idval && n2_value_get_type(idval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, idval) : -1;
 	if (id < 0) { id = se->selected_window_index_; }
-	const n2_value_t* filterval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* filterval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t filter = filterval && n2_value_get_type(filterval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, filterval) : -1;
 	if (id < 0 || id > N2_SCAST(n2_valint_t, n2s_windowarray_size(se->windows_))) { n2e_funcarg_raise(arg, "texfilter@n2：スクリーンID（%" N2_VALINT_PRI "）が範囲外（%zu - %zu）です", id, 0, n2s_windowarray_size(se->windows_)); return -1; }
 	n2s_window_t* srcw = n2s_windowarray_peekv(se->windows_, N2_SCAST(int, id), NULL);
@@ -29770,14 +30127,14 @@ static int n2si_bifunc_texfilter_n2(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_pset(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 2) { n2e_funcarg_raise(arg, "pset：引数の数（%d）が期待（0 - %d）と違います", arg_num, 2); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* xval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* xval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t x = xval && n2_value_get_type(xval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, xval) : nw->posx_;
-	const n2_value_t* yval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* yval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t y = yval && n2_value_get_type(yval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, yval) : nw->posy_;
 	n2si_environment_checkout_draw_commandbuffer(arg->state_, se);
 	const n2_bool_t independent_gmode = N2_TRUE;
@@ -29789,14 +30146,14 @@ static int n2si_bifunc_pset(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_pget(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 2) { n2e_funcarg_raise(arg, "pget：引数の数（%d）が期待（0 - %d）と違います", arg_num, 2); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* xval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* xval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t x = xval && n2_value_get_type(xval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, xval) : nw->posx_;
-	const n2_value_t* yval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* yval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t y = yval && n2_value_get_type(yval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, yval) : nw->posy_;
 	n2si_environment_flush_commandbuffer(arg->state_, se);// コマンドはフラッシュしておく
 	n2s_u8color_t c = N2S_U8COLOR_WHITE;// GetPixel()と同じ処理、Invalidは白色
@@ -29812,18 +30169,18 @@ static int n2si_bifunc_pget(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_line_common(const n2_funcarg_t* arg, n2_bool_t independent_gmode)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 4) { n2e_funcarg_raise(arg, "line：引数の数（%d）が期待（0 - %d）と違います", arg_num, 4); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* exval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* exval = n2e_funcarg_getoarg(arg, 0);
 	n2_valint_t ex = exval && n2_value_get_type(exval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, exval) : 0;
-	const n2_value_t* eyval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* eyval = n2e_funcarg_getoarg(arg, 1);
 	n2_valint_t ey = eyval && n2_value_get_type(eyval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, eyval) : 0;
-	const n2_value_t* sxval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* sxval = n2e_funcarg_getoarg(arg, 2);
 	n2_valint_t sx = sxval && n2_value_get_type(sxval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, sxval) : nw->posx_;
-	const n2_value_t* syval = n2e_funcarg_getarg(arg, 3);
+	const n2_value_t* syval = n2e_funcarg_getoarg(arg, 3);
 	n2_valint_t sy = syval && n2_value_get_type(syval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, syval) : nw->posy_;
 	n2si_environment_checkout_draw_commandbuffer(arg->state_, se);
 	if (independent_gmode) { n2s_commandbuffer_set_program(arg->state_, se->commandbuffer_, N2S_GPROGRAM_2D); n2s_commandbuffer_set_renderstate(arg->state_, se->commandbuffer_, N2S_RENDERSTATE_2D_NOBLEND); }
@@ -29837,18 +30194,18 @@ static int n2si_bifunc_line_n2(const n2_funcarg_t* arg) { return n2si_bifunc_lin
 
 static int n2si_bifunc_boxf_common(const n2_funcarg_t* arg, n2_bool_t independent_gmode)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 4) { n2e_funcarg_raise(arg, "boxf：引数の数（%d）が期待（0 - %d）と違います", arg_num, 4); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* sxval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* sxval = n2e_funcarg_getoarg(arg, 0);
 	n2_valint_t sx = sxval && n2_value_get_type(sxval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, sxval) : 0;
-	const n2_value_t* syval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* syval = n2e_funcarg_getoarg(arg, 1);
 	n2_valint_t sy = syval && n2_value_get_type(syval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, syval) : 0;
-	const n2_value_t* exval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* exval = n2e_funcarg_getoarg(arg, 2);
 	n2_valint_t ex = exval && n2_value_get_type(exval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, exval) : N2_SCAST(n2_valint_t, nw->width_);
-	const n2_value_t* eyval = n2e_funcarg_getarg(arg, 3);
+	const n2_value_t* eyval = n2e_funcarg_getoarg(arg, 3);
 	n2_valint_t ey = eyval && n2_value_get_type(eyval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, eyval) : N2_SCAST(n2_valint_t, nw->height_);
 	n2si_environment_checkout_draw_commandbuffer(arg->state_, se);
 	if (independent_gmode) { n2s_commandbuffer_set_program(arg->state_, se->commandbuffer_, N2S_GPROGRAM_2D); n2s_commandbuffer_set_renderstate(arg->state_, se->commandbuffer_, N2S_RENDERSTATE_2D_NOBLEND); }
@@ -29861,20 +30218,20 @@ static int n2si_bifunc_boxf_n2(const n2_funcarg_t* arg) { return n2si_bifunc_box
 
 static int n2si_bifunc_circle_common(const n2_funcarg_t* arg, n2_bool_t independent_gmode)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 5) { n2e_funcarg_raise(arg, "circle：引数の数（%d）が期待（0 - %d）と違います", arg_num, 5); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* sxval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* sxval = n2e_funcarg_getoarg(arg, 0);
 	n2_valint_t sx = sxval && n2_value_get_type(sxval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, sxval) : 0;
-	const n2_value_t* syval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* syval = n2e_funcarg_getoarg(arg, 1);
 	n2_valint_t sy = syval && n2_value_get_type(syval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, syval) : 0;
-	const n2_value_t* exval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* exval = n2e_funcarg_getoarg(arg, 2);
 	n2_valint_t ex = exval && n2_value_get_type(exval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, exval) : N2_SCAST(n2_valint_t, nw->width_);
-	const n2_value_t* eyval = n2e_funcarg_getarg(arg, 3);
+	const n2_value_t* eyval = n2e_funcarg_getoarg(arg, 3);
 	n2_valint_t ey = eyval && n2_value_get_type(eyval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, eyval) : N2_SCAST(n2_valint_t, nw->height_);
-	const n2_value_t* fval = n2e_funcarg_getarg(arg, 4);
+	const n2_value_t* fval = n2e_funcarg_getoarg(arg, 4);
 	n2_valint_t f = fval && n2_value_get_type(fval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, fval) : 1;
 	n2si_environment_checkout_draw_commandbuffer(arg->state_, se);
 	if (independent_gmode) { n2s_commandbuffer_set_program(arg->state_, se->commandbuffer_, N2S_GPROGRAM_2D); n2s_commandbuffer_set_renderstate(arg->state_, se->commandbuffer_, N2S_RENDERSTATE_2D_NOBLEND); }
@@ -29890,24 +30247,24 @@ static int n2si_bifunc_circle_n2(const n2_funcarg_t* arg) { return n2si_bifunc_c
 
 static int n2si_bifunc_arc_common(const char* label, const n2_funcarg_t* arg, n2_bool_t independent_gmode)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 7) { n2e_funcarg_raise(arg, "%s：引数の数（%d）が期待（0 - %d）と違います", label, arg_num, 7); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* sxval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* sxval = n2e_funcarg_getoarg(arg, 0);
 	n2_valint_t sx = sxval && n2_value_get_type(sxval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, sxval) : 0;
-	const n2_value_t* syval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* syval = n2e_funcarg_getoarg(arg, 1);
 	n2_valint_t sy = syval && n2_value_get_type(syval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, syval) : 0;
-	const n2_value_t* exval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* exval = n2e_funcarg_getoarg(arg, 2);
 	n2_valint_t ex = exval && n2_value_get_type(exval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, exval) : N2_SCAST(n2_valint_t, nw->width_);
-	const n2_value_t* eyval = n2e_funcarg_getarg(arg, 3);
+	const n2_value_t* eyval = n2e_funcarg_getoarg(arg, 3);
 	n2_valint_t ey = eyval && n2_value_get_type(eyval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, eyval) : N2_SCAST(n2_valint_t, nw->height_);
-	const n2_value_t* stval = n2e_funcarg_getarg(arg, 4);
+	const n2_value_t* stval = n2e_funcarg_getoarg(arg, 4);
 	n2_valfloat_t st = stval && n2_value_get_type(stval) != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, stval) : 0;
-	const n2_value_t* swval = n2e_funcarg_getarg(arg, 5);
+	const n2_value_t* swval = n2e_funcarg_getoarg(arg, 5);
 	n2_valfloat_t sw = swval && n2_value_get_type(swval) != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, swval) : N2_MPI;
-	const n2_value_t* fval = n2e_funcarg_getarg(arg, 6);
+	const n2_value_t* fval = n2e_funcarg_getoarg(arg, 6);
 	n2_valfloat_t f = fval && n2_value_get_type(fval) != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, fval) : -1;
 	n2si_environment_checkout_draw_commandbuffer(arg->state_, se);
 	if (independent_gmode) { n2s_commandbuffer_set_program(arg->state_, se->commandbuffer_, N2S_GPROGRAM_2D); n2s_commandbuffer_set_renderstate(arg->state_, se->commandbuffer_, N2S_RENDERSTATE_2D_NOBLEND); }
@@ -29922,24 +30279,24 @@ static int n2si_bifunc_garc_n2(const n2_funcarg_t* arg) { return n2si_bifunc_arc
 
 static int n2si_bifunc_pie_common(const char* label, const n2_funcarg_t* arg, n2_bool_t independent_gmode)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 7) { n2e_funcarg_raise(arg, "%s：引数の数（%d）が期待（0 - %d）と違います", label, arg_num, 7); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* sxval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* sxval = n2e_funcarg_getoarg(arg, 0);
 	n2_valint_t sx = sxval && n2_value_get_type(sxval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, sxval) : 0;
-	const n2_value_t* syval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* syval = n2e_funcarg_getoarg(arg, 1);
 	n2_valint_t sy = syval && n2_value_get_type(syval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, syval) : 0;
-	const n2_value_t* exval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* exval = n2e_funcarg_getoarg(arg, 2);
 	n2_valint_t ex = exval && n2_value_get_type(exval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, exval) : N2_SCAST(n2_valint_t, nw->width_);
-	const n2_value_t* eyval = n2e_funcarg_getarg(arg, 3);
+	const n2_value_t* eyval = n2e_funcarg_getoarg(arg, 3);
 	n2_valint_t ey = eyval && n2_value_get_type(eyval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, eyval) : N2_SCAST(n2_valint_t, nw->height_);
-	const n2_value_t* stval = n2e_funcarg_getarg(arg, 4);
+	const n2_value_t* stval = n2e_funcarg_getoarg(arg, 4);
 	n2_valfloat_t st = stval && n2_value_get_type(stval) != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, stval) : 0;
-	const n2_value_t* swval = n2e_funcarg_getarg(arg, 5);
+	const n2_value_t* swval = n2e_funcarg_getoarg(arg, 5);
 	n2_valfloat_t sw = swval && n2_value_get_type(swval) != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, swval) : N2_MPI;
-	const n2_value_t* fval = n2e_funcarg_getarg(arg, 6);
+	const n2_value_t* fval = n2e_funcarg_getoarg(arg, 6);
 	n2_valfloat_t f = fval && n2_value_get_type(fval) != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, fval) : -1;
 	n2si_environment_checkout_draw_commandbuffer(arg->state_, se);
 	if (independent_gmode) { n2s_commandbuffer_set_program(arg->state_, se->commandbuffer_, N2S_GPROGRAM_2D); n2s_commandbuffer_set_renderstate(arg->state_, se->commandbuffer_, N2S_RENDERSTATE_2D_NOBLEND); }
@@ -29957,20 +30314,20 @@ static int n2si_bifunc_gpie_n2(const n2_funcarg_t* arg) { return n2si_bifunc_pie
 
 static int n2si_bifunc_grect(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 5) { n2e_funcarg_raise(arg, "grect：引数の数（%d）が期待（0 - %d）と違います", arg_num, 5); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* sxval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* sxval = n2e_funcarg_getoarg(arg, 0);
 	n2_valint_t sx = sxval && n2_value_get_type(sxval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, sxval) : 0;
-	const n2_value_t* syval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* syval = n2e_funcarg_getoarg(arg, 1);
 	n2_valint_t sy = syval && n2_value_get_type(syval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, syval) : 0;
-	const n2_value_t* rotval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* rotval = n2e_funcarg_getoarg(arg, 2);
 	n2_valfloat_t rot = rotval && n2_value_get_type(rotval) != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, rotval) : 0.0;
-	const n2_value_t* wval = n2e_funcarg_getarg(arg, 3);
+	const n2_value_t* wval = n2e_funcarg_getoarg(arg, 3);
 	n2_valint_t w = wval && n2_value_get_type(wval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, wval) : 0;
-	const n2_value_t* hval = n2e_funcarg_getarg(arg, 4);
+	const n2_value_t* hval = n2e_funcarg_getoarg(arg, 4);
 	n2_valint_t h = hval && n2_value_get_type(hval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, hval) : 0;
 	if (!wval || !hval) { n2e_funcarg_raise(arg, "grect：矩形のX・Yサイズが指定されていません"); return -1; }
 	if (w <= 0 || h <= 0) { return 0; }
@@ -29984,20 +30341,20 @@ static int n2si_bifunc_grect(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_gcopy(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 5) { n2e_funcarg_raise(arg, "gcopy：引数の数（%d）が期待（0 - %d）と違います", arg_num, 5); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* idval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* idval = n2e_funcarg_getoarg(arg, 0);
 	n2_valint_t id = idval && n2_value_get_type(idval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, idval) : 0;
-	const n2_value_t* sxval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* sxval = n2e_funcarg_getoarg(arg, 1);
 	n2_valint_t sx = sxval && n2_value_get_type(sxval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, sxval) : 0;
-	const n2_value_t* syval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* syval = n2e_funcarg_getoarg(arg, 2);
 	n2_valint_t sy = syval && n2_value_get_type(syval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, syval) : 0;
-	const n2_value_t* wval = n2e_funcarg_getarg(arg, 3);
+	const n2_value_t* wval = n2e_funcarg_getoarg(arg, 3);
 	n2_valint_t w = wval && n2_value_get_type(wval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, wval) : nw->gmode_copy_width_;
-	const n2_value_t* hval = n2e_funcarg_getarg(arg, 4);
+	const n2_value_t* hval = n2e_funcarg_getoarg(arg, 4);
 	n2_valint_t h = hval && n2_value_get_type(hval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, hval) : nw->gmode_copy_height_;
 	if (id < 0 || id > N2_SCAST(n2_valint_t, n2s_windowarray_size(se->windows_))) { n2e_funcarg_raise(arg, "gcopy：スクリーンID（%" N2_VALINT_PRI "）が範囲外（%zu - %zu）です", id, 0, n2s_windowarray_size(se->windows_)); return -1; }
 	if (id == se->selected_window_index_) { n2e_funcarg_raise(arg, "gcopy：自分自身のスクリーンID（" N2_VALINT_PRI "）をコピー元に指定することはできません", id); return -1; }
@@ -30024,24 +30381,24 @@ static int n2si_bifunc_gcopy(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_gzoom(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 2 || arg_num > 8) { n2e_funcarg_raise(arg, "gzoom：引数の数（%d）が期待（%d - %d）と違います", arg_num, 2, 8); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* cwval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* cwval = n2e_funcarg_getoarg(arg, 0);
 	n2_valint_t cw = cwval && n2_value_get_type(cwval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, cwval) : 0;
-	const n2_value_t* chval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* chval = n2e_funcarg_getoarg(arg, 1);
 	n2_valint_t ch = chval && n2_value_get_type(chval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, chval) : 0;
-	const n2_value_t* idval = n2e_funcarg_getarg(arg, 3);
+	const n2_value_t* idval = n2e_funcarg_getoarg(arg, 3);
 	n2_valint_t id = idval && n2_value_get_type(idval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, idval) : 0;
-	const n2_value_t* sxval = n2e_funcarg_getarg(arg, 4);
+	const n2_value_t* sxval = n2e_funcarg_getoarg(arg, 4);
 	n2_valint_t sx = sxval && n2_value_get_type(sxval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, sxval) : 0;
-	const n2_value_t* syval = n2e_funcarg_getarg(arg, 5);
+	const n2_value_t* syval = n2e_funcarg_getoarg(arg, 5);
 	n2_valint_t sy = syval && n2_value_get_type(syval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, syval) : 0;
-	const n2_value_t* wval = n2e_funcarg_getarg(arg, 6);
+	const n2_value_t* wval = n2e_funcarg_getoarg(arg, 6);
 	n2_valint_t w = wval && n2_value_get_type(wval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, wval) : nw->gmode_copy_width_;
-	const n2_value_t* hval = n2e_funcarg_getarg(arg, 7);
+	const n2_value_t* hval = n2e_funcarg_getoarg(arg, 7);
 	n2_valint_t h = hval && n2_value_get_type(hval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, hval) : nw->gmode_copy_height_;
 	// それ以外のパラメータは無視
 	if (id < 0 || id > N2_SCAST(n2_valint_t, n2s_windowarray_size(se->windows_))) { n2e_funcarg_raise(arg, "gzoom：スクリーンID（%" N2_VALINT_PRI "）が範囲外（%zu - %zu）です", id, 0, n2s_windowarray_size(se->windows_)); return -1; }
@@ -30067,22 +30424,22 @@ static int n2si_bifunc_gzoom(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_grotate(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 6) { n2e_funcarg_raise(arg, "grotate：引数の数（%d）が期待（0 - %d）と違います", arg_num, 6); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* idval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* idval = n2e_funcarg_getoarg(arg, 0);
 	n2_valint_t id = idval && n2_value_get_type(idval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, idval) : 0;
-	const n2_value_t* sxval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* sxval = n2e_funcarg_getoarg(arg, 1);
 	n2_valint_t sx = sxval && n2_value_get_type(sxval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, sxval) : 0;
-	const n2_value_t* syval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* syval = n2e_funcarg_getoarg(arg, 2);
 	n2_valint_t sy = syval && n2_value_get_type(syval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, syval) : 0;
-	const n2_value_t* rotval = n2e_funcarg_getarg(arg, 3);
+	const n2_value_t* rotval = n2e_funcarg_getoarg(arg, 3);
 	n2_valfloat_t rot = rotval && n2_value_get_type(rotval) != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, rotval) : 0.0;
-	const n2_value_t* wval = n2e_funcarg_getarg(arg, 4);
+	const n2_value_t* wval = n2e_funcarg_getoarg(arg, 4);
 	n2_valint_t w = wval && n2_value_get_type(wval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, wval) : nw->gmode_copy_width_;
-	const n2_value_t* hval = n2e_funcarg_getarg(arg, 5);
+	const n2_value_t* hval = n2e_funcarg_getoarg(arg, 5);
 	n2_valint_t h = hval && n2_value_get_type(hval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, hval) : nw->gmode_copy_height_;
 	if (id < 0 || id > N2_SCAST(n2_valint_t, n2s_windowarray_size(se->windows_))) { n2e_funcarg_raise(arg, "grotate：スクリーンID（%" N2_VALINT_PRI "）が範囲外（%zu - %zu）です", id, 0, n2s_windowarray_size(se->windows_)); return -1; }
 	if (id == se->selected_window_index_) { n2e_funcarg_raise(arg, "grotate：自分自身のスクリーンID（" N2_VALINT_PRI "）をコピー元に指定することはできません", id); return -1; }
@@ -30109,11 +30466,11 @@ static int n2si_bifunc_grotate(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_gsquare(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* idval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* idval = n2e_funcarg_getoarg(arg, 0);
 	n2_valint_t id = idval && n2_value_get_type(idval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, idval) : 0;
 	const n2_bool_t fill = id < 0;
 	const n2_bool_t fillgrad = id == -257;
@@ -30126,7 +30483,7 @@ static int n2si_bifunc_gsquare(const n2_funcarg_t* arg)
 	const n2_value_t* dsxysvals[4] = {NULL};
 	for (int i = 0; i < 4; ++i)
 	{
-		dsxysvals[i] = n2e_funcarg_getarg(arg, i + 1);
+		dsxysvals[i] = n2e_funcarg_getoarg(arg, i + 1);
 		if (i + 1 < arg_required && (!dsxysvals[i] || dsxysvals[i]->type_ != N2_VALUE_VARIABLE)) { n2e_funcarg_raise(arg, "gsquare:%d番目の引数が変数ではありません", i + 1); }
 	}
 	n2_fvec3_t dpos[4], spos[4];
@@ -30165,24 +30522,24 @@ static int n2si_bifunc_gsquare(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_gradf_common(const n2_funcarg_t* arg, n2_bool_t independent_gmode)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 7) { n2e_funcarg_raise(arg, "gradf：引数の数（%d）が期待（0 - %d）と違います", arg_num, 7); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* sxval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* sxval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t sx = sxval && n2_value_get_type(sxval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, sxval) : 0;
-	const n2_value_t* syval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* syval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t sy = syval && n2_value_get_type(syval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, syval) : 0;
-	const n2_value_t* wval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* wval = n2e_funcarg_getoarg(arg, 2);
 	n2_valint_t w = wval && n2_value_get_type(wval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, wval) : N2_SCAST(n2_valint_t, nw->width_);
-	const n2_value_t* hval = n2e_funcarg_getarg(arg, 3);
+	const n2_value_t* hval = n2e_funcarg_getoarg(arg, 3);
 	n2_valint_t h = hval && n2_value_get_type(hval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, hval) : N2_SCAST(n2_valint_t, nw->height_);
-	const n2_value_t* gradval = n2e_funcarg_getarg(arg, 4);
+	const n2_value_t* gradval = n2e_funcarg_getoarg(arg, 4);
 	const n2_valint_t grad = gradval && n2_value_get_type(gradval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, gradval) : 0;
-	const n2_value_t* ccol0val = n2e_funcarg_getarg(arg, 5);
+	const n2_value_t* ccol0val = n2e_funcarg_getoarg(arg, 5);
 	const n2_valint_t ccol0 = ccol0val && n2_value_get_type(ccol0val) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, ccol0val) : (nw->ginfo_r_ << 16) | (nw->ginfo_g_ << 8) | (nw->ginfo_b_);
-	const n2_value_t* ccol1val = n2e_funcarg_getarg(arg, 6);
+	const n2_value_t* ccol1val = n2e_funcarg_getoarg(arg, 6);
 	const n2_valint_t ccol1 = ccol1val && n2_value_get_type(ccol1val) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, ccol1val) : (nw->ginfo_r_ << 16) | (nw->ginfo_g_ << 8) | (nw->ginfo_b_);
 	if (w <= 0 || h <= 0) { return 0; }
 	const n2s_u8color_t col0 = n2s_u8color((ccol0 >> 16) & 0xff, (ccol0 >> 8) & 0xff, (ccol0) & 0xff, 255);
@@ -30212,14 +30569,14 @@ static int n2si_bifunc_gradf_n2(const n2_funcarg_t* arg) { return n2si_bifunc_gr
 
 static int n2si_bifunc_mes(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 1 || arg_num > 2) { n2e_funcarg_raise(arg, "mes：引数の数（%d）が期待（%d - %d）と違います", arg_num, 1, 2); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* strval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* strval = n2e_funcarg_getoarg(arg, 0);
 	const n2_str_t* str = n2e_funcarg_eval_str_and_push(arg, strval);
-	const n2_value_t* swval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* swval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t sw = swval && swval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, swval) : 0;
 	if (str->size_ > 0)
 	{
@@ -30267,17 +30624,17 @@ static int n2si_bifunc_mes(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_font(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 3) { n2e_funcarg_raise(arg, "font：引数の数（%d）が期待（%d - %d）と違います", arg_num, 0, 3); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* nameval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* nameval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valstr_t* name = nameval && nameval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_str_and_push(arg, nameval) : NULL;
-	const n2_value_t* hval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* hval = n2e_funcarg_getoarg(arg, 1);
 	n2_valint_t h = hval && n2_value_get_type(hval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, hval) : 18;
 	h = N2_MAX(1, h);
-	const n2_value_t* sfval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* sfval = n2e_funcarg_getoarg(arg, 2);
 	n2_valint_t sf = sfval && n2_value_get_type(sfval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, sfval) : 0;
 	n2_bool_t found = N2_FALSE;
 	n2s_font_t* nufont = NULL;
@@ -30306,7 +30663,7 @@ static int n2si_bifunc_font(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_sysfont(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 1) { n2e_funcarg_raise(arg, "sysfont：引数の数（%d）が期待（0 - %d）と違います", arg_num, 1); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
@@ -30385,15 +30742,15 @@ static int n2si_bifunc_fontload_common(const n2_funcarg_t* arg, const char* labe
 static int n2si_bifunc_fontloadmem_n2(const n2_funcarg_t* arg)
 {
 	const char* label = "fontloadmem";
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 2 || arg_num > 4) { n2e_funcarg_raise(arg, "%s：引数の数（%d）が期待（%d - %d）と違います", label, arg_num, 3, 4); return -1; }
-	const n2_value_t* nameval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* nameval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valstr_t* name = n2e_funcarg_eval_str_and_push(arg, nameval);
-	const n2_value_t* filebinval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* filebinval = n2e_funcarg_getoarg(arg, 1);
 	if (filebinval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "%s：対象が変数ではありません", label); return -1; }
-	const n2_value_t* readsizeval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* readsizeval = n2e_funcarg_getoarg(arg, 2);
 	n2_valint_t readsize = readsizeval && readsizeval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, readsizeval) : -1;
-	const n2_value_t* bakeheighthval = n2e_funcarg_getarg(arg, 3);
+	const n2_value_t* bakeheighthval = n2e_funcarg_getoarg(arg, 3);
 	const n2_valint_t bakeheight = bakeheighthval && bakeheighthval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, bakeheighthval) : N2_SCAST(n2_valint_t, arg->state_->config_.standard_font_default_bake_height_);
 
 	const n2_variable_t* var = filebinval->field_.varvalue_.var_;
@@ -30407,13 +30764,13 @@ static int n2si_bifunc_fontloadmem_n2(const n2_funcarg_t* arg)
 static int n2si_bifunc_fontload_n2(const n2_funcarg_t* arg)
 {
 	const char* label = "fontload";
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 2 || arg_num > 3) { n2e_funcarg_raise(arg, "%s：引数の数（%d）が期待（%d - %d）と違います", label, arg_num, 2, 3); return -1; }
-	const n2_value_t* nameval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* nameval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valstr_t* name = n2e_funcarg_eval_str_and_push(arg, nameval);
-	const n2_value_t* filepathval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* filepathval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valstr_t* filepath = n2e_funcarg_eval_str_and_push(arg, filepathval);
-	const n2_value_t* bakeheighthval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* bakeheighthval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valint_t bakeheight = bakeheighthval && bakeheighthval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, bakeheighthval) : N2_SCAST(n2_valint_t, arg->state_->config_.standard_font_default_bake_height_);
 
 	n2_buffer_t filebuf;
@@ -30434,16 +30791,16 @@ static int n2si_bifunc_fontload_n2(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_picmes_n2(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 1 || arg_num > 3) { n2e_funcarg_raise(arg, "picmes：引数の数（%d）が期待（%d - %d）と違います", arg_num, 1, 4); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* strval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* strval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valstr_t* str = n2e_funcarg_eval_str_and_push(arg, strval);
-	const n2_value_t* hval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* hval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t h = hval && hval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, hval) : 18;
-	const n2_value_t* flagsval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* flagsval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valint_t flags = flagsval && flagsval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, flagsval) : 0;
 	n2_fvec2_t texbb;
 	n2s_font_text_bb(arg->state_, &texbb, nw->draw_font_, str->str_, str->size_, N2_SCAST(float, h), -1);
@@ -30473,14 +30830,14 @@ static int n2si_bifunc_picmes_n2(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_getkey(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 1 || arg_num > 2) { n2e_funcarg_raise(arg, "getkey：引数の数（%d）が期待（%d - %d）と違います", arg_num, 1, 2); return -1; }
 
-	const n2_value_t* varval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* varval = n2e_funcarg_getoarg(arg, 0);
 	if (varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "getkey：対象が変数ではありません"); return -1; }
 	n2_variable_t* var = varval->field_.varvalue_.var_;
 	const int aptr = varval->field_.varvalue_.aptr_;
-	const n2_value_t* keyval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* keyval = n2e_funcarg_getoarg(arg, 1);
 	n2_unicp_t key = N2_SCAST(n2_unicp_t, keyval && keyval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, keyval) : 1);
 	n2_bool_t pressed = N2_FALSE;
 	key = n2i_unicode_latin_toupper(key);
@@ -30538,20 +30895,20 @@ static int n2si_bifunc_getkey(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_stick(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 1 || arg_num > 3) { n2e_funcarg_raise(arg, "stick：引数の数（%d）が期待（%d - %d）と違います", arg_num, 1, 2); return -1; }
 
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
 
-	const n2_value_t* varval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* varval = n2e_funcarg_getoarg(arg, 0);
 	if (varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "stick：対象が変数ではありません"); return -1; }
 	n2_variable_t* var = varval->field_.varvalue_.var_;
 	const int aptr = varval->field_.varvalue_.aptr_;
-	const n2_value_t* ntrigkeyval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* ntrigkeyval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t ntrigkey = ntrigkeyval && ntrigkeyval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, ntrigkeyval) : 0;
-	const n2_value_t* activecheckval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* activecheckval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t activecheck = activecheckval && activecheckval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, activecheckval) : 1;
 
 	uint32_t sticks = 0;
@@ -30615,7 +30972,7 @@ static int n2si_bifunc_stick(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_clipchks(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 0) { n2e_funcarg_raise(arg, "clipchks：引数の数（%d）が期待（%d）と違います", arg_num, 0); return -1; }
 	n2e_funcarg_pushi(arg, SDL_HasClipboardText() ? 1 : 0);
 	return 1;
@@ -30623,7 +30980,7 @@ static int n2si_bifunc_clipchks(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_clipgets(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 0) { n2e_funcarg_raise(arg, "clipgets：引数の数（%d）が期待（%d）と違います", arg_num, 0); return -1; }
 	n2_valstr_t* res = n2e_funcarg_pushs(arg, "");
 	char* cliptext = SDL_GetClipboardText();
@@ -30633,9 +30990,9 @@ static int n2si_bifunc_clipgets(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_clipputs(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 1) { n2e_funcarg_raise(arg, "clipputs：引数の数（%d）が期待（%d）と違います", arg_num, 1); return -1; }
-	const n2_value_t* strval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* strval = n2e_funcarg_getoarg(arg, 0);
 	n2_valstr_t* str = n2e_funcarg_eval_str_and_push(arg, strval);
 	n2e_funcarg_pushi(arg, SDL_SetClipboardText(str->str_) ? 0 : 1/*return value 0 denotes success*/);
 	return 1;
@@ -30746,7 +31103,7 @@ static int n2si_bifunc_loadimage_core(const n2_funcarg_t* arg, n2s_environment_t
 static int n2si_bifunc_picload_common(const n2_funcarg_t* arg, n2_bool_t is_picload)
 {
 	const char* label = is_picload ? "picload" : "celload";
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (is_picload)
 	{
 		if (arg_num < 1 || arg_num > 2) { n2e_funcarg_raise(arg, "%s：引数の数（%d）が期待（%d - %d）と違います", label, arg_num, 1, 2); return -1; }
@@ -30757,7 +31114,7 @@ static int n2si_bifunc_picload_common(const n2_funcarg_t* arg, n2_bool_t is_picl
 	}
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 
-	const n2_value_t* fileval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* fileval = n2e_funcarg_getoarg(arg, 0);
 	n2_valstr_t* file = n2e_funcarg_eval_str_and_push(arg, fileval);
 
 	int wid = se->selected_window_index_;
@@ -30768,7 +31125,7 @@ static int n2si_bifunc_picload_common(const n2_funcarg_t* arg, n2_bool_t is_picl
 	}
 	else
 	{
-		const n2_value_t* widval = n2e_funcarg_getarg(arg, 1);
+		const n2_value_t* widval = n2e_funcarg_getoarg(arg, 1);
 		wid = N2_SCAST(int, widval && n2_value_get_type(widval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, widval) : -1);
 		if (wid < 0)
 		{
@@ -30779,7 +31136,7 @@ static int n2si_bifunc_picload_common(const n2_funcarg_t* arg, n2_bool_t is_picl
 		}
 	}
 
-	const n2_value_t* fval = n2e_funcarg_getarg(arg, is_picload ? 1 : 2);
+	const n2_value_t* fval = n2e_funcarg_getoarg(arg, is_picload ? 1 : 2);
 	const n2_valint_t f = fval && n2_value_get_type(fval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, fval) : 0;
 
 	n2_buffer_t filebuf;
@@ -30818,17 +31175,17 @@ static int n2si_bifunc_celload(const n2_funcarg_t* arg) { return n2si_bifunc_pic
 
 static int n2si_bifunc_celdiv(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 5) { n2e_funcarg_raise(arg, "celdiv：引数の数（%d）が期待（%d - %d）と違います", arg_num, 0, 5); return -1; }
-	const n2_value_t* widval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* widval = n2e_funcarg_getoarg(arg, 0);
 	const int wid = N2_SCAST(int, widval && n2_value_get_type(widval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, widval) : 1);
-	const n2_value_t* divxval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* divxval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t divx = divxval && n2_value_get_type(divxval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, divxval) : 0;
-	const n2_value_t* divyval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* divyval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valint_t divy = divyval && n2_value_get_type(divyval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, divyval) : 0;
-	const n2_value_t* centerxval = n2e_funcarg_getarg(arg, 3);
+	const n2_value_t* centerxval = n2e_funcarg_getoarg(arg, 3);
 	const n2_valint_t centerx = centerxval && n2_value_get_type(centerxval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, centerxval) : 0;
-	const n2_value_t* centeryval = n2e_funcarg_getarg(arg, 4);
+	const n2_value_t* centeryval = n2e_funcarg_getoarg(arg, 4);
 	const n2_valint_t centery = centeryval && n2_value_get_type(centeryval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, centeryval) : 0;
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = wid >= 0 ? n2s_windowarray_peekv(se->windows_, wid, NULL) : NULL;
@@ -30842,17 +31199,17 @@ static int n2si_bifunc_celdiv(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_celput(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 5) { n2e_funcarg_raise(arg, "celput：引数の数（%d）が期待（%d - %d）と違います", arg_num, 0, 5); return -1; }
-	const n2_value_t* widval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* widval = n2e_funcarg_getoarg(arg, 0);
 	const int wid = N2_SCAST(int, widval && n2_value_get_type(widval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, widval) : 1);
-	const n2_value_t* bidval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* bidval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t bid = bidval && n2_value_get_type(bidval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, bidval) : 0;
-	const n2_value_t* scalexval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* scalexval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valfloat_t scalex = bidval && n2_value_get_type(scalexval) != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, scalexval) : 1;
-	const n2_value_t* scaleyval = n2e_funcarg_getarg(arg, 3);
+	const n2_value_t* scaleyval = n2e_funcarg_getoarg(arg, 3);
 	const n2_valfloat_t scaley = bidval && n2_value_get_type(scaleyval) != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, scaleyval) : 1;
-	const n2_value_t* radval = n2e_funcarg_getarg(arg, 4);
+	const n2_value_t* radval = n2e_funcarg_getoarg(arg, 4);
 	const n2_valfloat_t rad = radval && n2_value_get_type(radval) != N2_VALUE_NIL ? n2e_funcarg_eval_float(arg, radval) : 0;
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
@@ -30880,21 +31237,21 @@ static int n2si_bifunc_celput(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_celbitmap_common(const n2_funcarg_t* arg, const char* label, n2_bool_t is_extended)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	const int arg_max = is_extended ? 7 : 3;
 	if (arg_num > arg_max) { n2e_funcarg_raise(arg, "%s：引数の数（%d）が期待（%d - %d）と違います", label, arg_num, 0, arg_max); return -1; }
-	const n2_value_t* widval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* widval = n2e_funcarg_getoarg(arg, 0);
 	const int wid = N2_SCAST(int, widval && n2_value_get_type(widval) != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, widval) : 1);
-	const n2_value_t* varval = n2e_funcarg_getarg(arg, 1);
-	const n2_value_t* modeval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* varval = n2e_funcarg_getoarg(arg, 1);
+	const n2_value_t* modeval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valint_t mode = modeval && modeval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, modeval) : 0;
-	const n2_value_t* sxval = n2e_funcarg_getarg(arg, 3);
+	const n2_value_t* sxval = n2e_funcarg_getoarg(arg, 3);
 	n2_valint_t sx = sxval && sxval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, sxval) : 0;
-	const n2_value_t* syval = n2e_funcarg_getarg(arg, 4);
+	const n2_value_t* syval = n2e_funcarg_getoarg(arg, 4);
 	n2_valint_t sy = syval && syval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, syval) : 0;
-	const n2_value_t* exval = n2e_funcarg_getarg(arg, 5);
+	const n2_value_t* exval = n2e_funcarg_getoarg(arg, 5);
 	n2_valint_t ex = exval && exval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, exval) : 0;
-	const n2_value_t* eyval = n2e_funcarg_getarg(arg, 6);
+	const n2_value_t* eyval = n2e_funcarg_getoarg(arg, 6);
 	n2_valint_t ey = eyval && eyval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, eyval) : 0;
 	const n2_bool_t is_bgr = (mode & 1) ? N2_TRUE : N2_FALSE;
 	const n2_bool_t is_capture = (mode & 16) ? N2_TRUE : N2_FALSE;
@@ -30984,16 +31341,16 @@ static void n2si_bifunc_widget_posinc_y(n2s_window_t* nw, n2_valint_t oy)
 
 static int n2si_bifunc_objsize(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 3) { n2e_funcarg_raise(arg, "objsize：引数の数（%d）が期待（0 - %d）と違います", arg_num, 3); return -1; }
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
-	const n2_value_t* xval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* xval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t x = xval && xval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, xval) : 64;
-	const n2_value_t* yval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* yval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t y = yval && yval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, yval) : 24;
-	const n2_value_t* minyval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* minyval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valint_t miny = minyval && minyval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, minyval) : 0;
 	if (x <= 0 || y <= 0) { n2e_funcarg_raise(arg, "objsize：サイズの引数（x=%" N2_VALINT_PRI "、y=%" N2_VALINT_PRI "）が負です", x, y); return -1; }
 	nw->objx_ = x; nw->objy_ = y; nw->objminheight_ = miny;
@@ -31002,11 +31359,11 @@ static int n2si_bifunc_objsize(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_objprm(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 2) { n2e_funcarg_raise(arg, "objprm：引数の数（%d）が期待（%d）と違います", arg_num, 2); return -1; }
-	const n2_value_t* idval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* idval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t id = idval && idval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, idval) : 0;
-	const n2_value_t* prmval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* prmval = n2e_funcarg_getoarg(arg, 1);
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
 	N2_ASSERT(nw);
@@ -31056,11 +31413,11 @@ static int n2si_bifunc_objprm(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_objenable(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 2) { n2e_funcarg_raise(arg, "objenable：引数の数（%d）が期待（0  %d）と違います", arg_num, 2); return -1; }
-	const n2_value_t* idval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* idval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t id = idval && idval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, idval) : 0;
-	const n2_value_t* enableval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* enableval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t enable = enableval && enableval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, enableval) : 1;
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
@@ -31074,11 +31431,11 @@ static int n2si_bifunc_objenable(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_clrobj(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num > 2) { n2e_funcarg_raise(arg, "clrobj：引数の数（%d）が期待（0 - %d）と違います", arg_num, 2); return -1; }
-	const n2_value_t* startval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* startval = n2e_funcarg_getoarg(arg, 0);
 	const n2_valint_t start = startval && startval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, startval) : 0;
-	const n2_value_t* endval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* endval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t end = endval && endval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, endval) : -1;
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
 	n2s_window_t* nw = n2s_windowarray_peekv(se->windows_, se->selected_window_index_, NULL);
@@ -31105,7 +31462,7 @@ static int n2si_bifunc_clrobj(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_button(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 2) { n2e_funcarg_raise(arg, "button：引数の数（%d）が期待（%d）と違います", arg_num, 2); return -1; }
 
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
@@ -31113,9 +31470,9 @@ static int n2si_bifunc_button(const n2_funcarg_t* arg)
 	N2_ASSERT(nw);
 	if (!nw->widgets_ || nw->type_ != N2S_WINDOW_SCREEN) { n2e_funcarg_raise(arg, "button：現在の対象ウィンドウにはウィジェットを配置できません"); return -1; }
 
-	const n2_value_t* strval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* strval = n2e_funcarg_getoarg(arg, 0);
 	n2_valstr_t* str = n2e_funcarg_eval_str_and_push(arg, strval);
-	const n2_value_t* labelval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* labelval = n2e_funcarg_getoarg(arg, 1);
 	const n2_vallabel_t* label = n2_value_get_label(labelval);
 	if (!label || label->label_index_ < 0) { n2e_funcarg_raise(arg, "button：有効なラベルが指定されていません"); return -1; }
 
@@ -31139,7 +31496,7 @@ static int n2si_bifunc_button(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_chkbox(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num != 2) { n2e_funcarg_raise(arg, "chkbox：引数の数（%d）が期待（%d）と違います", arg_num, 2); return -1; }
 
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
@@ -31147,9 +31504,9 @@ static int n2si_bifunc_chkbox(const n2_funcarg_t* arg)
 	N2_ASSERT(nw);
 	if (!nw->widgets_ || nw->type_ != N2S_WINDOW_SCREEN) { n2e_funcarg_raise(arg, "chkbox：現在の対象ウィンドウにはウィジェットを配置できません"); return -1; }
 
-	const n2_value_t* strval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* strval = n2e_funcarg_getoarg(arg, 0);
 	n2_valstr_t* str = n2e_funcarg_eval_str_and_push(arg, strval);
-	const n2_value_t* varval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* varval = n2e_funcarg_getoarg(arg, 1);
 	if (!varval || varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "chkbox：対象として有効な変数を指定されていません"); return -1; }
 	if (varval->field_.varvalue_.var_->type_ != N2_VALUE_INT) { n2e_funcarg_raise(arg, "chkbox：対象の変数が整数型ではありません"); return -1; }
 	const n2_valint_t varbool = n2e_funcarg_eval_int(arg, varval);
@@ -31175,7 +31532,7 @@ static int n2si_bifunc_chkbox(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_input(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 1 || arg_num > 3) { n2e_funcarg_raise(arg, "input：引数の数（%d）が期待（%d - %d）と違います", arg_num, 1, 3); return -1; }
 
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
@@ -31183,7 +31540,7 @@ static int n2si_bifunc_input(const n2_funcarg_t* arg)
 	N2_ASSERT(nw);
 	if (!nw->widgets_ || nw->type_ != N2S_WINDOW_SCREEN) { n2e_funcarg_raise(arg, "input：現在の対象ウィンドウにはウィジェットを配置できません"); return -1; }
 
-	const n2_value_t* varval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* varval = n2e_funcarg_getoarg(arg, 0);
 	if (!varval || varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "input：対象として有効な変数を指定されていません"); return -1; }
 	if (varval->field_.varvalue_.var_->type_ != N2_VALUE_STRING)
 	{
@@ -31192,11 +31549,11 @@ static int n2si_bifunc_input(const n2_funcarg_t* arg)
 	}
 	n2_valstr_t* varstr = n2_variable_get_str(varval->field_.varvalue_.var_, varval->field_.varvalue_.aptr_);
 	if (!varstr) { n2e_funcarg_raise(arg, "input：対象の変数の文字列の値を取り出せませんでした。配列長＝%zu、指定した配列インデックス＝%d", varval->field_.varvalue_.var_->element_num_, varval->field_.varvalue_.aptr_); return -1; }
-	const n2_value_t* xval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* xval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t x = xval && xval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, xval) : nw->objx_;
-	const n2_value_t* yval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* yval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valint_t y = yval && yval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, yval) : nw->objy_;
-	const n2_value_t* sizeval = n2e_funcarg_getarg(arg, 3);
+	const n2_value_t* sizeval = n2e_funcarg_getoarg(arg, 3);
 	n2_valint_t size = sizeval && sizeval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, sizeval) : 0;
 	if (size <= 0) { size = N2_SCAST(n2_valint_t, arg->state_->config_.standard_widget_input_default_max_buffer_size_); }
 
@@ -31222,7 +31579,7 @@ static int n2si_bifunc_input(const n2_funcarg_t* arg)
 
 static int n2si_bifunc_mesbox(const n2_funcarg_t* arg)
 {
-	const int arg_num = N2_SCAST(int, n2e_funcarg_argnum(arg));
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
 	if (arg_num < 1 || arg_num > 4) { n2e_funcarg_raise(arg, "mesbox：引数の数（%d）が期待（%d - %d）と違います", arg_num, 1, 4); return -1; }
 
 	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
@@ -31230,7 +31587,7 @@ static int n2si_bifunc_mesbox(const n2_funcarg_t* arg)
 	N2_ASSERT(nw);
 	if (!nw->widgets_ || nw->type_ != N2S_WINDOW_SCREEN) { n2e_funcarg_raise(arg, "mesbox：現在の対象ウィンドウにはウィジェットを配置できません"); return -1; }
 
-	const n2_value_t* varval = n2e_funcarg_getarg(arg, 0);
+	const n2_value_t* varval = n2e_funcarg_getoarg(arg, 0);
 	if (!varval || varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "mesbox：対象として有効な変数を指定されていません"); return -1; }
 	if (varval->field_.varvalue_.var_->type_ != N2_VALUE_STRING)
 	{
@@ -31239,13 +31596,13 @@ static int n2si_bifunc_mesbox(const n2_funcarg_t* arg)
 	}
 	n2_valstr_t* varstr = n2_variable_get_str(varval->field_.varvalue_.var_, varval->field_.varvalue_.aptr_);
 	if (!varstr) { n2e_funcarg_raise(arg, "mesbox：対象の変数の文字列の値を取り出せませんでした。配列長＝%zu、指定した配列インデックス＝%d", varval->field_.varvalue_.var_->element_num_, varval->field_.varvalue_.aptr_); return -1; }
-	const n2_value_t* xval = n2e_funcarg_getarg(arg, 1);
+	const n2_value_t* xval = n2e_funcarg_getoarg(arg, 1);
 	const n2_valint_t x = xval && xval->type_ != N2_VALUE_NIL ? N2_MAX(n2e_funcarg_eval_int(arg, xval), 0) : nw->objx_;
-	const n2_value_t* yval = n2e_funcarg_getarg(arg, 2);
+	const n2_value_t* yval = n2e_funcarg_getoarg(arg, 2);
 	const n2_valint_t y = yval && yval->type_ != N2_VALUE_NIL ? N2_MAX(n2e_funcarg_eval_int(arg, yval), 0) : nw->objy_;
 	//const n2_value_t* styleval = n2e_funcarg_getarg(arg, 3);
 	//const n2_valint_t style = styleval && styleval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, styleval) : 1;
-	const n2_value_t* sizeval = n2e_funcarg_getarg(arg, 4);
+	const n2_value_t* sizeval = n2e_funcarg_getoarg(arg, 4);
 	n2_valint_t size = sizeval && sizeval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, sizeval) : 0;
 	if (size <= 0) { size = N2_SCAST(n2_valint_t, arg->state_->config_.standard_widget_input_default_max_buffer_size_); }
 

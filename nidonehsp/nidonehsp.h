@@ -1104,6 +1104,7 @@ N2_API int n2_array_compute_index(const n2_array_t* a, const void* element);
 N2_API void* n2_array_peek(n2_array_t* a, int index);
 N2_API const void* n2_array_peekc(const n2_array_t* a, int index);
 N2_API void* n2_array_insert(n2_state_t* state, n2_array_t* a, int index, const void* element);
+N2_API void* n2_array_multiinsert_replicate(n2_state_t* state, n2_array_t* a, int index, size_t num, const void* element);
 N2_API int n2_array_find(const n2_array_t* a, n2_array_element_match_func match, const void* key);
 N2_API void* n2_array_findp(n2_array_t* a, n2_array_element_match_func match, const void* key);
 N2_API const void* n2_array_findcp(const n2_array_t* a, n2_array_element_match_func match, const void* key);
@@ -1157,6 +1158,7 @@ N2_API void* n2_sorted_array_peek(n2_sorted_array_t* a, int index);
 N2_API const void* n2_sorted_array_peekc(const n2_sorted_array_t* a, int index);
 
 N2_API void* n2_sorted_array_find_match(n2_sorted_array_t* a, n2_sorted_array_element_match_func match, const void* key);
+N2_API const void* n2_sorted_array_findc_match(const n2_sorted_array_t* a, n2_sorted_array_element_match_func match, const void* key);
 N2_API void* n2_sorted_array_lowerbound_match(n2_sorted_array_t* a, n2_sorted_array_element_match_func match, const void* key);
 N2_API void* n2_sorted_array_upperbound_match(n2_sorted_array_t* a, n2_sorted_array_element_match_func match, const void* key, n2_bool_t allow_outrange);
 N2_API void* n2_sorted_array_insert_cmp(n2_state_t* state, n2_sorted_array_t* a, const void* element, n2_sorted_array_element_cmp_func cmp, const void* key);
@@ -1164,6 +1166,7 @@ N2_API size_t n2_sorted_array_erase_match(n2_state_t* state, n2_sorted_array_t* 
 N2_API n2_bool_t n2_sorted_array_erase_at(n2_state_t* state, n2_sorted_array_t* a, int index);
 
 N2_API void* n2_sorted_array_find(n2_sorted_array_t* a, const void* key);
+N2_API const void* n2_sorted_array_findc(const n2_sorted_array_t* a, const void* key);
 N2_API void* n2_sorted_array_lowerbound(n2_sorted_array_t* a, const void* key);
 N2_API void* n2_sorted_array_upperbound(n2_sorted_array_t* a, const void* key, n2_bool_t allow_outrange);
 N2_API void* n2_sorted_array_insert(n2_state_t* state, n2_sorted_array_t* a, const void* element, const void* key);
@@ -1193,6 +1196,8 @@ N2_API size_t n2_sorted_array_erase(n2_state_t* state, n2_sorted_array_t* a, con
 	extn const type prefix##_peekcv(const prefix##_t* a, int index, const type d); \
 	extn type* prefix##_insert(n2_state_t* state, prefix##_t* a, int index, const type* element); \
 	extn type* prefix##_insertv(n2_state_t* state, prefix##_t* a, int index, const type element); \
+	extn type* prefix##_multiinsert_replicate(n2_state_t* state, prefix##_t* a, int index, size_t num, const type* element); \
+	extn type* prefix##_multiinsertv_replicate(n2_state_t* state, prefix##_t* a, int index, size_t num, const type element); \
 	extn int prefix##_find(const prefix##_t* a, n2_array_element_match_func match, const void* key); \
 	extn type* prefix##_findp(prefix##_t* a, n2_array_element_match_func match, const void* key); \
 	extn const type* prefix##_findcp(const prefix##_t* a, n2_array_element_match_func match, const void* key); \
@@ -1291,6 +1296,14 @@ N2_API size_t n2_sorted_array_erase(n2_state_t* state, n2_sorted_array_t* a, con
 	{ \
 		return prefix##_insert(state, a, index, &element); \
 	} \
+	extn type* prefix##_multiinsert_replicate(n2_state_t* state, prefix##_t* a, int index, size_t num, const type* element) \
+	{ \
+		return N2_RCAST(type*, n2_array_multiinsert_replicate(state, a, index, num, element)); \
+	} \
+	extn type* prefix##_multiinsertv_replicate(n2_state_t* state, prefix##_t* a, int index, size_t num, const type element) \
+	{ \
+		return prefix##_multiinsert_replicate(state, a, index, num, &element); \
+	} \
 	extn int prefix##_find(const prefix##_t* a, n2_array_element_match_func match, const void* key) \
 	{ \
 		return n2_array_find(a, match, key); \
@@ -1363,12 +1376,14 @@ N2_API size_t n2_sorted_array_erase(n2_state_t* state, n2_sorted_array_t* a, con
 	extn type* prefix##_peek(prefix##_t* a, int index); \
 	extn const type* prefix##_peekc(const prefix##_t* a, int index); \
 	extn type* prefix##_find_match(prefix##_t* a, n2_sorted_array_element_match_func match, const matchkeytype* key); \
+	extn const type* prefix##_findc_match(const prefix##_t* a, n2_sorted_array_element_match_func match, const matchkeytype* key); \
 	extn type* prefix##_lowerbound_match(prefix##_t* a, n2_sorted_array_element_match_func match, const matchkeytype* key); \
 	extn type* prefix##_upperbound_match(prefix##_t* a, n2_sorted_array_element_match_func match, const matchkeytype* key, n2_bool_t allow_outrange); \
 	extn type* prefix##_insert_cmp(n2_state_t* state, prefix##_t* a, const type* element, n2_sorted_array_element_cmp_func cmp, const cmpkeytype* key); \
 	extn size_t prefix##_erase_match(n2_state_t* state, prefix##_t* a, n2_sorted_array_element_match_func match, const void* key); \
 	extn n2_bool_t prefix##_erase_at(n2_state_t* state, prefix##_t* a, int index); \
 	extn type* prefix##_find(prefix##_t* a, const matchkeytype* key); \
+	extn const type* prefix##_findc(const prefix##_t* a, const matchkeytype* key); \
 	extn type* prefix##_lowerbound(prefix##_t* a, const matchkeytype* key); \
 	extn type* prefix##_upperbound(prefix##_t* a, const matchkeytype* key, n2_bool_t allow_outrange); \
 	extn type* prefix##_insert(n2_state_t* state, prefix##_t* a, const type* element, const cmpkeytype* key); \
@@ -1436,6 +1451,10 @@ N2_API size_t n2_sorted_array_erase(n2_state_t* state, n2_sorted_array_t* a, con
 	{ \
 		return N2_RCAST(type*, n2_sorted_array_find_match(a, match, key)); \
 	} \
+	extn const type* prefix##_findc_match(const prefix##_t* a, n2_sorted_array_element_match_func match, const matchkeytype* key) \
+	{ \
+		return N2_RCAST(const type*, n2_sorted_array_findc_match(a, match, key)); \
+	} \
 	extn type* prefix##_lowerbound_match(prefix##_t* a, n2_sorted_array_element_match_func match, const matchkeytype* key) \
 	{ \
 		return N2_RCAST(type*, n2_sorted_array_lowerbound_match(a, match, key)); \
@@ -1459,6 +1478,10 @@ N2_API size_t n2_sorted_array_erase(n2_state_t* state, n2_sorted_array_t* a, con
 	extn type* prefix##_find(prefix##_t* a, const matchkeytype* key) \
 	{ \
 		return N2_RCAST(type*, n2_sorted_array_find(a, key)); \
+	} \
+	extn const type* prefix##_findc(const prefix##_t* a, const matchkeytype* key) \
+	{ \
+		return N2_RCAST(const type*, n2_sorted_array_findc(a, key)); \
 	} \
 	extn type* prefix##_lowerbound(prefix##_t* a, const matchkeytype* key) \
 	{ \
@@ -2787,6 +2810,7 @@ enum n2_ast_node_e
 	N2_AST_NODE_CFUNC,
 	N2_AST_NODE_DEFFUNC_PARTS,
 	N2_AST_NODE_DECLARE_PARAM,
+	N2_AST_NODE_DECLARE_KEYWORDED_PARAM,
 	N2_AST_NODE_DECLARE_PARAM_PARTS,
 
 	N2_AST_NODE_LABEL,
@@ -2922,10 +2946,16 @@ N2_DECLARE_TARRAY(n2_parser_t*, n2_parserarray, N2_API);
 
 //=============================================================================
 // シンボル
+typedef int n2_symbol_id_t;
+enum
+{
+	N2_SYMBOL_ID_INVALID = -1
+};
+
 typedef struct n2_symbol_t n2_symbol_t;
 struct n2_symbol_t
 {
-	size_t id_;
+	n2_symbol_id_t id_;
 	n2_str_t name_;
 };
 
@@ -2942,8 +2972,10 @@ struct n2_symboltable_t
 N2_API n2_symboltable_t* n2_symboltable_alloc(n2_state_t* state, size_t initial_buffer_size, size_t expand_step);
 N2_API void n2_symboltable_free(n2_state_t* state, n2_symboltable_t* symboltable);
 N2_API n2_symbol_t* n2_symboltable_peek(n2_symboltable_t* symboltable, int index);
+N2_API const n2_symbol_t* n2_symboltable_peekc(const n2_symboltable_t* symboltable, int index);
 N2_API n2_symbol_t* n2_symboltable_find(n2_symboltable_t* symboltable, const char* name);
-N2_API int n2_symboltable_register(n2_state_t* state, n2_symboltable_t* symboltable, const char* name);
+N2_API const n2_symbol_t* n2_symboltable_findc(const n2_symboltable_t* symboltable, const char* name);
+N2_API n2_symbol_id_t n2_symboltable_register(n2_state_t* state, n2_symboltable_t* symboltable, const char* name);
 
 //=============================================================================
 // ハンドリング
@@ -3083,7 +3115,9 @@ enum n2_debugvariable_e
 	N2_DEBUGVARIABLE_VARIABLE_ROOT,
 	N2_DEBUGVARIABLE_VARIABLE_DIMENSION,
 	N2_DEBUGVARIABLE_VARIABLE_ELEMENT,
-	N2_DEBUGVARIABLE_FUNCTIONARG,
+	N2_DEBUGVARIABLE_FUNCTION_OARG,
+	N2_DEBUGVARIABLE_FUNCTION_KWARG,
+	N2_DEBUGVARIABLE_FUNCTION_LOCAL,
 
 	N2_MAX_DEBUGVARIABLE
 };
@@ -3311,6 +3345,7 @@ N2_API n2_value_t* n2_value_clone(n2_state_t* state, const n2_value_t* rval);
 N2_API void n2_value_free(n2_state_t* state, n2_value_t* val);
 
 N2_API void n2_value_swap(n2_value_t* lhs, n2_value_t* rhs);
+N2_API void n2_value_setnil(n2_state_t* state, n2_value_t* val);
 N2_API void n2_value_seti(n2_state_t* state, n2_value_t* val, n2_valint_t v);
 N2_API void n2_value_setf(n2_state_t* state, n2_value_t* val, n2_valfloat_t v);
 N2_API void n2_value_sets(n2_state_t* state, n2_value_t* val, const char* v, size_t length);
@@ -3542,6 +3577,7 @@ struct n2_funcarg_t
 };
 
 typedef int(*n2_func_callback_t)(const n2_funcarg_t* arg);
+typedef void(*n2_func_freefunc_t)(n2_state_t* state, const n2_func_t* func);
 
 N2_DECLARE_ENUM(n2_func_param_e);
 enum n2_func_param_e
@@ -3575,11 +3611,23 @@ N2_API n2_func_param_e n2_func_param_from_token(const n2_token_t* token, n2_bool
 typedef struct n2_func_param_t n2_func_param_t;
 struct n2_func_param_t
 {
-	char* name_;
+	n2_str_t name_;
+	n2_symbol_id_t name_id_;
 	n2_func_param_e type_;
+	int stack_index_;
+	n2_bool_t keyworded_;
 	n2_bool_t omittable_;
 };
 N2_DECLARE_TARRAY(n2_func_param_t, n2_funcparamarray, N2_API);
+
+typedef struct n2_func_local_var_t n2_func_local_var_t;
+struct n2_func_local_var_t
+{
+	n2_str_t name_;
+	n2_symbol_id_t name_id_;
+	int stack_index_;
+};
+N2_DECLARE_TARRAY(n2_func_local_var_t, n2_funclocalvararray, N2_API);
 
 N2_DECLARE_ENUM(n2_func_e);
 enum n2_func_e
@@ -3608,20 +3656,29 @@ struct n2_func_t
 	char* short_name_;
 	size_t flags_;
 	n2_func_callback_t callback_;
-	void* user_;
+	void* call_user_;
 	n2_pc_t pc_;
-	n2_funcparamarray_t* params_;
+	int reserved_stack_num_;
+	n2_funcparamarray_t* ordered_params_;
+	n2_funcparamarray_t* keyworded_params_;
+	n2_funclocalvararray_t* local_vars_;
 	n2_func_t* alias_func_;
 	int module_id_;// modfunc/modcfunc/modinit/modterm
 	n2_str_t libprocname_;// func/cfunc
 	n2h_dynlib_t* lib_;
 	void* libproc_;
 
+	void* user_;
+	n2_func_freefunc_t freefunc_;
+
 #if N2_CONFIG_USE_PROFILING
 	size_t called_count_;
 	uint64_t total_ticks_;
 #endif
 };
+
+N2_API const n2_func_param_t* n2_func_find_param_named(const n2_func_t* func, const char* name, size_t name_length);
+N2_API const n2_func_local_var_t* n2_func_find_local_var_named(const n2_func_t* func, const char* name, size_t name_length);
 
 N2_DECLARE_TARRAY(n2_func_t, n2_funcarray, N2_API);
 N2_DECLARE_TSORTED_ARRAY(int, void, char, n2_funcindexmap, N2_API);
@@ -3751,6 +3808,17 @@ N2_API void n2_modinstance_init(n2_state_t* state, n2_fiber_t* f, n2_module_t* e
 N2_API void n2_modinstance_teardown(n2_state_t* state, n2_modinstance_t* instance);
 N2_API void n2_modinstance_incref(n2_state_t* state, n2_modinstance_t* instance);
 N2_API void n2_modinstance_decref(n2_state_t* state, n2_modinstance_t* instance);
+
+// コアモジュール
+typedef struct n2_crplaceholderclass_instance_t n2_crplaceholderclass_instance_t;
+typedef void (*n2_crplaceholderclass_freefunc_t)(n2_state_t* state, n2_fiber_t* f, n2_crplaceholderclass_instance_t* instance);
+
+struct n2_crplaceholderclass_instance_t
+{
+	n2_modinstance_t instance_;
+	void* instance_exuser_;
+	n2_crplaceholderclass_freefunc_t instance_freefunc_;
+};
 
 //=============================================================================
 // プリプロセッサ
@@ -5055,8 +5123,10 @@ struct n2_callframe_t
 	size_t shortframe_cursor_;
 	size_t csflags_;
 	int base_;
-	int arg_num_;
-	int original_arg_num_;
+	int total_arg_num_;
+	int ordered_arg_num_;
+	int original_ordered_arg_num_;
+	int keyworded_arg_num_;
 	n2_vararray_t* local_vars_;
 #if N2_CONFIG_USE_PROFILING
 	n2_debugvarpool_t* debugvarpool_;
@@ -5142,8 +5212,10 @@ struct n2_callstate_t
 {
 	size_t flags_;
 	int base_;
-	int arg_num_;
-	int original_arg_num_;
+	int total_arg_num_;
+	int ordered_arg_num_;
+	int original_ordered_arg_num_;
+	int keyworded_arg_num_;
 	const n2_func_t* func_;
 	const n2_label_t* label_;
 #if N2_CONFIG_USE_DEBUGGING
@@ -5267,6 +5339,9 @@ N2_API n2_bool_t n2_fiber_is_finished(const n2_fiber_t* fiber);
 // 実行環境の情報
 struct n2_environment_t
 {
+	// シンボルテーブル
+	n2_symboltable_t* symboltable_;
+
 	// パーサー（ASTのトークン列を持つので必要）
 	n2_parserarray_t* parsers_;
 
@@ -5614,10 +5689,11 @@ N2_API n2_bool_t n2e_register_modfunc(n2_state_t* state, n2_module_t* mod, const
 N2_API void n2e_funcarg_raise(const n2_funcarg_t* arg, const char* message, ...);
 N2_API n2_bool_t n2e_funcarg_haserror(const n2_funcarg_t* arg);
 N2_API size_t n2e_funcarg_csflags(const n2_funcarg_t* arg);
-N2_API size_t n2e_funcarg_argnum(const n2_funcarg_t* arg);
+N2_API size_t n2e_funcarg_oargnum(const n2_funcarg_t* arg);
+N2_API size_t n2e_funcarg_kwargnum(const n2_funcarg_t* arg);
 N2_API size_t n2e_funcarg_stacktop(const n2_funcarg_t* arg);
 N2_API n2_value_t* n2e_funcarg_get(const n2_funcarg_t* arg, int index);
-N2_API n2_value_t* n2e_funcarg_getarg(const n2_funcarg_t* arg, int index);
+N2_API n2_value_t* n2e_funcarg_getoarg(const n2_funcarg_t* arg, int index);
 N2_API n2_valint_t n2e_funcarg_eval_int(const n2_funcarg_t* arg, const n2_value_t* val);
 N2_API n2_valfloat_t n2e_funcarg_eval_float(const n2_funcarg_t* arg, const n2_value_t* val);
 N2_API n2_valstr_t* n2e_funcarg_eval_str(const n2_funcarg_t* arg, const n2_value_t* val);
@@ -5628,7 +5704,7 @@ N2_API void n2e_funcarg_pushf(const n2_funcarg_t* arg, n2_valfloat_t v);
 N2_API n2_valstr_t* n2e_funcarg_pushs(const n2_funcarg_t* arg, const char* s);
 N2_API n2_modinstance_t* n2e_funcarg_createmodinst(const n2_funcarg_t* arg, n2_module_t* emodule);
 N2_API void n2e_funcarg_pushmodinst(const n2_funcarg_t* arg, n2_modinstance_t* instance);
-N2_API int n2e_funcarg_callfunc(const n2_funcarg_t* arg, const n2_func_t* func, size_t arg_num);
+N2_API int n2e_funcarg_callfunc(const n2_funcarg_t* arg, const n2_func_t* func, size_t ordered_arg_num, size_t keyworded_arg_num);
 
 // nidonehsp自身
 #if N2_COMPILER_IS_MSVC

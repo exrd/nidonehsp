@@ -801,7 +801,7 @@ static n2_bool_t n2ri_dap_push_variables_reference(n2_state_t* s, n2_str_t* t, n
 			const n2_fiber_t* f = debugvar->v_.fiber_;
 			if (f->callstate_.func_)
 			{
-				named_variables = f->callstate_.func_->params_ ? n2_funcparamarray_size(f->callstate_.func_->params_) : f->callstate_.arg_num_;
+				named_variables = f->callstate_.debugvarargs_ ? n2_debugvararray_size(f->callstate_.debugvarargs_) : f->callstate_.ordered_arg_num_;// @todo キーワード引数もスカされたときに考慮しておくべき？
 			}
 		}
 		break;
@@ -811,7 +811,7 @@ static n2_bool_t n2ri_dap_push_variables_reference(n2_state_t* s, n2_str_t* t, n
 			const n2_callframe_t* cf = debugvar->v_.fiber_cf_.callframe_index_ >= 0 ? n2_callframearray_peek(f->callframes_, debugvar->v_.fiber_cf_.callframe_index_) : NULL;
 			if (cf && cf->caller_function_)
 			{
-				named_variables = cf->caller_function_->params_ ? n2_funcparamarray_size(cf->caller_function_->params_) : cf->arg_num_;
+				named_variables = cf->debugvarargs_ ? n2_debugvararray_size(cf->debugvarargs_) : cf->ordered_arg_num_;// @todo キーワード引数もスカされたときに考慮しておくべき？
 			}
 		}
 		break;
@@ -1006,8 +1006,11 @@ static void n2ri_dap_push_variable_content(n2_state_t* s, n2_str_t* t, n2r_dap_t
 				n2ri_dap_push_variables_reference(s, t, dap, state, debugvar);
 			}
 			break;
-		case N2_DEBUGVARIABLE_FUNCTIONARG:
+		case N2_DEBUGVARIABLE_FUNCTION_OARG:
+		case N2_DEBUGVARIABLE_FUNCTION_KWARG:
 			{
+				const n2_bool_t is_keyworded_arg = debugvar->type_ == N2_DEBUGVARIABLE_FUNCTION_KWARG;
+
 				n2_fiber_t* f = debugvar->v_.funcarg_.fiber_;
 				const n2_func_t* func = NULL;
 				int argbase = -1;
@@ -1022,16 +1025,18 @@ static void n2ri_dap_push_variable_content(n2_state_t* s, n2_str_t* t, n2r_dap_t
 					func = cf ? cf->caller_function_ : NULL;
 					argbase = cf ? cf->base_ : -1;
 				}
+				const n2_funcparamarray_t* funcparamarray = NULL;
+				if (func) { funcparamarray = is_keyworded_arg ? func->keyworded_params_ : func->ordered_params_; }
 				const int arg_index = debugvar->v_.funcarg_.arg_index_;
-				const n2_func_param_t* funcparam = func && func->params_ ? n2_funcparamarray_peek(func->params_, arg_index) : NULL;
+				const n2_func_param_t* funcparam = funcparamarray ? n2_funcparamarray_peek(funcparamarray, arg_index) : NULL;
 				if (func && argbase >= 0)
 				{
-					const n2_value_t* argvalue = n2_valuearray_peekv(f->values_, argbase + arg_index, NULL);
+					const n2_value_t* argvalue = n2_valuearray_peekv(f->values_, argbase + funcparam->stack_index_, NULL);
 					if (argvalue)
 					{
 						n2_str_append_fmt(s, t, "\"name\": ");
-						if (funcparam) { n2_str_append_fmt(s, t, "\"%s\"", funcparam->name_); }
-						else { n2_str_append_fmt(s, t, "\"(arg%d)\"", arg_index); }
+						if (funcparam && funcparam->name_.str_) { n2_str_append_fmt(s, t, "\"%s\"", funcparam->name_.str_); }
+						else { n2_str_append_fmt(s, t, "\"(%s%d)\"", is_keyworded_arg ? "kwarg" : "oarg", arg_index); }
 						n2_str_append_fmt(s, t, "\n");
 						n2_str_append_fmt(s, t, ", \"type\": \"%s\"\n", n2_valuetype_name(n2_value_get_type(argvalue), "(unknown)"));
 						n2_value_inspect(s, state->environment_, &tvstr, argvalue);
