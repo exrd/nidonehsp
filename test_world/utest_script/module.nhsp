@@ -36,6 +36,9 @@ mes "modvar"
 	return v
 #modfunc getv
 	return v
+#modfunc local setv int l = 300
+	v = l
+	return
 #global
 
 newmod a, ab, 100
@@ -43,6 +46,10 @@ newmod a, ab
 if (getv(a) != 100) { raise }
 z@ab a : z@ab a : if (getv(a) != 102) { raise }
 if (getv(a(1)) != 10) { raise }
+a->setv 20
+if (getv(a) != 20) { raise }
+if (a->getv() != 20) { raise }
+a->setv : if (a->getv() != 300) { raise }
 z@ab a(1) : if (getv(a(1)) != 11) { raise }
 if (stat != 11) { raise }
 if (varuse(a) != 1) { raise }

@@ -2663,6 +2663,7 @@ enum n2_token_e
 	N2_TOKEN_RPARENTHESIS,
 	N2_TOKEN_COMMA,
 	N2_TOKEN_DOT,
+	N2_TOKEN_ARROW,
 
 	N2_TOKEN_NIL,
 	N2_TOKEN_INT,
@@ -2818,6 +2819,7 @@ enum n2_ast_node_e
 	N2_AST_NODE_BLOCK_STATEMENTS,
 
 	N2_AST_NODE_COMMAND,
+	N2_AST_NODE_MEMBER_COMMAND,
 	N2_AST_NODE_ARGUMENTS,
 	N2_AST_NODE_ARGUMENTS_PARTS,
 	N2_AST_NODE_ARGUMENTS_EMPTY_ARG,
@@ -2863,6 +2865,7 @@ enum n2_ast_node_e
 	N2_AST_NODE_DECREMENT,
 	N2_AST_NODE_UNARY_NOT,
 	N2_AST_NODE_UNARY_MINUS,
+	N2_AST_NODE_MEMBER_CALL,
 	N2_AST_NODE_PRIMITIVE_VALUE,
 	N2_AST_NODE_TEMPLATE_STRING,
 	N2_AST_NODE_TEMPLATE_STRING_PARTS,
@@ -2937,6 +2940,7 @@ N2_API void n2_parser_rewind_raw(n2_state_t* state, n2_parser_t* p, const char* 
 
 N2_API const n2_token_t* n2_parser_read_token(n2_state_t* state, n2_parser_t* p);
 N2_API void n2_parser_unread_token(n2_parser_t* p, size_t num);
+N2_API n2_bool_t n2_parser_unread_token_to(n2_parser_t* p, const n2_token_t* token);
 N2_API const n2_token_t* n2_parser_prev_token(const n2_parser_t* p, size_t num);
 
 N2_API n2_ast_node_t* n2_parser_parse(n2_state_t* state, n2_parser_t* p);
@@ -2973,6 +2977,9 @@ N2_API n2_symboltable_t* n2_symboltable_alloc(n2_state_t* state, size_t initial_
 N2_API void n2_symboltable_free(n2_state_t* state, n2_symboltable_t* symboltable);
 N2_API n2_symbol_t* n2_symboltable_peek(n2_symboltable_t* symboltable, int index);
 N2_API const n2_symbol_t* n2_symboltable_peekc(const n2_symboltable_t* symboltable, int index);
+N2_API n2_symbol_t* n2_symboltable_peek_id(n2_symboltable_t* symboltable, n2_symbol_id_t id);
+N2_API const n2_symbol_t* n2_symboltable_peekc_id(const n2_symboltable_t* symboltable, n2_symbol_id_t id);
+N2_API n2_symbol_id_t n2_symboltable_find_id(const n2_symboltable_t* symboltable, const char* name);
 N2_API n2_symbol_t* n2_symboltable_find(n2_symboltable_t* symboltable, const char* name);
 N2_API const n2_symbol_t* n2_symboltable_findc(const n2_symboltable_t* symboltable, const char* name);
 N2_API n2_symbol_id_t n2_symboltable_register(n2_state_t* state, n2_symboltable_t* symboltable, const char* name);
@@ -3499,6 +3506,8 @@ enum n2_opcode_e
 
 	N2_OPCODE_COMMAND,
 	N2_OPCODE_FUNCTION,
+	N2_OPCODE_MEMBER_COMMAND,
+	N2_OPCODE_MEMBER_FUNCTION,
 
 	N2_OPCODE_JUMP,
 	N2_OPCODE_JUMP_RELATIVE,
@@ -3653,7 +3662,9 @@ struct n2_func_t
 {
 	n2_func_e func_;
 	char* name_;
+	n2_symbol_id_t name_id_;
 	char* short_name_;
+	n2_symbol_id_t short_name_id_;
 	size_t flags_;
 	n2_func_callback_t callback_;
 	void* call_user_;
@@ -3688,12 +3699,15 @@ struct n2_functable_t
 {
 	n2_funcarray_t* funcarray_;
 	n2_funcindexmap_t* funcindexmap_;
+	n2_symboltable_t* symtable_;
 };
 
 N2_API n2_functable_t* n2_functable_alloc(n2_state_t* state, size_t initial_buffer_size, size_t expand_step);
 N2_API void n2_functable_free(n2_state_t* state, n2_functable_t* functable);
 N2_API n2_func_t* n2_functable_peek(n2_functable_t* functable, int index);
+N2_API const n2_func_t* n2_functable_peekc(const n2_functable_t* functable, int index);
 N2_API n2_func_t* n2_functable_find(n2_functable_t* functable, const char* name);
+N2_API void n2_functable_set_symbol_table(n2_functable_t* functable, n2_symboltable_t* symtable);
 N2_API int n2_functable_register(n2_state_t* state, n2_functable_t* functable, const char* name);
 
 //=============================================================================
@@ -3756,21 +3770,30 @@ typedef void (*n2_modinstance_free_callback_t)(n2_state_t* state, n2_fiber_t* f,
 
 N2_DECLARE_TSORTED_ARRAY(int, void, char, n2_modfuncindexset, N2_API);
 N2_DECLARE_TSORTED_ARRAY(int, void, char, n2_modfuncsnameindexset, N2_API);
+N2_DECLARE_TSORTED_ARRAY(int, void, n2_symbol_id_t, n2_modfuncsymbolindexset, N2_API);
+N2_DECLARE_TSORTED_ARRAY(int, void, n2_symbol_id_t, n2_modfuncssymbolindexset, N2_API);
 
 struct n2_module_t
 {
 	char* name_;
+	n2_symbol_id_t name_id_;
 	int module_id_;
+	n2_environment_t* environment_;
 	n2_pc_t pc_begin_;
 	n2_modlocalvararray_t* modlocalvars_;
 	n2_modfuncindexset_t* modfuncs_;
 	n2_modfuncsnameindexset_t* modfuncsnames_;
+	n2_modfuncsymbolindexset_t* modfuncsyms_;
+	n2_modfuncssymbolindexset_t* modfuncssyms_;
 	int modinit_funcindex_;
 	int modterm_funcindex_;
 	n2_modinstance_alloc_callback_t alloc_callback_;
 	n2_modinstance_free_callback_t free_callback_;
 	void* mod_user_;
 };
+
+N2_API n2_func_t* n2_module_find_func_byname(const n2_module_t* emodule, const char* name);
+N2_API n2_func_t* n2_module_find_func_bysymbol(const n2_module_t* emodule, n2_symbol_id_t id);
 
 N2_DECLARE_TARRAY(n2_module_t, n2_modulearray, N2_API);
 N2_DECLARE_TSORTED_ARRAY(int, void, char, n2_moduleindexmap, N2_API);
@@ -3780,12 +3803,14 @@ struct n2_moduletable_t
 {
 	n2_modulearray_t* modulearray_;
 	n2_moduleindexmap_t* moduleindexmap_;
+	n2_environment_t* environment_;
 };
 
-N2_API n2_moduletable_t* n2_moduletable_alloc(n2_state_t* state, size_t initial_buffer_size, size_t expand_step);
+N2_API n2_moduletable_t* n2_moduletable_alloc(n2_state_t* state, size_t initial_buffer_size, size_t expand_step, n2_environment_t* e);
 N2_API void n2_moduletable_free(n2_state_t* state, n2_moduletable_t* moduletable);
 N2_API n2_module_t* n2_moduletable_peek(n2_moduletable_t* moduletable, int index);
-N2_API n2_module_t* n2_moduletable_find(n2_moduletable_t* moduletable, const char* name);
+N2_API const n2_module_t* n2_moduletable_peekc(const n2_moduletable_t* moduletable, int index);
+N2_API n2_module_t* n2_moduletable_find_byname(n2_moduletable_t* moduletable, const char* name);
 N2_API n2_module_t* n2_moduletable_register(n2_state_t* state, n2_moduletable_t* moduletable, const char* name);
 
 N2_DECLARE_ENUM(n2_modinstance_flag_e);
@@ -3851,6 +3876,7 @@ enum n2_pp_directive_e
 	N2_PP_DIRECTIVE_USELIB,
 	N2_PP_DIRECTIVE_FUNC,
 	N2_PP_DIRECTIVE_CFUNC,
+	N2_PP_DIRECTIVE_EXTENSION,
 
 	N2_PP_DIRECTIVE_BOOTOPT,
 	N2_PP_DIRECTIVE_CMPOPT,
@@ -5340,7 +5366,7 @@ N2_API n2_bool_t n2_fiber_is_finished(const n2_fiber_t* fiber);
 struct n2_environment_t
 {
 	// シンボルテーブル
-	n2_symboltable_t* symboltable_;
+	n2_symboltable_t* symtable_;
 
 	// パーサー（ASTのトークン列を持つので必要）
 	n2_parserarray_t* parsers_;
@@ -5494,6 +5520,7 @@ struct n2_state_config_t
 	n2_bool_t generate_opcodeflags_;// = N2_FALSE
 	n2_bool_t generate_codelines_;// = N2_TRUE
 	n2_bool_t generate_debugvars_;// = N2_FALSE
+	n2_bool_t debugvar_id_reassign_;// = N2_FALSE
 	n2_bool_t enable_graphics_assert_;// = N2_FALSE
 
 	// logmesなどのメッセージログ最大数

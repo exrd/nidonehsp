@@ -8681,7 +8681,7 @@ restart:
 		}
 		break;
 	case '+':	++p; if (p[0] == '=') { ++p; token->token_ = N2_TOKEN_ADD_ASSIGN; } else if (p[0] == '+') { ++p; token->token_ = N2_TOKEN_INCREMENT; } else { token->token_ = N2_TOKEN_OP_ADD; } break;
-	case '-':	++p; if (p[0] == '=') { ++p; token->token_ = N2_TOKEN_SUB_ASSIGN; } else if (p[0] == '-') { ++p; token->token_ = N2_TOKEN_DECREMENT; } else { token->token_ = N2_TOKEN_OP_SUB; } break;
+	case '-':	++p; if (p[0] == '=') { ++p; token->token_ = N2_TOKEN_SUB_ASSIGN; } else if (p[0] == '-') { ++p; token->token_ = N2_TOKEN_DECREMENT; } else if (p[0] == '>') { ++p; token->token_ = N2_TOKEN_ARROW; } else { token->token_ = N2_TOKEN_OP_SUB; } break;
 	case '*':	++p; if (p[0] == '=') { ++p; token->token_ = N2_TOKEN_MUL_ASSIGN; } else { token->token_ = N2_TOKEN_OP_MUL; } break;
 	case '/':
 		++p;
@@ -9024,6 +9024,7 @@ static void n2i_ast_node_dump(n2_state_t* state, int indent, const n2_ast_node_t
 		"LABEL",
 		"BLOCK_STATEMENTS",
 		"COMMAND",
+		"MEMBER_COMMAND",
 		"ARGUMENTS",
 		"ARGUMENTS_PARTS",
 		"ARGUMENTS_EMPTY_ARG",
@@ -9067,6 +9068,7 @@ static void n2i_ast_node_dump(n2_state_t* state, int indent, const n2_ast_node_t
 		"DECREMENT",
 		"UNARY_NOT",
 		"UNARY_MINUS",
+		"MEMBER_CALL",
 		"PRIMITIVE_VALUE",
 		"TEMPLATE_STRING",
 		"TEMPLATE_STRING_PARTS",
@@ -9184,7 +9186,7 @@ static n2_ast_node_t* n2i_parser_parse_control_safe(n2_state_t* state, n2_parser
 static n2_ast_node_t* n2i_parser_parse_command_safe(n2_state_t* state, n2_parser_t* p, n2i_parse_context_t* pc);
 static n2_ast_node_t* n2i_parser_parse_arguments(n2_state_t* state, n2_parser_t* p, n2_bool_t allow_keyworded_args);
 static n2_ast_node_t* n2i_parser_parse_incdec_safe(n2_state_t* state, n2_parser_t* p, n2i_parse_context_t* pc);
-static n2_ast_node_t* n2i_parser_parse_assign_safe(n2_state_t* state, n2_parser_t* p, n2i_parse_context_t* pc);
+static n2_ast_node_t* n2i_parser_parse_varbegin_safe(n2_state_t* state, n2_parser_t* p, n2i_parse_context_t* pc);
 static n2_ast_node_t* n2i_parser_parse_variable_safe(n2_state_t* state, n2_parser_t* p, n2i_parse_context_t* pc);
 static n2_ast_node_t* n2i_parser_parse_thenelse(n2_state_t* state, n2_parser_t* p);
 static n2_ast_node_t* n2i_parser_parse_lorand(n2_state_t* state, n2_parser_t* p);
@@ -9195,6 +9197,7 @@ static n2_ast_node_t* n2i_parser_parse_bshift(n2_state_t* state, n2_parser_t* p)
 static n2_ast_node_t* n2i_parser_parse_addsub(n2_state_t* state, n2_parser_t* p);
 static n2_ast_node_t* n2i_parser_parse_muldivmod(n2_state_t* state, n2_parser_t* p);
 static n2_ast_node_t* n2i_parser_parse_term(n2_state_t* state, n2_parser_t* p);
+static n2_ast_node_t* n2i_parser_parse_suffixed(n2_state_t* state, n2_parser_t* p);
 static n2_ast_node_t* n2i_parser_parse_primitive(n2_state_t* state, n2_parser_t* p);
 static n2_ast_node_t* n2i_parser_parse_identifier_expression_safe(n2_state_t* state, n2_parser_t* p, n2i_parse_context_t* pc);
 
@@ -9311,6 +9314,23 @@ N2_API void n2_parser_unread_token(n2_parser_t* p, size_t num)
 	if (num <= 0) { return; }
 	N2_ASSERT(N2_SCAST(int, num) <= p->token_cursor_);
 	p->token_cursor_ -= N2_SCAST(int, num);
+}
+
+N2_API n2_bool_t n2_parser_unread_token_to(n2_parser_t* p, const n2_token_t* token)
+{
+	if (!token) { return N2_FALSE; }
+	int cursor = p->token_cursor_ - 1;
+	while (cursor >= 0)
+	{
+		const n2_token_t* t = n2_tokenarray_peekcv(p->tokens_, cursor, NULL);
+		if (t == token)
+		{
+			p->token_cursor_ = cursor;
+			return N2_TRUE;
+		}
+		--cursor;
+	}
+	return N2_FALSE;
 }
 
 N2_API const n2_token_t* n2_parser_prev_token(const n2_parser_t* p, size_t num)
@@ -9436,17 +9456,17 @@ static n2_ast_node_t* n2i_parser_parse_statement_safe(n2_state_t* state, n2_pars
 		if (pc->error_) { N2_ASSERT(!statement); return NULL; }
 	}
 
-	// インクリメントデクリメント
+	// （前置）インクリメントデクリメントを試す
 	if (!statement)
 	{
 		statement = n2i_parser_parse_incdec_safe(state, p, pc);
 		if (pc->error_) { N2_ASSERT(!statement); return NULL; }
 	}
 
-	// それ以外は全て代入
+	// 代入など、変数起点を試す
 	if (!statement)
 	{
-		statement = n2i_parser_parse_assign_safe(state, p, pc);
+		statement = n2i_parser_parse_varbegin_safe(state, p, pc);
 		if (pc->error_) { N2_ASSERT(!statement); return NULL; }
 	}
 
@@ -10305,6 +10325,7 @@ static n2_ast_node_t* n2i_parser_parse_command_safe(n2_state_t* state, n2_parser
 	case N2_TOKEN_MOD_ASSIGN:
 	case N2_TOKEN_INCREMENT:
 	case N2_TOKEN_DECREMENT:
+	case N2_TOKEN_ARROW:// これは変数起点で処理する
 		is_command = N2_FALSE;
 		break;
 	default:
@@ -10491,9 +10512,10 @@ static n2_ast_node_t* n2i_parser_parse_incdec_safe(n2_state_t* state, n2_parser_
 	return n2_ast_node_alloc(state, nt->token_ == N2_TOKEN_INCREMENT ? N2_AST_NODE_INCREMENT : N2_AST_NODE_DECREMENT, variable, NULL);
 }
 
-static n2_ast_node_t* n2i_parser_parse_assign_safe(n2_state_t* state, n2_parser_t* p, n2i_parse_context_t* pc)
+static n2_ast_node_t* n2i_parser_parse_varbegin_safe(n2_state_t* state, n2_parser_t* p, n2i_parse_context_t* pc)
 {
 	pc->error_ = N2_FALSE;
+
 	n2_ast_node_t* variable = n2i_parser_parse_variable_safe(state, p, pc);
 	if (!variable) { return NULL; }
 
@@ -10523,6 +10545,32 @@ static n2_ast_node_t* n2i_parser_parse_assign_safe(n2_state_t* state, n2_parser_
 	case N2_TOKEN_MOD_ASSIGN:		node = N2_AST_NODE_MOD_ASSIGN; break;
 	case N2_TOKEN_INCREMENT:		node = N2_AST_NODE_INCREMENT; has_expr = N2_FALSE; break;
 	case N2_TOKEN_DECREMENT:		node = N2_AST_NODE_DECREMENT; has_expr = N2_FALSE; break;
+
+	case N2_TOKEN_ARROW:
+		{
+			// 特殊パス、メンバーコール
+			const n2_token_t* nametoken = n2_parser_read_token(state, p);
+			if (nametoken->token_ != N2_TOKEN_IDENTIFIER)
+			{
+				N2I_PS_RAISE(state, nametoken, "->の演算子の後には識別子が必要です");
+				n2_ast_node_free(state, variable);
+				pc->error_ = N2_TRUE;
+				return NULL;
+			}
+
+			n2_ast_node_t* args = n2i_parser_parse_arguments(state, p, N2_TRUE);
+			if (!args)
+			{
+				pc->error_ = N2_TRUE;
+				return NULL;
+			}
+
+			n2_ast_node_t* member_command = n2_ast_node_alloc_token(state, N2_AST_NODE_MEMBER_COMMAND, nametoken, variable);
+			member_command->right_ = args;
+			return member_command;
+		}
+		//break;
+
 	default:
 		N2I_PS_RAISE(state, next, "変数（%s）への代入では = が必要です ※関数呼び出しのみのステートメントは不正です", var_name);
 		n2_ast_node_free(state, variable);
@@ -11010,7 +11058,7 @@ static n2_ast_node_t* n2i_parser_parse_term(n2_state_t* state, n2_parser_t* p)
 		if (!is_continue) { break; }
 	}
 
-	n2_ast_node_t* prim = n2i_parser_parse_primitive(state, p);
+	n2_ast_node_t* prim = n2i_parser_parse_suffixed(state, p);
 	if (prim)
 	{
 		if (cur) { N2_ASSERT(node); cur->left_ = prim; }
@@ -11022,6 +11070,68 @@ static n2_ast_node_t* n2i_parser_parse_term(n2_state_t* state, n2_parser_t* p)
 		{
 			n2_ast_node_free(state, node);
 			node = NULL;
+		}
+	}
+	return node;
+}
+
+static n2_ast_node_t* n2i_parser_parse_suffixed(n2_state_t* state, n2_parser_t* p)
+{
+	n2_ast_node_t* node = n2i_parser_parse_primitive(state, p);
+	if (!node) { return NULL; }
+
+	for (;;)
+	{
+		n2_bool_t is_continue = N2_TRUE;
+		const n2_token_t* token = n2_parser_read_token(state, p);
+		switch (token->token_)
+		{
+		case N2_TOKEN_ARROW:
+			{
+				const n2_token_t* nametoken = n2_parser_read_token(state, p);
+				if (nametoken->token_ != N2_TOKEN_IDENTIFIER)
+				{
+					N2I_PS_RAISE(state, nametoken, "->の演算子の後には識別子が必要です");
+					n2_ast_node_free(state, node);
+					return NULL;
+				}
+
+				const n2_token_t* next = n2_parser_read_token(state, p);
+				if (next->token_ != N2_TOKEN_LPARENTHESIS)
+				{
+					N2I_PS_RAISE(state, next, "->の演算子は関数形式で記述する必要があります");
+					n2_ast_node_free(state, node);
+					return NULL;
+				}
+
+				n2_ast_node_t* args = n2i_parser_parse_arguments(state, p, N2_TRUE);
+				if (!args)
+				{
+					n2_ast_node_free(state, node);
+					return NULL;
+				}
+
+				next = n2_parser_read_token(state, p);
+				if (next->token_ != N2_TOKEN_RPARENTHESIS)
+				{
+					N2I_PS_RAISE(state, next, "->の演算子の括弧が閉じられていません");
+					n2_ast_node_free(state, args);
+					n2_ast_node_free(state, node);
+					return NULL;
+				}
+
+				node = n2_ast_node_alloc_token(state, N2_AST_NODE_MEMBER_CALL, nametoken, node);
+				node->right_ = args;
+			}
+			break;
+		default:
+			is_continue = N2_FALSE;
+			break;
+		}
+		if (!is_continue)
+		{
+			n2_parser_unread_token(p, 1);
+			break;
 		}
 	}
 	return node;
@@ -11252,20 +11362,36 @@ N2_API const n2_symbol_t* n2_symboltable_peekc(const n2_symboltable_t* symboltab
 	return n2_symbolarray_peekc(symboltable->symbolarray_, index);
 }
 
+N2_API n2_symbol_t* n2_symboltable_peek_id(n2_symboltable_t* symboltable, n2_symbol_id_t id)
+{
+	return n2_symboltable_peek(symboltable, id);
+}
+
+N2_API const n2_symbol_t* n2_symboltable_peekc_id(const n2_symboltable_t* symboltable, n2_symbol_id_t id)
+{
+	return n2_symboltable_peekc(symboltable, id);
+}
+
+N2_API n2_symbol_id_t n2_symboltable_find_id(const n2_symboltable_t* symboltable, const char* name)
+{
+	if (!name) { return N2_SYMBOL_ID_INVALID; }
+	const int* index = n2_symbolindexmap_findc(symboltable->symbolindexmap_, name);
+	if (!index) { return N2_SYMBOL_ID_INVALID; }
+	return N2_SCAST(n2_symbol_id_t, *index);
+}
+
 N2_API n2_symbol_t* n2_symboltable_find(n2_symboltable_t* symboltable, const char* name)
 {
-	if (!name) { return NULL; }
-	const int* index = n2_symbolindexmap_findc(symboltable->symbolindexmap_, name);
-	if (!index) { return NULL; }
-	return n2_symbolarray_peek(symboltable->symbolarray_, *index);
+	const n2_symbol_id_t id = n2_symboltable_find_id(symboltable, name);
+	if (id == N2_SYMBOL_ID_INVALID) { return NULL; }
+	return n2_symboltable_peek_id(symboltable, id);
 }
 
 N2_API const n2_symbol_t* n2_symboltable_findc(const n2_symboltable_t* symboltable, const char* name)
 {
-	if (!name) { return NULL; }
-	const int* index = n2_symbolindexmap_findc(symboltable->symbolindexmap_, name);
-	if (!index) { return NULL; }
-	return n2_symbolarray_peekc(symboltable->symbolarray_, *index);
+	const n2_symbol_id_t id = n2_symboltable_find_id(symboltable, name);
+	if (id == N2_SYMBOL_ID_INVALID) { return NULL; }
+	return n2_symboltable_peekc_id(symboltable, id);
 }
 
 N2_API n2_symbol_id_t n2_symboltable_register(n2_state_t* state, n2_symboltable_t* symboltable, const char* name)
@@ -11453,7 +11579,14 @@ N2_API n2_debugvariable_t* n2_debugvarpool_pop_or_alloc(n2_state_t* state, n2_de
 {
 	// キャッシュ（先頭から）
 	n2_debugvariable_t* debugvar = N2_RCAST(n2_debugvariable_t*, n2_list_shift(&debugvarpool->debugvar_pool_));
-	if (!debugvar)
+	if (debugvar)
+	{
+		if (state->config_.debugvar_id_reassign_)
+		{
+			debugvar->id_ = debugvarpool->next_id_++;
+		}
+	}
+	else
 	{
 		// 無いなら作る
 		debugvar = n2_debugvariable_alloc(state);
@@ -13778,6 +13911,8 @@ static n2_pc_t n2i_opcode_dump(n2_state_t* state, int indent, const n2_codeimage
 
 		"COMMAND",
 		"FUNCTION",
+		"MEMBER_COMMAND",
+		"MEMBER_FUNCTION",
 
 		"JUMP",
 		"JUMP_RELATIVE",
@@ -14068,16 +14203,24 @@ static n2_pc_t n2i_opcode_dump(n2_state_t* state, int indent, const n2_codeimage
 
 	case N2_OPCODE_COMMAND:
 	case N2_OPCODE_FUNCTION:
+	case N2_OPCODE_MEMBER_COMMAND:
+	case N2_OPCODE_MEMBER_FUNCTION:
 		{
-			const n2_opcode_t funcindex = opcodes[pc + 1];
-			N2_ASSERT(funcindex >= 0);
+			const n2_bool_t is_member = op == N2_OPCODE_MEMBER_COMMAND || op == N2_OPCODE_MEMBER_FUNCTION;
+			const n2_opcode_t rawindex = opcodes[pc + 1];
+			N2_ASSERT(rawindex >= 0);
 			const n2_opcode_t arg_num_flags = opcodes[pc + 2];
-			n2_func_t* func = NULL;
-			if (e) { func = n2_functable_peek(e->functable_, funcindex); }
+			const n2_func_t* func = NULL;
+			const n2_symbol_t* symbol = NULL;
+			if (e)
+			{
+				if (is_member) { symbol = n2_symboltable_peekc_id(e->symtable_, rawindex); }
+				else { func = n2_functable_peekc(e->functable_, rawindex); }
+			}
 			const int ordered_arg_num = N2_SCAST(int, arg_num_flags & 0x0fff);
 			const int keyworded_arg_num = N2_SCAST(int, (arg_num_flags >> 12) & 0x0fff);
 			const size_t exflags = N2_SCAST(size_t, (arg_num_flags >> 24) & 0xff);
-			n2i_printf(state, ": %s[%d=%s] OARG[%d] KWARG[%d] F[%zx]", op == N2_OPCODE_COMMAND ? "COMMAND" : "FUNCTION", funcindex, func ? func->name_ : "-", ordered_arg_num, keyworded_arg_num, exflags);
+			n2i_printf(state, ": %s[%d=%s] OARG[%d] KWARG[%d] F[%zx]", opnames[op], rawindex, symbol ? symbol->name_.str_ : func ? func->name_ : "-", ordered_arg_num, keyworded_arg_num, exflags);
 			offset += 2;
 		}
 		break;
@@ -14150,11 +14293,13 @@ N2_API void n2_codeimage_dump(n2_state_t* state, const n2_codeimage_t* codeimage
 //=============================================================================
 // 関数
 
-static void n2i_func_init(n2_state_t* state, n2_func_t* dst, const char* name)
+static void n2i_func_init(n2_state_t* state, n2_func_t* dst, const char* name, n2_symboltable_t* symtable)
 {
 	dst->func_ = N2_FUNC_UNKNOWN;
 	dst->name_ = NULL;
+	dst->name_id_ = N2_SYMBOL_ID_INVALID;
 	dst->short_name_ = NULL;
+	dst->short_name_id_ = N2_SYMBOL_ID_INVALID;
 	if (name)
 	{
 		n2_str_t sname;
@@ -14163,6 +14308,11 @@ static void n2i_func_init(n2_state_t* state, n2_func_t* dst, const char* name)
 		dst->name_ = n2_plstr_clone(state, name);
 		dst->short_name_ = n2_plstr_clone(state, sname.str_);
 		n2_str_teardown(state, &sname);
+		if (symtable)
+		{
+			dst->name_id_ = n2_symboltable_register(state, symtable, dst->name_);
+			dst->short_name_id_ = n2_symboltable_register(state, symtable, dst->short_name_);
+		}
 	}
 	dst->flags_ = 0;
 	dst->callback_ = NULL;
@@ -14389,6 +14539,7 @@ N2_API n2_functable_t* n2_functable_alloc(n2_state_t* state, size_t initial_buff
 	if (!functable) { return NULL; }
 	functable->funcarray_ = n2_funcarray_alloc(state, initial_buffer_size, expand_step);
 	functable->funcindexmap_ = n2_funcindexmap_alloc(state, initial_buffer_size, expand_step);
+	functable->symtable_ = NULL;
 	n2i_funcindexmap_postalloc(state, functable);
 	return functable;
 }
@@ -14405,12 +14556,22 @@ N2_API n2_func_t* n2_functable_peek(n2_functable_t* functable, int index)
 	return n2_funcarray_peek(functable->funcarray_, index);
 }
 
+N2_API const n2_func_t* n2_functable_peekc(const n2_functable_t* functable, int index)
+{
+	return n2_funcarray_peekc(functable->funcarray_, index);
+}
+
 N2_API n2_func_t* n2_functable_find(n2_functable_t* functable, const char* name)
 {
 	if (!name) { return NULL; }
 	int* index = n2_funcindexmap_find(functable->funcindexmap_, name);
 	if (!index) { return NULL; }
 	return n2_funcarray_peek(functable->funcarray_, *index);
+}
+
+N2_API void n2_functable_set_symbol_table(n2_functable_t* functable, n2_symboltable_t* symtable)
+{
+	functable->symtable_ = symtable;
 }
 
 N2_API int n2_functable_register(n2_state_t* state, n2_functable_t* functable, const char* name)
@@ -14420,7 +14581,7 @@ N2_API int n2_functable_register(n2_state_t* state, n2_functable_t* functable, c
 	if (!func)
 	{
 		n2_func_t tfunc;
-		n2i_func_init(state, &tfunc, name);
+		n2i_func_init(state, &tfunc, name, functable->symtable_);
 		int funcindex = N2_SCAST(int, n2_funcarray_size(functable->funcarray_));
 		func = n2_funcarray_push(state, functable->funcarray_, &tfunc);
 		if (name) { n2_funcindexmap_insert(state, functable->funcindexmap_, &funcindex, func->name_); }
@@ -14639,7 +14800,7 @@ static int n2i_modfuncsnameindexset_matchfunc(const n2_sorted_array_t* a, const 
 	return n2_plstr_cmp_case(func->short_name_, short_name);
 }
 
-static void n2i_modfuncsnameindexset_setupfunc(n2_state_t* state, n2_modfuncindexset_t* modfuncs)
+static void n2i_modfuncsnameindexset_setupfunc(n2_state_t* state, n2_modfuncsnameindexset_t* modfuncs)
 {
 	N2_UNUSE(state);
 	modfuncs->cmp_ = n2i_modfuncsnameindexset_cmpfunc;
@@ -14648,15 +14809,88 @@ static void n2i_modfuncsnameindexset_setupfunc(n2_state_t* state, n2_modfuncinde
 
 N2_DEFINE_TSORTED_ARRAY(int, void, char, n2_modfuncsnameindexset, N2_API, n2i_modfuncsnameindexset_setupfunc, n2i_freefunc_nothing);
 
-static void n2i_module_init(n2_state_t* state, n2_module_t* dst, const char* name)
+static int n2i_modfuncsymbolindexset_cmpfunc(const n2_sorted_array_t* a, const void* lkey, const void* rkey, const void* key)
+{
+	N2_UNUSE(key);
+	n2_functable_t* functable = N2_RCAST(n2_functable_t*, a->a_.user_);
+	N2_ASSERT(functable);
+	const int lindex = *N2_RCAST(const int*, lkey);
+	const int rindex = *N2_RCAST(const int*, rkey);
+	const n2_func_t* lfunc = n2_functable_peek(functable, lindex);
+	const n2_func_t* rfunc = n2_functable_peek(functable, rindex);
+	return N2_THREE_WAY_CMP(lfunc->name_id_, rfunc->name_id_);
+}
+
+static int n2i_modfuncsymbolindexset_matchfunc(const n2_sorted_array_t* a, const void* ekey, const void* key)
+{
+	n2_functable_t* functable = N2_RCAST(n2_functable_t*, a->a_.user_);
+	N2_ASSERT(functable);
+	const int modfuncindex = *N2_RCAST(const int*, ekey);
+	const n2_func_t* func = n2_functable_peek(functable, modfuncindex);
+	const n2_symbol_id_t name_id = *N2_RCAST(const n2_symbol_id_t*, key);
+	return N2_THREE_WAY_CMP(func->name_id_, name_id);
+}
+
+static void n2i_modfuncsymbolindexset_setupfunc(n2_state_t* state, n2_modfuncsymbolindexset_t* modfuncs)
+{
+	N2_UNUSE(state);
+	modfuncs->cmp_ = n2i_modfuncsymbolindexset_cmpfunc;
+	modfuncs->match_ = n2i_modfuncsymbolindexset_matchfunc;
+}
+
+N2_DEFINE_TSORTED_ARRAY(int, void, n2_symbol_id_t, n2_modfuncsymbolindexset, N2_API, n2i_modfuncsymbolindexset_setupfunc, n2i_freefunc_nothing);
+
+static int n2i_modfuncssymbolindexset_cmpfunc(const n2_sorted_array_t* a, const void* lkey, const void* rkey, const void* key)
+{
+	N2_UNUSE(key);
+	n2_functable_t* functable = N2_RCAST(n2_functable_t*, a->a_.user_);
+	N2_ASSERT(functable);
+	const int lindex = *N2_RCAST(const int*, lkey);
+	const int rindex = *N2_RCAST(const int*, rkey);
+	const n2_func_t* lfunc = n2_functable_peek(functable, lindex);
+	const n2_func_t* rfunc = n2_functable_peek(functable, rindex);
+	return N2_THREE_WAY_CMP(lfunc->short_name_id_, rfunc->short_name_id_);
+}
+
+static int n2i_modfuncssymbolindexset_matchfunc(const n2_sorted_array_t* a, const void* ekey, const void* key)
+{
+	n2_functable_t* functable = N2_RCAST(n2_functable_t*, a->a_.user_);
+	N2_ASSERT(functable);
+	const int modfuncindex = *N2_RCAST(const int*, ekey);
+	const n2_func_t* func = n2_functable_peek(functable, modfuncindex);
+	const n2_symbol_id_t name_id = *N2_RCAST(const n2_symbol_id_t*, key);
+	return N2_THREE_WAY_CMP(func->short_name_id_, name_id);
+}
+
+static void n2i_modfuncssymbolindexset_setupfunc(n2_state_t* state, n2_modfuncsymbolindexset_t* modfuncs)
+{
+	N2_UNUSE(state);
+	modfuncs->cmp_ = n2i_modfuncssymbolindexset_cmpfunc;
+	modfuncs->match_ = n2i_modfuncssymbolindexset_matchfunc;
+}
+
+N2_DEFINE_TSORTED_ARRAY(int, void, n2_symbol_id_t, n2_modfuncssymbolindexset, N2_API, n2i_modfuncssymbolindexset_setupfunc, n2i_freefunc_nothing);
+
+static void n2i_module_init(n2_state_t* state, n2_module_t* dst, const char* name, n2_environment_t* e)
 {
 	dst->name_ = NULL;
-	if (name) { dst->name_ = n2_plstr_clone(state, name); }
+	dst->name_id_ = N2_SYMBOL_ID_INVALID;
+	if (name)
+	{
+		dst->name_ = n2_plstr_clone(state, name);
+		if (e && e->symtable_)
+		{
+			dst->name_id_ = n2_symboltable_register(state, e->symtable_, name);
+		}
+	}
 	dst->module_id_ = -1;
+	dst->environment_ = e;
 	dst->pc_begin_ = -1;
 	dst->modlocalvars_ = n2_modlocalvararray_alloc(state, 0, 4);
-	dst->modfuncs_ = n2_modfuncindexset_alloc_user(state, 0, 4, state->environment_->functable_);// @todo isolate e
-	dst->modfuncsnames_ = n2_modfuncsnameindexset_alloc_user(state, 0, 4, state->environment_->functable_);// @todo isolate e
+	dst->modfuncs_ = n2_modfuncindexset_alloc_user(state, 0, 4, e->functable_);
+	dst->modfuncsnames_ = n2_modfuncsnameindexset_alloc_user(state, 0, 4, e->functable_);
+	dst->modfuncsyms_ = n2_modfuncsymbolindexset_alloc_user(state, 0, 4, e->functable_);
+	dst->modfuncssyms_ = n2_modfuncssymbolindexset_alloc_user(state, 0, 4, e->functable_);
 	dst->modinit_funcindex_ = -1;
 	dst->modterm_funcindex_ = -1;
 	dst->alloc_callback_ = NULL;
@@ -14669,7 +14903,25 @@ static void n2i_module_teardown(n2_state_t* state, n2_module_t* emodule)
 	if (emodule->name_) { n2_free(state, emodule->name_); emodule->name_ = NULL; }
 	if (emodule->modlocalvars_) { n2_modlocalvararray_free(state, emodule->modlocalvars_); emodule->modlocalvars_ = NULL; }
 	if (emodule->modfuncsnames_) { n2_modfuncsnameindexset_free(state, emodule->modfuncsnames_); emodule->modfuncsnames_ = NULL; }
+	if (emodule->modfuncsyms_) { n2_modfuncsymbolindexset_free(state, emodule->modfuncsyms_); emodule->modfuncsyms_ = NULL; }
+	if (emodule->modfuncssyms_) { n2_modfuncssymbolindexset_free(state, emodule->modfuncssyms_); emodule->modfuncssyms_ = NULL; }
 	if (emodule->modfuncs_) { n2_modfuncindexset_free(state, emodule->modfuncs_); emodule->modfuncs_ = NULL; }
+}
+
+N2_API n2_func_t* n2_module_find_func_byname(const n2_module_t* emodule, const char* name)
+{
+	if (!emodule->environment_ || !emodule->modfuncsnames_) { return NULL; }
+	const int* index = n2_modfuncsnameindexset_findc(emodule->modfuncsnames_, name);
+	if (!index) { return NULL; }
+	return n2_functable_peek(emodule->environment_->functable_, *index);
+}
+
+N2_API n2_func_t* n2_module_find_func_bysymbol(const n2_module_t* emodule, n2_symbol_id_t id)
+{
+	if (!emodule->environment_ || !emodule->modfuncssyms_) { return NULL; }
+	const int* index = n2_modfuncssymbolindexset_findc(emodule->modfuncssyms_, &id);
+	if (!index) { return NULL; }
+	return n2_functable_peek(emodule->environment_->functable_, *index);
 }
 
 static void n2i_modulearray_freefunc(n2_state_t* state, n2_array_t* a, void* element)
@@ -14719,12 +14971,13 @@ static void n2i_moduleindexmap_postalloc(n2_state_t* state, n2_moduletable_t* mo
 N2_DEFINE_TARRAY(n2_module_t, n2_modulearray, N2_API, n2i_setupfunc_nothing, n2i_modulearray_freefunc);
 N2_DEFINE_TSORTED_ARRAY(int, void, char, n2_moduleindexmap, N2_API, n2i_moduleindexmap_setupfunc, n2i_freefunc_nothing);
 
-N2_API n2_moduletable_t* n2_moduletable_alloc(n2_state_t* state, size_t initial_buffer_size, size_t expand_step)
+N2_API n2_moduletable_t* n2_moduletable_alloc(n2_state_t* state, size_t initial_buffer_size, size_t expand_step, n2_environment_t* e)
 {
 	n2_moduletable_t* moduletable = N2_TMALLOC(n2_moduletable_t, state);
 	if (!moduletable) { return NULL; }
 	moduletable->modulearray_ = n2_modulearray_alloc(state, initial_buffer_size, expand_step);
 	moduletable->moduleindexmap_ = n2_moduleindexmap_alloc(state, initial_buffer_size, expand_step);
+	moduletable->environment_ = e;
 	n2i_moduleindexmap_postalloc(state, moduletable);
 	return moduletable;
 }
@@ -14741,7 +14994,12 @@ N2_API n2_module_t* n2_moduletable_peek(n2_moduletable_t* moduletable, int index
 	return n2_modulearray_peek(moduletable->modulearray_, index);
 }
 
-N2_API n2_module_t* n2_moduletable_find(n2_moduletable_t* moduletable, const char* name)
+N2_API const n2_module_t* n2_moduletable_peekc(const n2_moduletable_t* moduletable, int index)
+{
+	return n2_modulearray_peekc(moduletable->modulearray_, index);
+}
+
+N2_API n2_module_t* n2_moduletable_find_byname(n2_moduletable_t* moduletable, const char* name)
 {
 	if (!name) { return NULL; }
 	int* index = n2_moduleindexmap_find(moduletable->moduleindexmap_, name);
@@ -14752,11 +15010,11 @@ N2_API n2_module_t* n2_moduletable_find(n2_moduletable_t* moduletable, const cha
 N2_API n2_module_t* n2_moduletable_register(n2_state_t* state, n2_moduletable_t* moduletable, const char* name)
 {
 	n2_module_t* emodule = NULL;
-	if (name) { emodule = n2_moduletable_find(moduletable, name); }
+	if (name) { emodule = n2_moduletable_find_byname(moduletable, name); }
 	if (!emodule)
 	{
 		n2_module_t tmodule;
-		n2i_module_init(state, &tmodule, name);
+		n2i_module_init(state, &tmodule, name, moduletable->environment_);
 		int moduleindex = N2_SCAST(int, n2_modulearray_size(moduletable->modulearray_));
 		emodule = n2_modulearray_push(state, moduletable->modulearray_, &tmodule);
 		emodule->module_id_ = moduleindex;
@@ -15075,6 +15333,7 @@ N2_API n2_pp_directive_e n2_pp_directive_find(const char* s)
 		{N2_PP_DIRECTIVE_USELIB,	"uselib"},
 		{N2_PP_DIRECTIVE_FUNC,		"func"},
 		{N2_PP_DIRECTIVE_CFUNC,		"cfunc"},
+		{N2_PP_DIRECTIVE_EXTENSION,	"extension"},
 
 		{N2_PP_DIRECTIVE_BOOTOPT,	"bootopt"},
 		{N2_PP_DIRECTIVE_CMPOPT,	"cmpopt"},
@@ -21894,14 +22153,15 @@ N2_API n2_bool_t n2_fiber_is_finished(const n2_fiber_t* fiber)
 N2_API n2_environment_t* n2_environment_alloc(n2_state_t* state)
 {
 	n2_environment_t* e = N2_TMALLOC(n2_environment_t, state);
-	e->symboltable_ = n2_symboltable_alloc(state, 0, 128);
+	e->symtable_ = n2_symboltable_alloc(state, 0, 128);
 	e->parsers_ = n2_parserarray_alloc(state, 0, 128);
 	e->asts_ = n2_astarray_alloc(state, 0, 128);
 	e->codeimage_ = n2_codeimage_alloc(state);
 	e->vartable_ = n2_vartable_alloc(state, 128, 128);
 	e->functable_ = n2_functable_alloc(state, 128, 128);
+	n2_functable_set_symbol_table(e->functable_, e->symtable_);
 	e->labels_ = n2_labelarray_alloc(state, 0, 64);
-	e->moduletable_ = n2_moduletable_alloc(state, 0, 16);
+	e->moduletable_ = n2_moduletable_alloc(state, 0, 16, e);
 	e->uselibs_dirty_ = N2_TRUE;
 	e->uselibs_ = n2_uselibarray_alloc(state, 0, 4);
 	e->sysvar_ex_ = n2_sysvarexarray_alloc(state, 0, 8);
@@ -21948,7 +22208,7 @@ N2_API void n2_environment_free(n2_state_t* state, n2_environment_t* e)
 	n2_codeimage_free(state, e->codeimage_);
 	n2_astarray_free(state, e->asts_);
 	n2_parserarray_free(state, e->parsers_);
-	n2_symboltable_free(state, e->symboltable_);
+	n2_symboltable_free(state, e->symtable_);
 #if N2_CONFIG_USE_DEBUGGING
 	if (e->debugvarroot_) { n2_debugvarpool_push(state, e->debugvarpool_, e->debugvarroot_); e->debugvarroot_ = NULL; }
 	if (e->debugvarpool_) { n2_debugvarpool_free(state, e->debugvarpool_); e->debugvarpool_ = NULL; }
@@ -22353,7 +22613,7 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 			N2_ASSERT(n->token_->token_ == N2_TOKEN_IDENTIFIER);
 			const char* modulename = n->token_->content_;
 
-			n2_module_t* emodule = n2_moduletable_find(e->moduletable_, modulename);
+			n2_module_t* emodule = n2_moduletable_find_byname(e->moduletable_, modulename);
 			if (!emodule)
 			{
 				n2i_environment_generate_raise(state, n, "モジュール（%s）が宣言されていません、プリプロセスに失敗しています ※#moduleは行頭にくる必要があります", modulename);
@@ -22610,6 +22870,8 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 
 				n2_modfuncindexset_insertv(state, c->module_->modfuncs_, funcindex, NULL);
 				n2_modfuncindexset_insertv(state, c->module_->modfuncsnames_, funcindex, NULL);
+				n2_modfuncsymbolindexset_insertv(state, c->module_->modfuncsyms_, funcindex, NULL);
+				n2_modfuncssymbolindexset_insertv(state, c->module_->modfuncssyms_, funcindex, NULL);
 			}
 
 			// エイリアス
@@ -22666,7 +22928,7 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 					n2_func_param_t* param = n2_funcparamarray_push(state, func->ordered_params_, NULL);
 					n2i_func_param_init(param);
 					n2_str_set(state, &param->name_, "thismod", SIZE_MAX);
-					param->name_id_ = n2_symboltable_register(state, e->symboltable_, param->name_.str_);
+					param->name_id_ = n2_symboltable_register(state, e->symtable_, param->name_.str_);
 					param->type_ = N2_FUNC_PARAM_MODVAR;
 					param->stack_index_ = func->reserved_stack_num_++;
 					param->keyworded_ = N2_FALSE;
@@ -22740,7 +23002,7 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 				}
 				// OKなので保存
 				n2_str_set(state, &param->name_, ident->token_->content_, SIZE_MAX);
-				param->name_id_ = n2_symboltable_register(state, e->symboltable_, param->name_.str_);
+				param->name_id_ = n2_symboltable_register(state, e->symtable_, param->name_.str_);
 			}
 			param->type_ = paramtype;
 			param->stack_index_ = stackindex;
@@ -22910,7 +23172,7 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 			const char* keyword_name = n->token_->content_;
 
 			// シンボルIDを書き込み
-			const int symbol_id = n2_symboltable_register(state, e->symboltable_, keyword_name);
+			const int symbol_id = n2_symboltable_register(state, e->symtable_, keyword_name);
 			n2_opcodearray_pushv(state, opcodes, N2_OPCODE_PUSH_SINT);
 			n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, symbol_id));
 			++c->stack_;
@@ -23113,7 +23375,7 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 			// モジュール
 			if (!accepted)
 			{
-				n2_module_t* emodule = n2_moduletable_find(e->moduletable_, ident);
+				n2_module_t* emodule = n2_moduletable_find_byname(e->moduletable_, ident);
 				if (emodule)
 				{
 					if (arg_num > 0)
@@ -23282,6 +23544,37 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 		N2_ASSERT(n->left_);
 		if (!n2i_environment_generate_walk(state, e, n->left_, c)) { return N2_FALSE; }
 		n2_opcodearray_pushv(state, opcodes, N2_OPCODE_UNARY_MINUS);
+		break;
+
+	case N2_AST_NODE_MEMBER_COMMAND:
+	case N2_AST_NODE_MEMBER_CALL:
+		{
+			const n2_bool_t is_command = n->node_ == N2_AST_NODE_MEMBER_COMMAND;
+
+			const int top = c->stack_;
+			const int keyworded_top = c->keyworded_args_;
+			N2_ASSERT(n->left_);
+			if (!n2i_environment_generate_walk(state, e, n->left_, c)) { return N2_FALSE; }
+			if (n->right_ && !n2i_environment_generate_walk(state, e, n->right_, c)) { return N2_FALSE; }
+			const int arg_num = c->stack_ - top;
+			N2_ASSERT(arg_num >= 0);
+			const int keyworded_arg_num = c->keyworded_args_ - keyworded_top;
+			N2_ASSERT(keyworded_arg_num >= 0);
+			const int ordered_arg_num = arg_num - keyworded_arg_num * 2;
+			N2_ASSERT(ordered_arg_num >= 0);
+
+			N2_ASSERT(n->token_->token_ == N2_TOKEN_IDENTIFIER );
+			const char* member_name = n->token_->content_;
+			N2_ASSERT(member_name);
+			const n2_symbol_id_t member_symid = n2_symboltable_register(state, e->symtable_, member_name);
+
+			n2_opcodearray_pushv(state, opcodes, is_command ? N2_OPCODE_MEMBER_COMMAND : N2_OPCODE_MEMBER_FUNCTION);
+			n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, member_symid));
+			n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, (ordered_arg_num & 0x0fff) | ((keyworded_arg_num & 0x0fff) << 12) | (0)));
+
+			c->stack_ = top + (is_command ? 0 : 1);
+			c->keyworded_args_ = keyworded_top;
+		}
 		break;
 
 	case N2_AST_NODE_LABEL_VALUE:
@@ -23479,7 +23772,7 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 			// モジュール
 			if (!accepted)
 			{
-				n2_module_t* emodule = n2_moduletable_find(e->moduletable_, ident);
+				n2_module_t* emodule = n2_moduletable_find_byname(e->moduletable_, ident);
 				if (emodule)
 				{
 					if (arg_num > 0)
@@ -23558,6 +23851,7 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 
 			n2_str_teardown(state, &fullname); n2_str_teardown(state, &fullname_global);
 			c->stack_ = top + 1;
+			c->keyworded_args_ = keyworded_top;
 		}
 		break;
 
@@ -24345,6 +24639,7 @@ N2_API void n2_state_config_init_ex(n2_state_config_t* dst_config, size_t flags)
 	dst_config->generate_opcodeflags_ = N2_FALSE;
 	dst_config->generate_codelines_ = N2_TRUE;
 	dst_config->generate_debugvars_ = N2_FALSE;
+	dst_config->debugvar_id_reassign_ = N2_FALSE;
 	dst_config->enable_graphics_assert_ = N2_FALSE;
 
 	dst_config->max_message_log_ = N2_DEFAULT_MESSAGE_LOG_MAX;
@@ -25778,8 +26073,8 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 				const n2_module_t* funcmod = NULL;
 				if (func->module_id_ >= 0)
 				{
-					//funcmod = n2_modulearray_peek(e->functable_->funcarray_, func->module_id_);
-					//N2_ASSERT(funcmod);
+					funcmod = n2_moduletable_peekc(e->moduletable_, func->module_id_);
+					N2_ASSERT(funcmod);
 				}
 
 				// ローカルスタックの数だけ場所を用意する
@@ -26041,8 +26336,11 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 
 		case N2_OPCODE_COMMAND:
 		case N2_OPCODE_FUNCTION:
+		case N2_OPCODE_MEMBER_COMMAND:
+		case N2_OPCODE_MEMBER_FUNCTION:
 			{
-				const n2_bool_t is_command = (op == N2_OPCODE_COMMAND);
+				const n2_bool_t is_command = op == N2_OPCODE_COMMAND || op == N2_OPCODE_MEMBER_COMMAND;
+				const n2_bool_t is_member = op == N2_OPCODE_MEMBER_COMMAND || op == N2_OPCODE_MEMBER_FUNCTION;
 
 				if (state->config_.max_call_nest_ > 0 && n2_callframearray_size(f->callframes_) >= state->config_.max_call_nest_)
 				{
@@ -26050,14 +26348,50 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 					return N2_FALSE;
 				}
 
-				const n2_opcode_t funcindex = c[*pc + 1];
+				const n2_opcode_t rawindex = c[*pc + 1];
 				const n2_opcode_t arg_num_flags = c[*pc + 2];
 				const int ordered_arg_num = N2_SCAST(int, arg_num_flags & 0x0fff);
 				const int keyworded_arg_num = N2_SCAST(int, (arg_num_flags >> 12) & 0x0fff);
 				const size_t exflags = N2_SCAST(size_t, (arg_num_flags >> 24) & 0xff);
 
+				const int arg_num = ordered_arg_num + keyworded_arg_num * 2;
+				N2_EI_ENSURE_VS_FNUM(arg_num);
+
 				// コマンド/関数呼び出し
-				const n2_func_t* original_func = n2_functable_peek(e->functable_, funcindex);
+				const n2_func_t* original_func = NULL;
+				if (is_member)
+				{
+					// メンバー関数の実体をルックアップ
+					N2_ASSERT(arg_num >= 1);
+					n2_value_t* callval = n2_valuearray_peekv(f->values_, -arg_num, NULL);
+					N2_ASSERT(callval);
+					n2_value_isolate(state, f, callval, N2_FALSE);
+					if (callval->type_ != N2_VALUE_MODINST)
+					{
+						n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "メンバー呼び出しの主体がモジュール型ではありませんでした");
+						return N2_FALSE;
+					}
+					const n2_modinstance_t* modinst = callval->field_.modvalue_.instance_;
+					const n2_module_t* emodule = modinst ? n2_moduletable_peekc(e->moduletable_, modinst->module_id_) : NULL;
+					if (!emodule)
+					{
+						if (!modinst) { n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "削除済みのモジュールのメンバー呼び出しはできません"); }
+						else { n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "メンバー呼び出しの主体がモジュール型を特定できません"); }
+						return N2_FALSE;
+					}
+					original_func = n2_module_find_func_bysymbol(emodule, rawindex);
+					if (!original_func)
+					{
+						const n2_symbol_t* nsym = n2_symboltable_peekc_id(e->symtable_, rawindex);
+						n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "モジュール（%s）に関数（%s）が見つかりません", emodule->name_, nsym ? nsym->name_.str_ : "<unknown>");
+						return N2_FALSE;
+					}
+				}
+				else
+				{
+					// そのまま
+					original_func = n2_functable_peekc(e->functable_, rawindex);
+				}
 				N2_ASSERT(original_func);
 				const n2_func_t* func = original_func;
 
@@ -26074,8 +26408,6 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 				}
 
 				// コールフレーム準備
-				const int arg_num = ordered_arg_num + keyworded_arg_num * 2;
-				N2_EI_ENSURE_VS_FNUM(arg_num);
 				n2_callframe_t* lcf = n2_callframearray_push(state, f->callframes_, NULL);
 				n2i_callframe_init(lcf);
 				n2i_execute_fill_to_callframe(state, lcf, f);
@@ -26194,32 +26526,41 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 
 				n2_callframe_t* lcf = n2_callframearray_peek(f->callframes_, -1);
 
-				n2_opcode_t res_num = c[*pc + 1];
-				if (res_num > 0)
-				{
-					// 戻り値は一つに限定
-					N2_ASSERT(res_num <= 1);
+				const int res_max = N2_SCAST(int, n2_valuearray_size(f->values_)) - f->callstate_.base_;
 
-					if (lcf->caller_ == N2_CALLER_GOSUB || lcf->caller_ == N2_CALLER_COMMAND)
+				n2_opcode_t res_num = c[*pc + 1];
+				N2_ASSERT(res_num >= 0 && res_num <= 1);
+
+				if (lcf->caller_ == N2_CALLER_GOSUB || lcf->caller_ == N2_CALLER_COMMAND)
+				{
+					if (res_num > 0)
 					{
-						// システム変数へ
+						// 戻り値をシステム変数へ
 						n2_value_t* resval = n2_valuearray_peekv(f->values_, -1, NULL);
 						n2i_execute_substitute_to_sysvar(state, f, resval);
-						// 全部ポップ
-						const int pop_num = N2_SCAST(int, n2_valuearray_size(f->values_)) - f->callstate_.base_;
-						n2_valuearray_erase_num(state, f->values_, f->callstate_.base_, N2_SCAST(size_t, pop_num));
 					}
-					else
+					// あとは全てポップ
+					n2_valuearray_erase_num(state, f->values_, f->callstate_.base_, res_max);
+					N2_ASSERT(N2_SCAST(int, n2_valuearray_size(f->values_)) == f->callstate_.base_);
+				}
+				else
+				{
+					// 戻り値をそのまま返却
+					if (res_num > 1) { res_num = 1;/*@todo 戻り値の数は最大一つ*/ }
+					const int pop_res_num = res_max - res_num;
+					N2_ASSERT(pop_res_num >= 0);
+					n2_valuearray_erase_num(state, f->values_, f->callstate_.base_, N2_SCAST(size_t, pop_res_num));
+					// isolateする（戻り値がローカル変数だった時用）
+					if (res_num > 0)
 					{
-						// 一つだけ残して戻す
-						const int pop_num = N2_SCAST(int, n2_valuearray_size(f->values_)) - f->callstate_.base_ - 1/*res_num*/;
-						n2_valuearray_erase_num(state, f->values_, f->callstate_.base_, N2_SCAST(size_t, pop_num));
-						// isolateする（戻り値がローカル変数だった時用）
 						n2_value_t* resval = n2_valuearray_peekv(f->values_, -1, NULL);
 						n2_value_isolate(state, f, resval, N2_FALSE);
 					}
-
-					res_num = 1;
+					else
+					{
+						/*戻り値がないならnilにする*/
+						n2_valuearray_pushv(state, f->values_, n2_value_allocnil(state));
+					}
 				}
 
 				const n2_bool_t is_external = (lcf->caller_ == N2_CALLER_EXTERNAL);
@@ -26715,7 +27056,9 @@ N2_API n2_bool_t n2e_register_modfunc(n2_state_t* state, n2_module_t* mod, const
 	n2_func_t* func = n2_functable_peek(state->environment_->functable_, funcindex);
 	n2i_func_setas_callback(state, func, N2_FUNC_EXTERNAL, callback, funcuser);
 	n2_modfuncindexset_insertv(state, mod->modfuncs_, funcindex, NULL);
-	n2_modfuncindexset_insertv(state, mod->modfuncsnames_, funcindex, NULL);
+	n2_modfuncsnameindexset_insertv(state, mod->modfuncsnames_, funcindex, NULL);
+	n2_modfuncsymbolindexset_insertv(state, mod->modfuncsyms_, funcindex, NULL);
+	n2_modfuncssymbolindexset_insertv(state, mod->modfuncssyms_, funcindex, NULL);
 	return N2_TRUE;
 }
 
