@@ -23189,17 +23189,23 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 	case N2_AST_NODE_LABEL:
 		{
 			const char* label_name = n->token_->content_;
-			const int label_index = n2i_environment_register_label(state, e, label_name);
+			n2_str_t label_fullname;
+			n2_str_init(&label_fullname);
+			n2_naming_compute(state, label_name, SIZE_MAX, c->module_ ? c->module_->name_ : NULL, NULL, &label_fullname, NULL);
+			const int label_index = n2i_environment_register_label(state, e, label_fullname.str_);
 			N2_ASSERT(label_index >= 0);
 			n2_label_t* label = n2_labelarray_peek(e->labels_, label_index);
 			if (label->pc_ >= 0)
 			{
-				n2i_environment_generate_raise(state, n, "ラベル（*%s）を定義しようとしましたが既に別の箇所で定義されています", label_name);
+				n2i_environment_generate_raise(state, n, "ラベル（*%s：フル名＝*%s）を定義しようとしましたが既に別の箇所で定義されています", label_name, label_fullname.str_);
+				n2_str_teardown(state, &label_fullname);
 				return N2_FALSE;
 			}
 			label->pc_ = N2_SCAST(n2_pc_t, n2_opcodearray_size(opcodes));
 			n2_opcodearray_pushv(state, opcodes, N2_OPCODE_LABEL);
 			n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, label_index));
+
+			n2_str_teardown(state, &label_fullname);
 		}
 		break;
 
@@ -23684,12 +23690,17 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 	case N2_AST_NODE_LABEL_VALUE:
 		{
 			const char* label_name = n->token_->content_;
-			const int label_index = n2i_environment_register_label(state, e, label_name);
+			n2_str_t label_fullname;
+			n2_str_init(&label_fullname);
+			n2_naming_compute(state, label_name, SIZE_MAX, c->module_ ? c->module_->name_ : NULL, NULL, &label_fullname, NULL);
+			const int label_index = n2i_environment_register_label(state, e, label_fullname.str_);
 			N2_ASSERT(label_index >= 0);
 
 			n2_opcodearray_pushv(state, opcodes, N2_OPCODE_PUSH_LABEL);
 			n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, label_index));
 			++c->stack_;
+
+			n2_str_teardown(state, &label_fullname);
 		}
 		break;
 	case N2_AST_NODE_PRIMITIVE_VALUE:
