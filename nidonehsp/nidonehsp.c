@@ -14214,7 +14214,7 @@ static n2_pc_t n2i_opcode_dump(n2_state_t* state, int indent, const n2_codeimage
 			const n2_symbol_t* symbol = NULL;
 			if (e)
 			{
-				if (is_member) { symbol = n2_symboltable_peekc_id(e->symtable_, rawindex); }
+				if (is_member) { symbol = n2_symboltable_peekc_id(state->symtable_, rawindex); }
 				else { func = n2_functable_peekc(e->functable_, rawindex); }
 			}
 			const int ordered_arg_num = N2_SCAST(int, arg_num_flags & 0x0fff);
@@ -14878,10 +14878,7 @@ static void n2i_module_init(n2_state_t* state, n2_module_t* dst, const char* nam
 	if (name)
 	{
 		dst->name_ = n2_plstr_clone(state, name);
-		if (e && e->symtable_)
-		{
-			dst->name_id_ = n2_symboltable_register(state, e->symtable_, name);
-		}
+		dst->name_id_ = n2_symboltable_register(state, state->symtable_, name);
 	}
 	dst->module_id_ = -1;
 	dst->environment_ = e;
@@ -15154,6 +15151,67 @@ static void n2i_crmodule_placeholderclass_free(n2_state_t* state, n2_fiber_t* f,
 	N2_UNUSE(emodule);
 	n2_crplaceholderclass_instance_t* phinstance = N2_SCAST(n2_crplaceholderclass_instance_t*, instance);
 	if (phinstance->instance_freefunc_) { phinstance->instance_freefunc_(state, f, phinstance); }
+}
+
+//=============================================================================
+// エクステンション
+
+N2_API void n2_extension_config_init(n2_extension_config_t* config)
+{
+	config->importfunc_ = NULL;
+	config->bootfunc_ = NULL;
+	config->shutdownfunc_ = NULL;
+	config->freefunc_ = NULL;
+	config->user_ = NULL;
+}
+
+static void n2i_extension_init(n2_extension_t* extension)
+{
+	n2_str_init(&extension->name_);
+	extension->name_id_ = N2_SYMBOL_ID_INVALID;
+	n2_extension_config_init(&extension->config_);
+
+	extension->imported_ = N2_FALSE;
+	extension->booted_ = N2_FALSE;
+}
+
+static void n2i_extension_teardown(n2_state_t* state, n2_extension_t* extension)
+{
+	if (extension->config_.freefunc_) { extension->config_.freefunc_(state, extension); }
+	n2_str_teardown(state, &extension->name_);
+}
+
+static void n2i_extensionarray_freefunc(n2_state_t* state, n2_array_t* a, void* element)
+{
+	N2_UNUSE(a);
+	n2_extension_t* extension = N2_RCAST(n2_extension_t*, element);
+	n2i_extension_teardown(state, extension);
+}
+
+N2_DEFINE_TARRAY(n2_extension_t, n2_extensionarray, N2_API, n2i_setupfunc_nothing, n2i_extensionarray_freefunc);
+
+static int n2i_extensionarray_matchfunc_byname(const n2_array_t* a, const void* mkey, const void* key)
+{
+	N2_UNUSE(a);
+	const n2_extension_t* extension = N2_RCAST(const n2_extension_t*, mkey);
+	const char* name = N2_RCAST(const char*, key);
+	return N2_STRCMP(extension->name_.str_, name);
+}
+static int n2i_extensionarray_find_byname(n2_extensionarray_t* extensionarray, const char* name)
+{
+	return n2_extensionarray_find(extensionarray, n2i_extensionarray_matchfunc_byname, name);
+}
+
+static int n2i_extensionarray_matchfunc_bynameid(const n2_array_t* a, const void* mkey, const void* key)
+{
+	N2_UNUSE(a);
+	const n2_extension_t* extension = N2_RCAST(const n2_extension_t*, mkey);
+	const n2_symbol_id_t* name_id = N2_RCAST(const n2_symbol_id_t*, key);
+	return N2_THREE_WAY_CMP(extension->name_id_, *name_id);
+}
+static int n2i_extensionarray_find_bynameid(n2_extensionarray_t* extensionarray, n2_symbol_id_t name_id)
+{
+	return n2_extensionarray_find(extensionarray, n2i_extensionarray_matchfunc_bynameid, &name_id);
 }
 
 //=============================================================================
@@ -16872,6 +16930,49 @@ static n2_bool_t n2i_pp_preprocess_line_to(n2_state_t* state, n2_pp_context_t* p
 			}
 			break;
 
+		case N2_PP_DIRECTIVE_EXTENSION:
+			if (ppc->current_region_valid_)
+			{
+				const n2_token_t* name = n2_parser_read_token(state, p);
+				if (name->token_ != N2_TOKEN_STRING)
+				{
+					N2I_PP_RAISE(state, "プリプロセス：extension の後にはエクステンション名が必要です");
+					goto fail_exit;
+				}
+
+				const char* ext_name = name->content_;
+				n2_extension_t* extension = n2_state_extension_find(state, ext_name);
+				if (!extension)
+				{
+					N2I_PP_RAISE(state, "プリプロセス：エクステンション（%s）が見つかりません", ext_name);
+					goto fail_exit;
+				}
+
+				// セットアップは一回だけ
+				if (!extension->imported_)
+				{
+					if (extension->config_.importfunc_)
+					{
+						n2_extension_import_config_t import_config;
+						import_config.param_parser_ = p;
+						n2_str_init(&import_config.error_message_);
+						import_config.environment_ = state->environment_;
+
+						const n2_bool_t setup_succeeded = extension->config_.importfunc_(state, extension, &import_config);
+						if (!setup_succeeded)
+						{
+							N2I_PP_RAISE(state, "プリプロセス：エクステンション（%s）のセットアップに失敗（%s）", ext_name, import_config.error_message_.str_);
+						}
+
+						n2_str_teardown(state, &import_config.error_message_);
+						if (!setup_succeeded) { goto fail_exit; }
+					}
+
+					extension->imported_ = N2_TRUE;
+				}
+			}
+			break;
+
 		case N2_PP_DIRECTIVE_BOOTOPT:
 			if (ppc->current_region_valid_)
 			{
@@ -17061,7 +17162,12 @@ static n2_bool_t n2i_pp_preprocess_line_to(n2_state_t* state, n2_pp_context_t* p
 			break;
 
 		default:
-			N2_ASSERT(0);
+			if (ppc->current_region_valid_)
+			{
+				N2_ASSERT(0);
+				N2I_PP_RAISE(state, "未対応のプリプロセッサを検出しました");
+				goto fail_exit;
+			}
 			break;
 		}
 	}
@@ -22153,13 +22259,12 @@ N2_API n2_bool_t n2_fiber_is_finished(const n2_fiber_t* fiber)
 N2_API n2_environment_t* n2_environment_alloc(n2_state_t* state)
 {
 	n2_environment_t* e = N2_TMALLOC(n2_environment_t, state);
-	e->symtable_ = n2_symboltable_alloc(state, 0, 128);
 	e->parsers_ = n2_parserarray_alloc(state, 0, 128);
 	e->asts_ = n2_astarray_alloc(state, 0, 128);
 	e->codeimage_ = n2_codeimage_alloc(state);
 	e->vartable_ = n2_vartable_alloc(state, 128, 128);
 	e->functable_ = n2_functable_alloc(state, 128, 128);
-	n2_functable_set_symbol_table(e->functable_, e->symtable_);
+	n2_functable_set_symbol_table(e->functable_, state->symtable_);
 	e->labels_ = n2_labelarray_alloc(state, 0, 64);
 	e->moduletable_ = n2_moduletable_alloc(state, 0, 16, e);
 	e->uselibs_dirty_ = N2_TRUE;
@@ -22208,7 +22313,6 @@ N2_API void n2_environment_free(n2_state_t* state, n2_environment_t* e)
 	n2_codeimage_free(state, e->codeimage_);
 	n2_astarray_free(state, e->asts_);
 	n2_parserarray_free(state, e->parsers_);
-	n2_symboltable_free(state, e->symtable_);
 #if N2_CONFIG_USE_DEBUGGING
 	if (e->debugvarroot_) { n2_debugvarpool_push(state, e->debugvarpool_, e->debugvarroot_); e->debugvarroot_ = NULL; }
 	if (e->debugvarpool_) { n2_debugvarpool_free(state, e->debugvarpool_); e->debugvarpool_ = NULL; }
@@ -22928,7 +23032,7 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 					n2_func_param_t* param = n2_funcparamarray_push(state, func->ordered_params_, NULL);
 					n2i_func_param_init(param);
 					n2_str_set(state, &param->name_, "thismod", SIZE_MAX);
-					param->name_id_ = n2_symboltable_register(state, e->symtable_, param->name_.str_);
+					param->name_id_ = n2_symboltable_register(state, state->symtable_, param->name_.str_);
 					param->type_ = N2_FUNC_PARAM_MODVAR;
 					param->stack_index_ = func->reserved_stack_num_++;
 					param->keyworded_ = N2_FALSE;
@@ -23002,7 +23106,7 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 				}
 				// OKなので保存
 				n2_str_set(state, &param->name_, ident->token_->content_, SIZE_MAX);
-				param->name_id_ = n2_symboltable_register(state, e->symtable_, param->name_.str_);
+				param->name_id_ = n2_symboltable_register(state, state->symtable_, param->name_.str_);
 			}
 			param->type_ = paramtype;
 			param->stack_index_ = stackindex;
@@ -23172,7 +23276,7 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 			const char* keyword_name = n->token_->content_;
 
 			// シンボルIDを書き込み
-			const int symbol_id = n2_symboltable_register(state, e->symtable_, keyword_name);
+			const int symbol_id = n2_symboltable_register(state, state->symtable_, keyword_name);
 			n2_opcodearray_pushv(state, opcodes, N2_OPCODE_PUSH_SINT);
 			n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, symbol_id));
 			++c->stack_;
@@ -23566,7 +23670,7 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 			N2_ASSERT(n->token_->token_ == N2_TOKEN_IDENTIFIER );
 			const char* member_name = n->token_->content_;
 			N2_ASSERT(member_name);
-			const n2_symbol_id_t member_symid = n2_symboltable_register(state, e->symtable_, member_name);
+			const n2_symbol_id_t member_symid = n2_symboltable_register(state, state->symtable_, member_name);
 
 			n2_opcodearray_pushv(state, opcodes, is_command ? N2_OPCODE_MEMBER_COMMAND : N2_OPCODE_MEMBER_FUNCTION);
 			n2_opcodearray_pushv(state, opcodes, N2_SCAST(n2_opcode_t, member_symid));
@@ -24555,9 +24659,32 @@ static void n2_state_reset_fiber(n2_state_t* state, n2_fiber_t* f)
 
 static void n2_state_shutdown(n2_state_t* state)
 {
+	// ファイバー
 	n2_fiber_t* f = state->main_fiber_;
 	n2_state_reset_fiber(state, f);
 
+	// エクステンション
+	for (size_t ei = 0, elen = n2_extensionarray_size(&state->extensions_); ei < elen; ++ei)
+	{
+		n2_extension_t* extension = n2_extensionarray_peek(&state->extensions_, N2_SCAST(int, ei));
+		if (extension->booted_)
+		{
+			if (extension->config_.shutdownfunc_)
+			{
+				// シャットダウンの呼び出し
+				n2_extension_shutdown_config_t shutdown_config;
+				n2_str_init(&shutdown_config.error_message_);
+				extension->config_.shutdownfunc_(state, extension, &shutdown_config);
+
+				// もう一度捨てる
+				n2_state_reset_fiber(state, f);
+			}
+
+			extension->booted_ = N2_FALSE;
+		}
+	}
+
+	// 環境
 	n2_environment_t* e = state->environment_;
 	for (size_t i = 0, l = n2_vararray_size(&e->vartable_->vararray_); i < l; ++i)
 	{
@@ -24713,6 +24840,9 @@ N2_API n2_state_t* n2_state_alloc(const n2_state_config_t* config)
 	if (!state) { return NULL; }
 	state->config_ = sconfig;
 
+	// シンボルテーブル
+	state->symtable_ = n2_symboltable_alloc(state, 0, 128);
+
 	// 値キャッシュの確保
 	if (state->config_.value_cache_size_ > 0)
 	{
@@ -24738,6 +24868,10 @@ N2_API n2_state_t* n2_state_alloc(const n2_state_config_t* config)
 	// ファイルシステム
 	state->filesystem_ = NULL;
 	state->filesystem_system_ = n2h_filesystem_alloc_system(state);
+
+	// エクステンション
+	state->dirty_extension_list_ = N2_TRUE;
+	n2_extensionarray_setup(state, &state->extensions_, 0, 4);
 
 	// その他の初期化
 	state->internal_user_ = NULL;
@@ -24775,6 +24909,9 @@ N2_API void n2_state_free(n2_state_t* state)
 		n2_free(state, state->value_cache_);
 	}
 
+	// エクステンション
+	n2_extensionarray_teardown(state, &state->extensions_);
+
 	// ファイルシステム
 	if (state->filesystem_)
 	{
@@ -24787,10 +24924,13 @@ N2_API void n2_state_free(n2_state_t* state)
 		state->filesystem_system_ = NULL;
 	}
 
+	// シンボルテーブル
+	n2_symboltable_free(state, state->symtable_);
+
+	// 環境自体の破棄
 	const n2_allocator_t allocator = state->config_.allocator_;
 	n2_allocator_close_func_t allocator_close = state->config_.allocator_close_;
 
-	// 環境自体の破棄
 	{
 		n2i_zfree(&allocator, state);
 	}
@@ -26382,7 +26522,7 @@ static n2_bool_t n2i_execute_inner(n2_state_t* state, n2_fiber_t* f)
 					original_func = n2_module_find_func_bysymbol(emodule, rawindex);
 					if (!original_func)
 					{
-						const n2_symbol_t* nsym = n2_symboltable_peekc_id(e->symtable_, rawindex);
+						const n2_symbol_t* nsym = n2_symboltable_peekc_id(state->symtable_, rawindex);
 						n2i_raise_fiber_exception(state, f, N2_ERROR_RUNTIME, "モジュール（%s）に関数（%s）が見つかりません", emodule->name_, nsym ? nsym->name_.str_ : "<unknown>");
 						return N2_FALSE;
 					}
@@ -26730,8 +26870,45 @@ N2_API n2_bool_t n2_state_execute_fiber(n2_state_t* state, n2_fiber_t* f)
 	return res;
 }
 
+N2_API n2_bool_t n2_state_update_preexecute(n2_state_t* state)
+{
+	// エクステンションのブート
+	if (state->dirty_extension_list_)
+	{
+		for (size_t ei = 0, elen = n2_extensionarray_size(&state->extensions_); ei < elen; ++ei)
+		{
+			n2_extension_t* extension = n2_extensionarray_peek(&state->extensions_, N2_SCAST(int, ei));
+			if (!extension->booted_)
+			{
+				if (extension->config_.bootfunc_)
+				{
+					n2_extension_boot_config_t boot_config;
+					n2_str_init(&boot_config.error_message_);
+
+					const n2_bool_t boot_succeeded = extension->config_.bootfunc_(state, extension, &boot_config);
+					if (!boot_succeeded)
+					{
+						n2i_raise_as(state, N2_ERROR_RUNTIME, NULL, NULL, NULL, -1, "エクステンション（%s）のブートに失敗しました（%s）", extension->name_.str_, boot_config.error_message_.str_);
+					}
+
+					n2_str_teardown(state, &boot_config.error_message_);
+					if (!boot_succeeded) { return N2_FALSE; }
+				}
+
+				extension->booted_ = N2_TRUE;
+			}
+		}
+
+		state->dirty_extension_list_ = N2_FALSE;
+	}
+
+	return N2_TRUE;
+}
+
 N2_API n2_bool_t n2_state_execute(n2_state_t* state)
 {
+	if (!n2_state_update_preexecute(state)) { return N2_FALSE; }
+
 	n2_fiber_t* f = state->main_fiber_;
 	return n2_state_execute_fiber(state, f);
 }
@@ -26852,6 +27029,33 @@ N2_API n2_bool_t n2_state_fs_save(n2_state_t* state, size_t* dst_writtensize, si
 	if ((fsflags & N2_STATE_FSFLAG_USE_PRIMARY_FS) && state->filesystem_) { if (n2h_filesystem_save(state, state->filesystem_, dst_writtensize, filepath, is_binary, writedata, writesize, writeoffset)) { return N2_TRUE; } }
 	if ((fsflags & N2_STATE_FSFLAG_USE_SYSTEM_FS) && state->filesystem_system_) { if (n2h_filesystem_save(state, state->filesystem_system_, dst_writtensize, filepath, is_binary, writedata, writesize, writeoffset)) { return N2_TRUE; } }
 	return N2_FALSE;
+}
+
+N2_API n2_bool_t n2_state_extension_register(n2_state_t* state, const char* name, const n2_extension_config_t* config)
+{
+	if (!name) { return N2_FALSE; }
+
+	// 重複登録は不可能
+	const int ei = n2i_extensionarray_find_byname(&state->extensions_, name);
+	if (ei >= 0) { return N2_FALSE; }
+
+	// 登録
+	n2_extension_t* extension = n2_extensionarray_push(state, &state->extensions_, NULL);
+	if (!extension) { return N2_FALSE; }
+	n2i_extension_init(extension);
+	n2_str_set(state, &extension->name_, name, SIZE_MAX);
+	extension->name_id_ = n2_symboltable_register(state, state->symtable_, extension->name_.str_);
+	if (config) { extension->config_ = *config; }
+
+	state->dirty_extension_list_ = N2_TRUE;
+	return N2_TRUE;
+}
+
+N2_API n2_extension_t* n2_state_extension_find(n2_state_t* state, const char* name)
+{
+	if (!name) { return NULL; }
+	const int ei = n2i_extensionarray_find_byname(&state->extensions_, name);
+	return ei < 0 ? NULL : n2_extensionarray_peek(&state->extensions_, ei);
 }
 
 N2_API n2_bool_t n2_state_export_as_script(n2_state_t* state, n2_str_t* dst)

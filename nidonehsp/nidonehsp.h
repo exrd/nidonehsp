@@ -3846,6 +3846,59 @@ struct n2_crplaceholderclass_instance_t
 };
 
 //=============================================================================
+// エクステンション
+typedef struct n2_extension_t n2_extension_t;
+typedef struct n2_extension_config_t n2_extension_config_t;
+typedef struct n2_extension_import_config_t n2_extension_import_config_t;
+typedef struct n2_extension_boot_config_t n2_extension_boot_config_t;
+typedef struct n2_extension_shutdown_config_t n2_extension_shutdown_config_t;
+
+typedef n2_bool_t (*n2_extension_importfunc_t)(n2_state_t* state, const n2_extension_t* extension, const n2_extension_import_config_t* ext_import_config);
+typedef n2_bool_t (*n2_extension_bootfunc_t)(n2_state_t* state, const n2_extension_t* extension, const n2_extension_boot_config_t* ext_boot_config);
+typedef void (*n2_extension_shutdownfunc_t)(n2_state_t* state, const n2_extension_t* extension, const n2_extension_shutdown_config_t* ext_shutdown_config);
+typedef void (*n2_extension_freefunc_t)(n2_state_t* state, const n2_extension_t* extension);
+
+struct n2_extension_config_t
+{
+	n2_extension_importfunc_t importfunc_;
+	n2_extension_bootfunc_t bootfunc_;
+	n2_extension_shutdownfunc_t shutdownfunc_;
+	n2_extension_freefunc_t freefunc_;
+	void* user_;
+};
+
+N2_API void n2_extension_config_init(n2_extension_config_t* config);
+
+struct n2_extension_t
+{
+	n2_str_t name_;
+	n2_symbol_id_t name_id_;
+	n2_extension_config_t config_;
+
+	n2_bool_t imported_;
+	n2_bool_t booted_;
+};
+
+struct n2_extension_import_config_t
+{
+	n2_parser_t* param_parser_;
+	n2_str_t error_message_;
+	n2_environment_t* environment_;
+};
+
+struct n2_extension_boot_config_t
+{
+	n2_str_t error_message_;
+};
+
+struct n2_extension_shutdown_config_t
+{
+	n2_str_t error_message_;
+};
+
+N2_DECLARE_TARRAY(n2_extension_t, n2_extensionarray, N2_API);
+
+//=============================================================================
 // プリプロセッサ
 N2_DECLARE_ENUM(n2_pp_directive_e);
 enum n2_pp_directive_e
@@ -5365,9 +5418,6 @@ N2_API n2_bool_t n2_fiber_is_finished(const n2_fiber_t* fiber);
 // 実行環境の情報
 struct n2_environment_t
 {
-	// シンボルテーブル
-	n2_symboltable_t* symtable_;
-
 	// パーサー（ASTのトークン列を持つので必要）
 	n2_parserarray_t* parsers_;
 
@@ -5626,6 +5676,9 @@ struct n2_state_t
 	// コンフィグ
 	n2_state_config_t config_;
 
+	// シンボルテーブル
+	n2_symboltable_t* symtable_;
+
 	// 値キャッシュ
 	n2_value_t** value_cache_;
 	size_t value_cache_left_;
@@ -5645,6 +5698,10 @@ struct n2_state_t
 	// ファイルシステム
 	n2h_filesystem_t* filesystem_;
 	n2h_filesystem_t* filesystem_system_;
+
+	// エクステンション
+	n2_bool_t dirty_extension_list_;
+	n2_extensionarray_t extensions_;
 
 	// 内部用途
 	void* internal_user_;
@@ -5675,6 +5732,9 @@ N2_API n2_fiber_t* n2_state_find_fiber(n2_state_t* state, int fiber_id);
 // ファイバー実行
 N2_API n2_bool_t n2_state_execute_fiber(n2_state_t* state, n2_fiber_t* f);
 
+// 実行前確認
+N2_API n2_bool_t n2_state_update_preexecute(n2_state_t* state);
+
 // 実行
 N2_API n2_bool_t n2_state_execute(n2_state_t* state);
 
@@ -5700,6 +5760,10 @@ enum
 N2_API n2_bool_t n2_state_fs_load(n2_state_t* state, n2_buffer_t* dst, size_t fsflags, const char* filepath, n2_bool_t is_binary, size_t readsize, size_t readoffset);
 N2_API n2_bool_t n2_state_fs_load_str(n2_state_t* state, n2_str_t* dst, size_t fsflags, const char* filepath, size_t readsize, size_t readoffset);
 N2_API n2_bool_t n2_state_fs_save(n2_state_t* state, size_t* dst_writtensize, size_t fsflags, const char* filepath, n2_bool_t is_binary, const void* writedata, size_t writesize, size_t writeoffset);
+
+// エクステンション
+N2_API n2_bool_t n2_state_extension_register(n2_state_t* state, const char* name, const n2_extension_config_t* config);
+N2_API n2_extension_t* n2_state_extension_find(n2_state_t* state, const char* name);
 
 // エクスポート
 N2_API n2_bool_t n2_state_export_as_script(n2_state_t* state, n2_str_t* dst);
