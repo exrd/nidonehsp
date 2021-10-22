@@ -1028,7 +1028,7 @@ static void n2ri_dap_push_variable_content(n2_state_t* s, n2_str_t* t, n2r_dap_t
 				const n2_funcparamarray_t* funcparamarray = NULL;
 				if (func) { funcparamarray = is_keyworded_arg ? func->keyworded_params_ : func->ordered_params_; }
 				const int arg_index = debugvar->v_.funcarg_.arg_index_;
-				const n2_func_param_t* funcparam = funcparamarray ? n2_funcparamarray_peek(funcparamarray, arg_index) : NULL;
+				const n2_func_param_t* funcparam = funcparamarray ? n2_funcparamarray_peekc(funcparamarray, arg_index) : NULL;
 				if (func && argbase >= 0)
 				{
 					const n2_value_t* argvalue = n2_valuearray_peekv(f->values_, argbase + funcparam->stack_index_, NULL);
