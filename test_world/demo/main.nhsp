@@ -9,6 +9,8 @@
 #pack "mat.png"
 #pack "blockmat.png"
 #pack "Stick-Regular.ttf"
+#pack "Advertime.mp3"
+#pack "And Just Like That.mp3"
 
 // 定数とマクロ
 #if defined(__debug__) || 0
@@ -103,6 +105,7 @@ goto *startup
 #include "titleFrame.nhsp"
 #include "miniJumpFrame.nhsp"
 #include "guiTestFrame.nhsp"
+#include "soundTestFrame.nhsp"
 
 // ここから開始
 *startup
@@ -144,6 +147,7 @@ titleFramePush; タイトルへ
 #if ISDEBUG && 1
 //miniJumpFramePush; ミニジャンプシーンへ
 ;guiTestFramePush; GUIテストシーンへ
+soundTestFramePush; サウンドテストシーンへ
 #endif
 frame_push_requested = 0; 強制フェードOFF
 

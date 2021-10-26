@@ -35,10 +35,10 @@
 	logoInDelay = 120 : logoIn = 30
 	selectInDelay = 180 : selectIn = 30
 	// カーソル
-	selectCursor = 0 : selectMax = 2
+	selectCursor = 0 : selectMax = 3
 	selectX = SCREEN_SIZEX / 2 + 100
 	selectTopY = 240 : selectIvY = 40
-	selectTexts = "猫じゃんぷ", "GUIテスト", "猫しゅー"
+	selectTexts = "猫じゃんぷ", "GUIテスト", "Soundテスト", "猫しゅー"
 	ddim selectFocus, selectMax
 	selectFocusR = 0.2
 	selectBlink = 60
@@ -76,8 +76,8 @@
 		}
 	}
 	prevMouseX = mousex : prevMouseY = mousey
-	if (tStick & 2) { selectCursor++ }
-	if (tStick & 8) { selectCursor-- }
+	if (tStick & 2) { selectCursor-- }
+	if (tStick & 8) { selectCursor++ }
 	if (tStick & 16 || tStick & 32) { tSelected = 1 }
 	getkey tKey, 'Z' : if (tKey) { tSelected = 1 }
 	selectCursor = (selectCursor + selectMax) \ selectMax
@@ -93,6 +93,9 @@
 			swbreak
 		case 1
 			guiTestFramePush
+			swbreak
+		case 2
+			soundTestFramePush
 			swbreak
 		default
 			assert 0 && "invalid selection"

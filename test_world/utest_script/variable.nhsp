@@ -10,6 +10,8 @@ if (absf(b - 6.3) > 0.01) { raise }
 if (c != "strcneko") { raise }
 if (strlen(c) != 8) { raise }
 
+a = cnt : b = stat
+
 mes "peek test"
 mes "a0="+peek(a, 0)+":a1="+peek(a, 1)
 mes "b0="+peek(b, 0)+":b1="+peek(b, 1)+":b2="+peek(b, 2)+":b3="+peek(b, 3)

@@ -1,0 +1,190 @@
+﻿//=============================================================================
+// soundTestFrame.nhsp
+
+#module "soundTestFrame"
+
+#deffunc global soundTestFrameInit
+	// グローバル初期化
+	if (!gIsInitialized) {
+		gIsInitialized = 1
+	}
+	// ローカル初期化
+	toReturn = 0
+	masterFrame = 0
+
+	// サウンド初期化
+	soundNum = 3
+	soundFilenames = "Advertime.mp3", "And Just Like That.mp3", "Advertime.ogg"
+	dim soundObjStartId, soundNum
+	dim soundLoaded, soundNum
+	dim soundVolume, soundNum
+	dim soundPan, soundNum
+
+	prevMouseDown = 0
+	captureIndex = -1
+	ddim captureRates, soundNum * 2
+
+	// GUI初期化
+	gsel 0 : cls
+	guiBaseX = 20
+	guiBaseY = 50 : guiIntervalY = 60
+	repeat soundNum
+		tX = guiBaseX : tY = guiBaseY + cnt * guiIntervalY
+		objsize 60, 20 : pos tX + 210, tY + 10 : button gosub "mmload", *implMmLoadUnload : soundObjStartId(cnt) = stat
+		objsize 60, 20 : pos tX + 280, tY + 10 : button gosub "mmplay", *implMmPlayStop : objenable stat, 0
+	loop
+	objsize 90, 20 : pos 510, 400 : button gosub "mmstop -1", *implMmStopAll
+	objsize 60, 20 : pos 610, 400 : button gosub "終わる", *implReturnTo
+	redraw 1
+	return
+
+#deffunc global soundTestFramePush
+	soundTestFrameInit; ともあれ初期化
+	framePush "soundTestFrame", *soundTestFrameCompute, *soundTestFrameDraw, 0
+	return
+
+*implReturnTo
+	toReturn = 1
+	return
+
+*implMmStopAll
+	mmstop -1
+	return
+
+*implMmLoadUnload
+	tCallbackObjId = stat
+	repeat soundNum
+		if (tCallbackObjId == soundObjStartId(cnt))
+		{
+			if (soundLoaded(cnt))
+			{
+				soundLoaded(cnt) = 0
+				mmunload cnt
+				objenable soundObjStartId(cnt) + 1, 0
+				objprm tCallbackObjId, "mmload"
+			}
+			else
+			{
+				soundLoaded(cnt) = 1
+				mmload soundFilenames(cnt), cnt
+				objenable soundObjStartId(cnt) + 1, 1
+				objprm tCallbackObjId, "mmunload"
+			}
+			break
+		}
+	loop
+	return
+
+*implMmPlayStop
+	tCallbackObjId = stat
+	repeat soundNum
+		if (tCallbackObjId == soundObjStartId(cnt) + 1)
+		{
+			mmstat tStat, cnt, 16
+			if (tStat) { mmstop cnt }
+			else { mmplay cnt }
+			objprm tCallbackObjId, tStat then "mmplay" else "mmstop"
+			break
+		}
+	loop
+	return
+
+*soundTestFrameCompute
+	// トップ時のみ計算
+	if (!frameIsTop()) { return }
+	// 入力
+	if (toReturn) {
+		gsel 0 : cls
+		// 全部アンロード：アンロードはスロットなくてもエラーにならない
+		repeat soundNum
+			mmunload cnt
+			soundLoaded(cnt) = 0
+		loop
+		framePop
+	}
+	// 値を弄ったり
+	gsel 0
+		tMouseX = mousex : tMouseY = mousey
+		getkey tLButton, 1
+		tLButtonTrig = (tLButton ^ prevMouseDown) & tLButton
+		prevMouseDown = tLButton
+	tCaptureIndex = -1 : tCaptureCount = 0
+	repeat soundNum
+		tX = guiBaseX + 462 : tEX = tX + (628 - 462)
+		tY = guiBaseY + guiIntervalY * cnt + 12 : tEY = tY + 16
+		repeat 2
+			tRate = limitf(double(tMouseX - tX) / double(tEX - tX), 0, 1)
+			captureRates(tCaptureCount) = tRate
+			if (tMouseX >= tX && tMouseX <= tEX && tMouseY >= tY && tMouseY <= tEY) { tCaptureIndex = tCaptureCount }
+			tY += 25 : tEY += 25
+			++tCaptureCount
+		loop
+	loop
+	if (captureIndex >= 0)
+	{
+		if (!tLButton) : captureIndex = -1// 解放
+	}
+	else
+	{
+		if (tLButtonTrig && tCaptureIndex >= 0) { captureIndex = tCaptureIndex }
+	}
+	if (captureIndex >= 0)
+	{
+		title `captureIndex = ${captureIndex}`
+		tSoundIndex = captureIndex / 2
+		switch (captureIndex \ 2)
+		case 0
+			soundVolume(tSoundIndex) = int(lerpf@n2(-1000, 0, captureRates(captureIndex)))
+			swbreak
+		case 1
+			soundPan(tSoundIndex) = int(lerpf@n2(-1000, 1000, captureRates(captureIndex)))
+			swbreak
+		swend
+	}
+	repeat soundNum
+		if (soundLoaded(cnt))
+		{
+			mmvol cnt, soundVolume(cnt)
+			mmpan cnt, soundPan(cnt)
+		}
+	loop
+	// フレーム終了
+	++masterFrame
+	return
+
+*soundTestFrameDraw
+	// トップ時のみ描画
+	if (!frameIsTop()) { return }
+	// 描画内容
+	gsel SID_BACK
+		color 128, 128, 128 : boxf
+		font "", 18
+		// ラベル
+		tX = guiBaseX : tY = guiBaseY - 30
+		pos tX + 10, tY : color 255, 255, 255 : mes "ファイル名"
+		pos tX + 210, tY : color 255, 255, 255 : mes "ロード、再生"
+		pos tX + 360, tY : color 255, 255, 255 : mes "再生位置／長さ"
+		pos tX + 460, tY : color 255, 255, 255 : mes "ボリューム／パン"
+		// 各サウンドの状態
+		repeat soundNum
+			tX = guiBaseX : tY = guiBaseY + cnt * guiIntervalY
+			pos tX + 10, tY + 10 : color 0, 0, 0 : mes `[${cnt}] ${soundFilenames(cnt)}`
+			tSoundPos = -1 : tSoundLength = -1 : tVolume = 0 : tPan = 0
+			if (soundLoaded(cnt)) {
+				mmstat tSoundPos, cnt, 0x100
+				mmstat tSoundLength, cnt, 0x101
+				mmstat tVolume, cnt, 1
+				mmstat tPan, cnt, 2
+			} else {
+				tVolume = soundVolume(cnt)
+				tPan = soundPan(cnt)
+			}
+			pos tX + 365, tY + 10 : color 0, 0, 0 : mes tSoundPos < 0 then "--:--:---" else strf("%02d:%02d:%03d", tSoundPos / 60, tSoundPos \ 60, tSoundPos * 1000 \ 1000)
+			pos tX + 365, tY + 35 : color 0, 0, 0 : mes tSoundLength < 0 then "/ --:--:---" else strf("/ %02d:%02d:%03d", tSoundLength / 60, tSoundLength \ 60, tSoundLength * 1000 \ 1000)
+			tVolumeRate = 1.0 + double(tVolume) / 1000 : color 0, 0, 0 : boxf tX + 460, tY + 10, tX + 630, tY + 30 : color 0, 255, 0 : boxf tX + 462, tY + 12, tX + 462 + double(628 - 462) * tVolumeRate, tY + 28
+			tPanRate = double(tPan) / 1000 / 2 + 0.5 : color 0, 0, 0 : boxf tX + 460, tY + 35, tX + 630, tY + 55 : color 255, 255, 0 : boxf tX + 462 + (628 - 462) / 2, tY + 37, tX + 462 + double(628 - 462) * tPanRate, tY + 53
+		loop
+	return
+
+#global
+
