@@ -531,6 +531,8 @@
 
 #define N2_DEFAULT_Z_DECOMP_READ_TMP_BUFFER_SIZE	(1024 * 1024)
 
+#define N2_MAX_AUDIO_CHANNEL_NUM		(8)
+
 #define N2_DEFAULT_VALUE_CACHE_NUM					(64)
 #define N2_DEFAULT_VARIABLE_ELEMENT_MIN_NUM			(1)
 #define N2_DEFAULT_VARIABLE_STR_ELEMENT_MIN_NUM		(1)
@@ -563,6 +565,11 @@
 #define N2S_DEFAULT_FONT_ATLAS_HEIGHT				(1024)
 #define N2S_DEFAULT_FONT_BAKE_HEIGHT				(18.f)
 #define N2S_DEFAULT_FONT_DRAW_HEIGHT				(18.f)
+
+#define N2S_DEFAULT_AUDIO_DEVICE_SAMPLE_RATE		(44100)// 44.1kHz
+#define N2S_DEFAULT_AUDIO_DEVICE_SAMPLE_TYPE		(N2_AUDIO_SAMPLE_TYPE_SIGNED_INT)
+#define N2S_DEFAULT_AUDIO_DEVICE_BITS_PER_SAMPLE	(16)
+#define N2S_DEFAULT_AUDIO_DEVICE_BUFFER_SAMPLES		(4096 * 2)
 
 #define N2S_DEFAULT_WIDGET_INPUT_MAX_BUFFER_SIZE	(4 * 1024)
 
@@ -757,7 +764,7 @@ typedef struct
 N2_API void n2_buffer_init(n2_buffer_t* buffer);
 N2_API void n2_buffer_teardown(n2_state_t* state, n2_buffer_t* buffer);
 N2_API void n2_buffer_set_expand_step(n2_buffer_t* buffer, size_t expand_step);
-N2_API void n2_buffer_copy_to(n2_state_t* state, n2_buffer_t* buffer, const n2_buffer_t* rbuffer);
+N2_API n2_bool_t n2_buffer_copy_to(n2_state_t* state, n2_buffer_t* buffer, const n2_buffer_t* rbuffer);
 N2_API void n2_buffer_swap(n2_buffer_t* buffer, n2_buffer_t* rbuffer);
 N2_API void n2_buffer_clear(n2_buffer_t* buffer);
 N2_API n2_bool_t n2_buffer_reserve(n2_state_t* state, n2_buffer_t* buffer, size_t size);
@@ -895,7 +902,7 @@ N2_API const char* n2_str_cstr(const n2_str_t* str);
 N2_API void n2_str_set_expand_step(n2_str_t* str, size_t expand_step);
 N2_API void n2_str_vfmt_to(n2_state_t* state, n2_str_t* str, const char* fmt, va_list args);
 N2_API void n2_str_fmt_to(n2_state_t* state, n2_str_t* str, const char* fmt, ...);
-N2_API void n2_str_copy_to(n2_state_t* state, n2_str_t* str, const n2_str_t* rstr);
+N2_API n2_bool_t n2_str_copy_to(n2_state_t* state, n2_str_t* str, const n2_str_t* rstr);
 N2_API void n2_str_swap(n2_str_t* str, n2_str_t* rstr);
 N2_API void n2_str_clear(n2_str_t* str);
 N2_API n2_bool_t n2_str_reserve(n2_state_t* state, n2_str_t* str, size_t size);
@@ -1157,16 +1164,16 @@ N2_API int n2_sorted_array_compute_index(const n2_sorted_array_t* a, const void*
 N2_API void* n2_sorted_array_peek(n2_sorted_array_t* a, int index);
 N2_API const void* n2_sorted_array_peekc(const n2_sorted_array_t* a, int index);
 
-N2_API void* n2_sorted_array_find_match(n2_sorted_array_t* a, n2_sorted_array_element_match_func match, const void* key);
-N2_API const void* n2_sorted_array_findc_match(const n2_sorted_array_t* a, n2_sorted_array_element_match_func match, const void* key);
+N2_API void* n2_sorted_array_find_match_with_index(n2_sorted_array_t* a, n2_sorted_array_element_match_func match, const void* key, int* index);
+N2_API const void* n2_sorted_array_findc_match_with_index(const n2_sorted_array_t* a, n2_sorted_array_element_match_func match, const void* key, int* index);
 N2_API void* n2_sorted_array_lowerbound_match(n2_sorted_array_t* a, n2_sorted_array_element_match_func match, const void* key);
 N2_API void* n2_sorted_array_upperbound_match(n2_sorted_array_t* a, n2_sorted_array_element_match_func match, const void* key, n2_bool_t allow_outrange);
 N2_API void* n2_sorted_array_insert_cmp(n2_state_t* state, n2_sorted_array_t* a, const void* element, n2_sorted_array_element_cmp_func cmp, const void* key);
 N2_API size_t n2_sorted_array_erase_match(n2_state_t* state, n2_sorted_array_t* a, n2_sorted_array_element_match_func match, const void* key);
 N2_API n2_bool_t n2_sorted_array_erase_at(n2_state_t* state, n2_sorted_array_t* a, int index);
 
-N2_API void* n2_sorted_array_find(n2_sorted_array_t* a, const void* key);
-N2_API const void* n2_sorted_array_findc(const n2_sorted_array_t* a, const void* key);
+N2_API void* n2_sorted_array_find_with_index(n2_sorted_array_t* a, const void* key, int* index);
+N2_API const void* n2_sorted_array_findc_with_index(const n2_sorted_array_t* a, const void* key, int* index);
 N2_API void* n2_sorted_array_lowerbound(n2_sorted_array_t* a, const void* key);
 N2_API void* n2_sorted_array_upperbound(n2_sorted_array_t* a, const void* key, n2_bool_t allow_outrange);
 N2_API void* n2_sorted_array_insert(n2_state_t* state, n2_sorted_array_t* a, const void* element, const void* key);
@@ -1189,7 +1196,7 @@ N2_API size_t n2_sorted_array_erase(n2_state_t* state, n2_sorted_array_t* a, con
 	extn n2_bool_t prefix##_resize(n2_state_t* state, prefix##_t* a, size_t size, const type* element); \
 	extn n2_bool_t prefix##_resizev(n2_state_t* state, prefix##_t* a, size_t size, const type element); \
 	extn size_t prefix##_size(const prefix##_t* a); \
-	extn int prefix##_compute_index(const prefix##_t* a, const void* element); \
+	extn int prefix##_compute_index(const prefix##_t* a, const type* element); \
 	extn type* prefix##_peek(prefix##_t* a, int index); \
 	extn const type* prefix##_peekc(const prefix##_t* a, int index); \
 	extn type prefix##_peekv(prefix##_t* a, int index, type d); \
@@ -1266,7 +1273,7 @@ N2_API size_t n2_sorted_array_erase(n2_state_t* state, n2_sorted_array_t* a, con
 	{ \
 		return n2_array_size(a); \
 	} \
-	extn int prefix##_compute_index(const prefix##_t* a, const void* element) \
+	extn int prefix##_compute_index(const prefix##_t* a, const type* element) \
 	{ \
 		return n2_array_compute_index(N2_RCAST(const n2_array_t*, a), element); \
 	} \
@@ -1372,7 +1379,7 @@ N2_API size_t n2_sorted_array_erase(n2_state_t* state, n2_sorted_array_t* a, con
 	extn void prefix##_clear(n2_state_t* state, prefix##_t* a); \
 	extn void prefix##_reserve(n2_state_t* state, prefix##_t* a, size_t size); \
 	extn size_t prefix##_size(const prefix##_t* a); \
-	extn int prefix##_compute_index(const prefix##_t* a, const void* element); \
+	extn int prefix##_compute_index(const prefix##_t* a, const type* element); \
 	extn type* prefix##_peek(prefix##_t* a, int index); \
 	extn const type* prefix##_peekc(const prefix##_t* a, int index); \
 	extn type* prefix##_find_match(prefix##_t* a, n2_sorted_array_element_match_func match, const matchkeytype* key); \
@@ -1383,6 +1390,7 @@ N2_API size_t n2_sorted_array_erase(n2_state_t* state, n2_sorted_array_t* a, con
 	extn size_t prefix##_erase_match(n2_state_t* state, prefix##_t* a, n2_sorted_array_element_match_func match, const void* key); \
 	extn n2_bool_t prefix##_erase_at(n2_state_t* state, prefix##_t* a, int index); \
 	extn type* prefix##_find(prefix##_t* a, const matchkeytype* key); \
+	extn type* prefix##_find_with_index(prefix##_t* a, const matchkeytype* key, int* index); \
 	extn const type* prefix##_findc(const prefix##_t* a, const matchkeytype* key); \
 	extn type* prefix##_lowerbound(prefix##_t* a, const matchkeytype* key); \
 	extn type* prefix##_upperbound(prefix##_t* a, const matchkeytype* key, n2_bool_t allow_outrange); \
@@ -1435,7 +1443,7 @@ N2_API size_t n2_sorted_array_erase(n2_state_t* state, n2_sorted_array_t* a, con
 	{ \
 		return n2_sorted_array_size(a); \
 	} \
-	extn int prefix##_compute_index(const prefix##_t* a, const void* element) \
+	extn int prefix##_compute_index(const prefix##_t* a, const type* element) \
 	{ \
 		return n2_sorted_array_compute_index(a, element); \
 	} \
@@ -1449,11 +1457,11 @@ N2_API size_t n2_sorted_array_erase(n2_state_t* state, n2_sorted_array_t* a, con
 	} \
 	extn type* prefix##_find_match(prefix##_t* a, n2_sorted_array_element_match_func match, const matchkeytype* key) \
 	{ \
-		return N2_RCAST(type*, n2_sorted_array_find_match(a, match, key)); \
+		return N2_RCAST(type*, n2_sorted_array_find_match_with_index(a, match, key, NULL)); \
 	} \
 	extn const type* prefix##_findc_match(const prefix##_t* a, n2_sorted_array_element_match_func match, const matchkeytype* key) \
 	{ \
-		return N2_RCAST(const type*, n2_sorted_array_findc_match(a, match, key)); \
+		return N2_RCAST(const type*, n2_sorted_array_findc_match_with_index(a, match, key, NULL)); \
 	} \
 	extn type* prefix##_lowerbound_match(prefix##_t* a, n2_sorted_array_element_match_func match, const matchkeytype* key) \
 	{ \
@@ -1477,11 +1485,15 @@ N2_API size_t n2_sorted_array_erase(n2_state_t* state, n2_sorted_array_t* a, con
 	} \
 	extn type* prefix##_find(prefix##_t* a, const matchkeytype* key) \
 	{ \
-		return N2_RCAST(type*, n2_sorted_array_find(a, key)); \
+		return N2_RCAST(type*, n2_sorted_array_find_with_index(a, key, NULL)); \
+	} \
+	extn type* prefix##_find_with_index(prefix##_t* a, const matchkeytype* key, int* index) \
+	{ \
+		return N2_RCAST(type*, n2_sorted_array_find_with_index(a, key, index)); \
 	} \
 	extn const type* prefix##_findc(const prefix##_t* a, const matchkeytype* key) \
 	{ \
-		return N2_RCAST(const type*, n2_sorted_array_findc(a, key)); \
+		return N2_RCAST(const type*, n2_sorted_array_findc_with_index(a, key, NULL)); \
 	} \
 	extn type* prefix##_lowerbound(prefix##_t* a, const matchkeytype* key) \
 	{ \
@@ -1896,6 +1908,98 @@ N2_API n2_bool_t n2h_image_read(n2_state_t* state, n2_buffer_t* dst, size_t* dst
 #if N2_CONFIG_USE_IMAGE_WRITE_LIB
 N2_API n2_bool_t n2h_image_write(n2_state_t* state, n2_buffer_t* dst, n2_image_file_e image_file, const void* src, size_t src_size, size_t width, size_t height, int quality);
 #endif
+
+// オーディオ
+N2_DECLARE_ENUM(n2_audio_file_e);
+enum n2_audio_file_e
+{
+	N2_AUDIO_FILE_WAV = 0,
+	N2_AUDIO_FILE_MP3,
+	N2_AUDIO_FILE_OGG,
+	N2_AUDIO_FILE_FLAC,
+
+	N2_MAX_AUDIO_FILE
+};
+
+N2_DECLARE_ENUM(n2_audio_sample_type_e);
+enum n2_audio_sample_type_e
+{
+	N2_AUDIO_SAMPLE_TYPE_FLOAT = 0,
+	N2_AUDIO_SAMPLE_TYPE_SIGNED_INT,
+
+	N2_MAX_AUDIO_SAMPLE_TYPE
+};
+
+typedef struct n2_audio_buffer_t n2_audio_buffer_t;
+struct n2_audio_buffer_t
+{
+	n2_buffer_t buffer_;
+	size_t channel_num_;
+	size_t sample_rate_;
+	n2_audio_sample_type_e sample_type_;
+	size_t bits_per_sample_;
+	size_t sample_frame_num_;
+};
+
+typedef struct n2_audio_format_config_t n2_audio_format_config_t;
+struct n2_audio_format_config_t
+{
+	n2_audio_sample_type_e sample_type_;
+	size_t bits_per_sample_;
+};
+N2_API void n2_audio_format_config_init(n2_audio_format_config_t* config);
+
+N2_API n2_bool_t n2_audio_is_valid_format(n2_audio_sample_type_e sample_type, size_t bits_per_sample);
+
+N2_API void n2_audio_buffer_init(n2_audio_buffer_t* audio);
+N2_API void n2_audio_buffer_teardown(n2_state_t* state, n2_audio_buffer_t* audio);
+N2_API n2_bool_t n2_audio_buffer_is_same_format(const n2_audio_buffer_t* lhs, const n2_audio_buffer_t* rhs);
+N2_API void n2_audio_buffer_copy_format_to(n2_state_t* state, n2_audio_buffer_t* dst, const n2_audio_buffer_t* src);
+N2_API n2_bool_t n2_audio_buffer_copy_to(n2_state_t* state, n2_audio_buffer_t* dst, const n2_audio_buffer_t* src);
+N2_API n2_bool_t n2_audio_buffer_copy_sample_frames_to(n2_state_t* state, n2_audio_buffer_t* dst, const n2_audio_buffer_t* src, size_t begin_sample_frame, size_t end_sample_frame);
+N2_API n2_bool_t n2_audio_buffer_append_sample_frames_to(n2_state_t* state, n2_audio_buffer_t* dst, const n2_audio_buffer_t* src, size_t begin_sample_frame, size_t end_sample_frame);
+N2_API n2_bool_t n2_audio_buffer_convert_to(n2_state_t* state, n2_audio_buffer_t* dst, const n2_audio_buffer_t* src, const n2_audio_format_config_t* config);
+N2_API n2_bool_t n2_audio_buffer_convert_inplace(n2_state_t* state, n2_audio_buffer_t* audio, const n2_audio_format_config_t* config);
+N2_API n2_bool_t n2_audio_buffer_resample_linear_to(n2_state_t* state, n2_audio_buffer_t* dst, const n2_audio_buffer_t* src, size_t to_sample_rate);// @warning linear resampling is fast but poor in quality
+N2_API n2_bool_t n2_audio_buffer_attenuate_channels_range(n2_state_t* state, n2_audio_buffer_t* audio, const uint8_t* atten, size_t begin_sample_frame, size_t end_sample_frame);
+N2_API size_t n2_audio_buffer_compute_total_sample_frame(const n2_audio_buffer_t* audio);
+N2_API size_t n2_audio_buffer_compute_total_sample_count(const n2_audio_buffer_t* audio);
+N2_API size_t n2_audio_buffer_compute_total_sample_frame_from_bytes(const n2_audio_buffer_t* audio, size_t bytes);
+N2_API size_t n2_audio_buffer_compute_total_sample_count_from_bytes(const n2_audio_buffer_t* audio, size_t bytes);
+N2_API size_t n2_audio_buffer_compute_memorysize(const n2_audio_buffer_t* audio);
+N2_API size_t n2_audio_buffer_compute_sample_frame_bytes(const n2_audio_buffer_t* audio, size_t sample_frame);
+N2_API size_t n2_audio_buffer_compute_sample_count_bytes(const n2_audio_buffer_t* audio, size_t sample_count);
+N2_API double n2_audio_buffer_compute_position_in_second_from_sample_frame(const n2_audio_buffer_t* audio, size_t sample_frame);
+N2_API size_t n2_audio_buffer_compute_position_in_second_to_sample_frame(const n2_audio_buffer_t* audio, double pos_in_sec);
+N2_API n2_bool_t n2_audio_buffer_prepare_buffer(n2_state_t* state, n2_audio_buffer_t* audio);
+N2_API void n2_audio_buffer_update_buffersize(n2_audio_buffer_t* audio);
+
+typedef struct n2_audio_read_config_t n2_audio_read_config_t;
+struct n2_audio_read_config_t
+{
+	n2_audio_format_config_t format_config_;
+};
+N2_API void n2_audio_read_config_init(n2_audio_read_config_t* config);
+
+#if N2_CONFIG_USE_AUDIO_WAV_LIB
+N2_API n2_bool_t n2h_audio_wav_is_readable_format(const n2_audio_read_config_t* config, n2_bool_t strict);
+N2_API n2_bool_t n2h_audio_wav_read(n2_state_t* state, n2_audio_buffer_t* dst, const void* src, size_t src_size, const n2_audio_read_config_t* config);
+N2_API n2_bool_t n2h_audio_wav_write(n2_state_t* state, n2_buffer_t* dst, const n2_audio_buffer_t* src);
+#endif
+
+#if N2_CONFIG_USE_AUDIO_MP3_LIB
+N2_API n2_bool_t n2h_audio_mp3_is_readable_format(const n2_audio_read_config_t* config, n2_bool_t strict);
+N2_API n2_bool_t n2h_audio_mp3_read(n2_state_t* state, n2_audio_buffer_t* dst, const void* src, size_t src_size, const n2_audio_read_config_t* config);
+N2_API n2_bool_t n2h_audio_mp3_write(n2_state_t* state, n2_buffer_t* dst, const n2_audio_buffer_t* src);
+#endif
+
+#if N2_CONFIG_USE_AUDIO_OGG_LIB
+N2_API n2_bool_t n2h_audio_ogg_is_readable_format(const n2_audio_read_config_t* config, n2_bool_t strict);
+N2_API n2_bool_t n2h_audio_ogg_read(n2_state_t* state, n2_audio_buffer_t* dst, const void* src, size_t src_size, const n2_audio_read_config_t* config);
+N2_API n2_bool_t n2h_audio_ogg_write(n2_state_t* state, n2_buffer_t* dst, const n2_audio_buffer_t* src);
+#endif
+
+N2_API n2_bool_t n2h_audio_read(n2_state_t* state, n2_audio_buffer_t* dst, const void* src, size_t src_size, const n2_audio_read_config_t* config);
 
 // 暗号化
 #if N2_CONFIG_USE_AES_LIB
@@ -5105,6 +5209,70 @@ struct n2s_window_t
 
 N2_DECLARE_TARRAY(n2s_window_t*, n2s_windowarray, N2_API);
 
+#define N2S_AUDIO_SLOT_VOLUME_MIN		(0)
+#define N2S_AUDIO_SLOT_VOLUME_MAX		(65535)
+
+#define N2S_AUDIO_SLOT_PAN_MIN			(-32768)
+#define N2S_AUDIO_SLOT_PAN_MAX			(32767)
+#define N2S_AUDIO_SLOT_PAN_NONE			(0)
+
+N2_API int n2s_audio_slot_volume_from_float(double volume);// [0, 1] ->
+N2_API double n2s_audio_slot_volume_to_float(int volume);// -> [0, 1]
+
+N2_API int n2s_audio_slot_pan_from_float(double pan);// [-1, 1] ->
+N2_API double n2s_audio_slot_pan_to_float(int pan);// -> [-1, 1]
+
+typedef struct n2s_audio_source_t n2s_audio_source_t;
+struct n2s_audio_source_t
+{
+	int reference_count_;
+	n2_audio_buffer_t buffer_;
+};
+
+N2_DECLARE_TARRAY(n2s_audio_source_t*, n2s_audio_sourcearray, N2_API);
+
+N2_DECLARE_ENUM(n2s_audio_slot_domain_e);
+enum n2s_audio_slot_domain_e
+{
+	N2S_AUDIO_SLOT_DOMAIN_SYS = 0,
+	N2S_AUDIO_SLOT_DOMAIN_MM,
+	N2S_AUDIO_SLOT_DOMAIN_DMM,
+
+	N2S_MAX_AUDIO_SLOT_DOMAIN
+};
+
+typedef struct n2s_audio_slot_t n2s_audio_slot_t;
+struct n2s_audio_slot_t
+{
+	n2s_audio_slot_domain_e domain_;
+	int id_;
+	n2s_audio_source_t* source_;
+	int mm_mode_;
+	n2_bool_t playing_;
+	n2_bool_t loop_;
+	size_t loop_begin_sample_frame_cursor_;
+	size_t loop_end_sample_frame_cursor_;
+	size_t read_sample_frame_cursor_;
+	int volume_;
+	int pan_;
+};
+
+N2_DECLARE_TSORTED_ARRAY(n2s_audio_slot_t, int, int, n2s_audio_slotset, N2_API);
+
+typedef struct n2s_audio_environment_t n2s_audio_environment_t;
+
+N2_DECLARE_ENUM(n2sc_mmstat_e);
+enum n2sc_mmstat_e
+{
+	N2SC_MMSTAT_MODEFLAG = 0,
+	N2SC_MMSTAT_VOLUME = 1,
+	N2SC_MMSTAT_PAN = 2,
+	N2SC_MMSTAT_PLAY_RATE = 3,
+	N2SC_MMSTAT_PLAY_STATE = 16,
+	N2SC_MMSTAT_PLAY_POSITION_SEC = 0x100,
+	N2SC_MMSTAT_AUDIO_LENGTH_SEC = 0x101,
+};
+
 typedef struct n2s_environment_spec_t n2s_environment_spec_t;
 struct n2s_environment_spec_t
 {
@@ -5146,6 +5314,7 @@ struct n2s_environment_t
 	// SDL特有
 #if N2_CONFIG_USE_SDL_LIB
 
+	// 画面系
 #if N2_CONFIG_USE_GLES
 	void* gl_context_;
 
@@ -5166,6 +5335,9 @@ struct n2s_environment_t
 	n2s_texture_t* white_texture_;
 	n2s_texture_t* black_texture_;
 	n2s_texture_t* zero_texture_;
+
+	// 音系
+	n2s_audio_environment_t* audio_environment_;
 #endif
 
 	// インスペクタ
@@ -5648,6 +5820,12 @@ struct n2_state_config_t
 	float standard_font_default_bake_height_;// = N2S_DEFAULT_FONT_BAKE_HEIGHT
 	float standard_font_default_draw_height_;// = N2S_DEFAULT_FONT_DRAW_HEIGHT
 	n2_bool_t standard_font_draw_pixel_perfect_;// = N2_TRUE
+
+	// オーディオ
+	size_t standard_audio_device_sample_rate_;// = N2S_DEFAULT_AUDIO_DEVICE_SAMPLE_RATE
+	n2_audio_sample_type_e standard_audio_device_sample_type_;// = N2S_DEFAULT_DEVICE_AUDIO_SAMPLE_TYPE
+	size_t standard_audio_device_bits_per_sample_;// = N2S_DEFAULT_AUDIO_DEVICE_BITS_PER_SAMPLE
+	size_t standard_audio_device_buffer_samples_;// = N2S_DEFAULT_AUDIO_DEVICE_BUFFER_SAMPLES
 
 	// ウィジェット
 	size_t standard_widget_input_default_max_buffer_size_;// = N2S_DEFAULT_WIDGET_INPUT_MAX_BUFFER_SIZE

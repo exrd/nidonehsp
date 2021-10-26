@@ -329,7 +329,7 @@
 
 // その他
 #define N2SI_SDL_INIT_SYSTEM_FLAGS \
-	(SDL_INIT_TIMER/* | SDL_INIT_AUDIO*/ | SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS)
+	(SDL_INIT_TIMER | SDL_INIT_AUDIO | SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS)
 
 // 隠しコンフィグ
 #ifndef N2_MAX_PATH
@@ -896,12 +896,12 @@ N2_API void n2_buffer_set_expand_step(n2_buffer_t* buffer, size_t expand_step)
 	buffer->expand_step_ = expand_step;
 }
 
-N2_API void n2_buffer_copy_to(n2_state_t* state, n2_buffer_t* buffer, const n2_buffer_t* rbuffer)
+N2_API n2_bool_t n2_buffer_copy_to(n2_state_t* state, n2_buffer_t* buffer, const n2_buffer_t* rbuffer)
 {
 	N2_ASSERT(buffer);
 	if (rbuffer->data_)
 	{
-		n2_buffer_reserve(state, buffer, rbuffer->size_);
+		if (!n2_buffer_reserve(state, buffer, rbuffer->size_)) { return N2_FALSE; }
 		N2_MEMCPY(buffer->data_, rbuffer->data_, rbuffer->size_);
 		buffer->size_ = rbuffer->size_;
 		buffer->buffer_size_ = rbuffer->size_;
@@ -910,6 +910,7 @@ N2_API void n2_buffer_copy_to(n2_state_t* state, n2_buffer_t* buffer, const n2_b
 	{
 		n2_buffer_clear(buffer);
 	}
+	return N2_TRUE;
 }
 
 N2_API void n2_buffer_swap(n2_buffer_t* buffer, n2_buffer_t* rbuffer)
@@ -1818,12 +1819,12 @@ N2_API void n2_str_fmt_to(n2_state_t* state, n2_str_t* str, const char* fmt, ...
 	va_end(args);
 }
 
-N2_API void n2_str_copy_to(n2_state_t* state, n2_str_t* str, const n2_str_t* rstr)
+N2_API n2_bool_t n2_str_copy_to(n2_state_t* state, n2_str_t* str, const n2_str_t* rstr)
 {
 	N2_ASSERT(str);
 	if (rstr->str_)
 	{
-		n2_str_reserve(state, str, rstr->size_ + 1);
+		if (!n2_str_reserve(state, str, rstr->size_ + 1)) { return N2_FALSE; }
 		N2_MEMCPY(str->str_, rstr->str_, sizeof(char) * rstr->size_);
 		str->size_ = rstr->size_;
 		str->str_[str->size_] = '\0';
@@ -1833,6 +1834,7 @@ N2_API void n2_str_copy_to(n2_state_t* state, n2_str_t* str, const n2_str_t* rst
 	{
 		n2_str_clear(str);
 	}
+	return N2_TRUE;
 }
 
 N2_API void n2_str_swap(n2_str_t* str, n2_str_t* rstr)
@@ -3095,7 +3097,7 @@ N2_API const void* n2_sorted_array_peekc(const n2_sorted_array_t* a, int index)
 	return n2_array_peekc(N2_RCAST(const n2_array_t*, a), index);
 }
 
-N2_API void* n2_sorted_array_find_match(n2_sorted_array_t* a, n2_sorted_array_element_match_func match, const void* key)
+N2_API void* n2_sorted_array_find_match_with_index(n2_sorted_array_t* a, n2_sorted_array_element_match_func match, const void* key, int* index)
 {
 	N2_ASSERT(match);
 	int l = 0, r = N2_SCAST(int, a->a_.size_);
@@ -3104,14 +3106,18 @@ N2_API void* n2_sorted_array_find_match(n2_sorted_array_t* a, n2_sorted_array_el
 		const int m = (l + r) / 2;
 		void* element = n2_array_peek(&a->a_, m);
 		const int c = match(a, element, key);
-		if (c == 0) { return element; }
+		if (c == 0)
+		{
+			if (index) { *index = m; }
+			return element;
+		}
 		else if (c > 0) { r = m; }
 		else { l = m + 1; }
 	}
 	return NULL;
 }
 
-N2_API const void* n2_sorted_array_findc_match(const n2_sorted_array_t* a, n2_sorted_array_element_match_func match, const void* key)
+N2_API const void* n2_sorted_array_findc_match_with_index(const n2_sorted_array_t* a, n2_sorted_array_element_match_func match, const void* key, int* index)
 {
 	N2_ASSERT(match);
 	int l = 0, r = N2_SCAST(int, a->a_.size_);
@@ -3120,7 +3126,11 @@ N2_API const void* n2_sorted_array_findc_match(const n2_sorted_array_t* a, n2_so
 		const int m = (l + r) / 2;
 		const void* element = n2_array_peekc(&a->a_, m);
 		const int c = match(a, element, key);
-		if (c == 0) { return element; }
+		if (c == 0)
+		{
+			if (index) { *index = m; }
+			return element;
+		}
 		else if (c > 0) { r = m; }
 		else { l = m + 1; }
 	}
@@ -3188,10 +3198,11 @@ N2_API void* n2_sorted_array_insert_cmp(n2_state_t* state, n2_sorted_array_t* a,
 N2_API size_t n2_sorted_array_erase_match(n2_state_t* state, n2_sorted_array_t* a, n2_sorted_array_element_match_func match, const void* key)
 {
 	N2_ASSERT(match);
-	void* element = n2_sorted_array_find_match(a, match, key);
+	int index = -1;
+	void* element = n2_sorted_array_find_match_with_index(a, match, key, &index);
 	if (!element) { return 0; }
-	const int n = N2_SCAST(int, N2_SCAST(intptr_t, element) - N2_SCAST(intptr_t, a->a_.elements_)) / N2_SCAST(int, a->a_.element_size_);
-	n2_array_erase(state, &a->a_, n);
+	N2_ASSERT(index >= 0);
+	n2_array_erase(state, &a->a_, index);
 	return 1;
 }
 
@@ -3200,14 +3211,14 @@ N2_API n2_bool_t n2_sorted_array_erase_at(n2_state_t* state, n2_sorted_array_t* 
 	return n2_array_erase(state, &a->a_, index);
 }
 
-N2_API void* n2_sorted_array_find(n2_sorted_array_t* a, const void* key)
+N2_API void* n2_sorted_array_find_with_index(n2_sorted_array_t* a, const void* key, int* index)
 {
-	return n2_sorted_array_find_match(a, a->match_, key);
+	return n2_sorted_array_find_match_with_index(a, a->match_, key, index);
 }
 
-N2_API const void* n2_sorted_array_findc(const n2_sorted_array_t* a, const void* key)
+N2_API const void* n2_sorted_array_findc_with_index(const n2_sorted_array_t* a, const void* key, int* index)
 {
-	return n2_sorted_array_findc_match(a, a->match_, key);
+	return n2_sorted_array_findc_match_with_index(a, a->match_, key, index);
 }
 
 N2_API void* n2_sorted_array_lowerbound(n2_sorted_array_t* a, const void* key)
@@ -3970,6 +3981,7 @@ N2_API int n2h_rpmalloc_initialized_count()
 
 N2_API void* n2h_rpmalloc_alloc(size_t size)
 {
+	rpmalloc_thread_initialize();
 	return rpmalloc(size);
 }
 
@@ -4916,6 +4928,1399 @@ N2_API n2_bool_t n2h_image_write(n2_state_t* state, n2_buffer_t* dst, n2_image_f
 	return res;
 }
 #endif
+
+// オーディオ
+N2_API void n2_audio_format_config_init(n2_audio_format_config_t* config)
+{
+	// fixed default
+	config->sample_type_ = N2_AUDIO_SAMPLE_TYPE_SIGNED_INT;
+	config->bits_per_sample_ = 16;
+}
+
+N2_API n2_bool_t n2_audio_is_valid_format(n2_audio_sample_type_e sample_type, size_t bits_per_sample)
+{
+	switch (sample_type)
+	{
+	case N2_AUDIO_SAMPLE_TYPE_FLOAT:
+		return bits_per_sample == 32;// @todo half float
+	case N2_AUDIO_SAMPLE_TYPE_SIGNED_INT:
+		return bits_per_sample == 8 || bits_per_sample == 16 || bits_per_sample == 32;
+	default:
+		break;
+	}
+	return N2_FALSE;
+}
+
+N2_API void n2_audio_buffer_init(n2_audio_buffer_t* audio)
+{
+	n2_buffer_init(&audio->buffer_);
+	audio->channel_num_ = 0;
+	audio->sample_rate_ = 0;
+	audio->sample_type_ = N2_AUDIO_SAMPLE_TYPE_FLOAT;
+	audio->bits_per_sample_ = 0;
+	audio->sample_frame_num_ = 0;
+}
+
+N2_API void n2_audio_buffer_teardown(n2_state_t* state, n2_audio_buffer_t* audio)
+{
+	n2_buffer_teardown(state, &audio->buffer_);
+	n2_audio_buffer_init(audio);
+}
+
+N2_API n2_bool_t n2_audio_buffer_is_same_format(const n2_audio_buffer_t* lhs, const n2_audio_buffer_t* rhs)
+{
+	if (lhs->channel_num_ != rhs->channel_num_) { return N2_FALSE; }
+	if (lhs->sample_rate_ != rhs->sample_rate_) { return N2_FALSE; }
+	if (lhs->sample_type_ != rhs->sample_type_) { return N2_FALSE; }
+	if (lhs->bits_per_sample_ != rhs->bits_per_sample_) { return N2_FALSE; }
+	return N2_TRUE;
+}
+
+N2_API void n2_audio_buffer_copy_format_to(n2_state_t* state, n2_audio_buffer_t* dst, const n2_audio_buffer_t* src)
+{
+	N2_UNUSE(state);
+	dst->channel_num_ = src->channel_num_;
+	dst->sample_rate_ = src->sample_rate_;
+	dst->sample_type_ = src->sample_type_;
+	dst->bits_per_sample_ = src->bits_per_sample_;
+}
+
+N2_API n2_bool_t n2_audio_buffer_copy_to(n2_state_t* state, n2_audio_buffer_t* dst, const n2_audio_buffer_t* src)
+{
+	if (!dst || !src) { return N2_FALSE; }
+
+	n2_audio_buffer_copy_format_to(state, dst, src);
+	dst->sample_frame_num_ = src->sample_frame_num_;
+	if (!n2_buffer_copy_to(state, &dst->buffer_, &src->buffer_)) { return N2_FALSE;; }
+	return N2_TRUE;
+}
+
+N2_API n2_bool_t n2_audio_buffer_copy_sample_frames_to(n2_state_t* state, n2_audio_buffer_t* dst, const n2_audio_buffer_t* src, size_t begin_sample_frame, size_t end_sample_frame)
+{
+	if (!dst || !src) { return N2_FALSE; }
+	if (begin_sample_frame > end_sample_frame) { return N2_FALSE; }
+	n2_audio_buffer_copy_format_to(state, dst, src);
+	dst->sample_frame_num_ = end_sample_frame - begin_sample_frame;
+	if (!n2_audio_buffer_prepare_buffer(state, dst)) { return N2_FALSE; }
+	const size_t offset = n2_audio_buffer_compute_sample_frame_bytes(src, begin_sample_frame);
+	const size_t size = n2_audio_buffer_compute_sample_frame_bytes(src, end_sample_frame - begin_sample_frame);
+	N2_MEMCPY(dst->buffer_.data_, n2_cptr_offset(src->buffer_.data_, offset), size);
+	n2_audio_buffer_update_buffersize(dst);
+	return N2_TRUE;
+}
+
+N2_API n2_bool_t n2_audio_buffer_append_sample_frames_to(n2_state_t* state, n2_audio_buffer_t* dst, const n2_audio_buffer_t* src, size_t begin_sample_frame, size_t end_sample_frame)
+{
+	if (!dst || !src) { return N2_FALSE; }
+	if (!n2_audio_buffer_is_same_format(dst, src)) { return N2_FALSE; }
+	if (begin_sample_frame > end_sample_frame) { return N2_FALSE; }
+	const size_t add_sample_frame = end_sample_frame - begin_sample_frame;
+	const size_t dst_prev_sample_frame_num = dst->sample_frame_num_;
+	dst->sample_frame_num_ += add_sample_frame;
+	if (!n2_audio_buffer_prepare_buffer(state, dst)) { return N2_FALSE; }
+	const size_t src_offset = n2_audio_buffer_compute_sample_frame_bytes(src, begin_sample_frame);
+	const size_t dst_offset = n2_audio_buffer_compute_sample_frame_bytes(dst, dst_prev_sample_frame_num);
+	const size_t size = n2_audio_buffer_compute_sample_frame_bytes(src, end_sample_frame - begin_sample_frame);
+	N2_MEMCPY(n2_ptr_offset(dst->buffer_.data_, dst_offset), n2_cptr_offset(src->buffer_.data_, src_offset), size);
+	n2_audio_buffer_update_buffersize(dst);
+	return N2_TRUE;
+}
+
+/* most convert implementations are based on dr_wav.h */
+static void n2i_audio_buffer_convert_int8_to_int16(int16_t* dst, const int8_t* src, size_t size)
+{
+	for (size_t i = 0; i < size; ++i) { *dst++ = N2_SCAST(int16_t, *src++) << 8; }
+}
+static void n2i_audio_buffer_convert_int8_to_int32(int32_t* dst, const int8_t* src, size_t size)
+{
+	for (size_t i = 0; i < size; ++i) { *dst++ = N2_SCAST(int32_t, *src++) << 24; }
+}
+static void n2i_audio_buffer_convert_int8_to_float32(float* dst, const int8_t* src, size_t size)
+{
+	for (size_t i = 0; i < size; ++i) { *dst++ = N2_SCAST(float, *src++) / 128.0f; }
+}
+static void n2i_audio_buffer_convert_int8_to_float64(double* dst, const int8_t* src, size_t size)
+{
+	for (size_t i = 0; i < size; ++i) { *dst++ = N2_SCAST(double, *src++) / 128.0; }
+}
+static void n2i_audio_buffer_convert_int16_to_int8(int8_t* dst, const int16_t* src, size_t size)
+{
+	for (size_t i = 0; i < size; ++i) { *dst++ = N2_SCAST(int8_t, (*src++) >> 8); }
+}
+static void n2i_audio_buffer_convert_int16_to_int32(int32_t* dst, const int16_t* src, size_t size)
+{
+	for (size_t i = 0; i < size; ++i) { *dst++ = N2_SCAST(int32_t, *src++) << 16; }
+}
+static void n2i_audio_buffer_convert_int16_to_float32(float* dst, const int16_t* src, size_t size)
+{
+	for (size_t i = 0; i < size; ++i) { *dst++ = N2_SCAST(float, *src++) / 32768.0f; }
+}
+static void n2i_audio_buffer_convert_int16_to_float64(double* dst, const int16_t* src, size_t size)
+{
+	for (size_t i = 0; i < size; ++i) { *dst++ = N2_SCAST(double, *src++) / 32768.0; }
+}
+static void n2i_audio_buffer_convert_int32_to_int8(int8_t* dst, const int32_t* src, size_t size)
+{
+	for (size_t i = 0; i < size; ++i) { *dst++ = N2_SCAST(int8_t, (*src++) >> 24); }
+}
+static void n2i_audio_buffer_convert_int32_to_int16(int16_t* dst, const int32_t* src, size_t size)
+{
+	for (size_t i = 0; i < size; ++i) { *dst++ = N2_SCAST(int16_t, (*src++) >> 16); }
+}
+static void n2i_audio_buffer_convert_int32_to_float32(float* dst, const int32_t* src, size_t size)
+{
+	for (size_t i = 0; i < size; ++i) { *dst++ = N2_SCAST(float, *src++) / 2147483648.0f; }
+}
+static void n2i_audio_buffer_convert_int32_to_float64(double* dst, const int32_t* src, size_t size)
+{
+	for (size_t i = 0; i < size; ++i) { *dst++ = N2_SCAST(double, *src++) / 2147483648.0; }
+}
+static void n2i_audio_buffer_convert_float32_to_int8(int8* dst, const float* src, size_t size)
+{
+	for (size_t i = 0; i < size; ++i) { *dst++ = N2_SCAST(int8_t, (*src++) * 127.5f - 128); }
+}
+static void n2i_audio_buffer_convert_float32_to_int16(int16* dst, const float* src, size_t size)
+{
+	for (size_t i = 0; i < size; ++i) { *dst++ = N2_SCAST(int16_t, (*src++) * 32767.5f - 32768); }
+}
+static void n2i_audio_buffer_convert_float32_to_int32(int32* dst, const float* src, size_t size)
+{
+	for (size_t i = 0; i < size; ++i) { *dst++ = N2_SCAST(int32_t, (*src++) * 2147483648.0f); }
+}
+static void n2i_audio_buffer_convert_float32_to_float64(double* dst, const float* src, size_t size)
+{
+	for (size_t i = 0; i < size; ++i) { *dst++ = N2_SCAST(double, *src++); }
+}
+static void n2i_audio_buffer_convert_float64_to_int8(int8_t* dst, const double* src, size_t size)
+{
+	for (size_t i = 0; i < size; ++i) { *dst++ = N2_SCAST(int8_t, (*src++) * 127.5 - 128); }
+}
+static void n2i_audio_buffer_convert_float64_to_int16(int16* dst, const double* src, size_t size)
+{
+	for (size_t i = 0; i < size; ++i) { *dst++ = N2_SCAST(int16_t, (*src++) * 32767.5 - 32768); }
+}
+static void n2i_audio_buffer_convert_float64_to_int32(int32* dst, const double* src, size_t size)
+{
+	for (size_t i = 0; i < size; ++i) { *dst++ = N2_SCAST(int32_t, (*src++) * 2147483648.0); }
+}
+static void n2i_audio_buffer_convert_float64_to_float32(float* dst, const double* src, size_t size)
+{
+	for (size_t i = 0; i < size; ++i) { *dst++ = N2_SCAST(float, *src++); }
+}
+
+N2_API n2_bool_t n2_audio_buffer_convert_to(n2_state_t* state, n2_audio_buffer_t* dst, const n2_audio_buffer_t* src, const n2_audio_format_config_t* config)
+{
+	if (!dst || !src || !config) { return N2_FALSE; }
+
+	if (src->sample_type_ == config->sample_type_ && src->bits_per_sample_ == config->bits_per_sample_) { return n2_audio_buffer_copy_to(state, dst, src); }
+
+	dst->channel_num_ = src->channel_num_;
+	dst->bits_per_sample_ = config->bits_per_sample_;
+	dst->sample_type_ = config->sample_type_;
+	if (!n2_audio_buffer_prepare_buffer(state, dst))
+	{
+		n2_audio_buffer_teardown(state, dst);
+		return N2_FALSE;
+	}
+
+	const size_t total_sample_count = n2_audio_buffer_compute_total_sample_count(src);
+
+	n2_bool_t succeeded = N2_FALSE;
+	switch (config->sample_type_)
+	{
+	case N2_AUDIO_SAMPLE_TYPE_FLOAT:
+		switch (config->bits_per_sample_)
+		{
+		case 32:
+			{
+				float* dst_data = N2_RCAST(float*, dst->buffer_.data_);
+				switch (src->sample_type_)
+				{
+				case N2_AUDIO_SAMPLE_TYPE_FLOAT:
+					switch (src->bits_per_sample_)
+					{
+						// @todo half float
+					case 64:
+						{
+							const double* src_data = N2_RCAST(const double*, src->buffer_.data_);
+							n2i_audio_buffer_convert_float64_to_float32(dst_data, src_data, total_sample_count);
+							succeeded = N2_TRUE;
+						}
+						break;
+					default:
+						break;
+					}
+					break;
+				case N2_AUDIO_SAMPLE_TYPE_SIGNED_INT:
+					{
+						switch (src->bits_per_sample_)
+						{
+						case 8:
+							{
+								const int8_t* src_data = N2_RCAST(const int8_t*, src->buffer_.data_);
+								n2i_audio_buffer_convert_int8_to_float32(dst_data, src_data, total_sample_count);
+								succeeded = N2_TRUE;
+							}
+							break;
+						case 16:
+							{
+								const int16_t* src_data = N2_RCAST(const int16_t*, src->buffer_.data_);
+								n2i_audio_buffer_convert_int16_to_float32(dst_data, src_data, total_sample_count);
+								succeeded = N2_TRUE;
+							}
+							break;
+						case 32:
+							{
+								const int32_t* src_data = N2_RCAST(const int32_t*, src->buffer_.data_);
+								n2i_audio_buffer_convert_int32_to_float32(dst_data, src_data, total_sample_count);
+								succeeded = N2_TRUE;
+							}
+							break;
+						default:
+							break;
+						}
+					}
+					break;
+				default:
+					break;
+				}
+			}
+			break;
+		case 64:
+			{
+				double* dst_data = N2_RCAST(double*, dst->buffer_.data_);
+				switch (src->sample_type_)
+				{
+				case N2_AUDIO_SAMPLE_TYPE_FLOAT:
+					switch (src->bits_per_sample_)
+					{
+						// @todo half float
+					case 32:
+						{
+							const float* src_data = N2_RCAST(const float*, src->buffer_.data_);
+							n2i_audio_buffer_convert_float32_to_float64(dst_data, src_data, total_sample_count);
+							succeeded = N2_TRUE;
+						}
+						break;
+					default:
+						break;
+					}
+					break;
+				case N2_AUDIO_SAMPLE_TYPE_SIGNED_INT:
+					{
+						switch (src->bits_per_sample_)
+						{
+						case 8:
+							{
+								const int8_t* src_data = N2_RCAST(const int8_t*, src->buffer_.data_);
+								n2i_audio_buffer_convert_int8_to_float64(dst_data, src_data, total_sample_count);
+								succeeded = N2_TRUE;
+							}
+							break;
+						case 16:
+							{
+								const int16_t* src_data = N2_RCAST(const int16_t*, src->buffer_.data_);
+								n2i_audio_buffer_convert_int16_to_float64(dst_data, src_data, total_sample_count);
+								succeeded = N2_TRUE;
+							}
+							break;
+						case 32:
+							{
+								const int32_t* src_data = N2_RCAST(const int32_t*, src->buffer_.data_);
+								n2i_audio_buffer_convert_int32_to_float64(dst_data, src_data, total_sample_count);
+								succeeded = N2_TRUE;
+							}
+							break;
+						default:
+							break;
+						}
+					}
+					break;
+				default:
+					break;
+				}
+			}
+			break;
+		default:
+			break;
+		}
+		break;
+	case N2_AUDIO_SAMPLE_TYPE_SIGNED_INT:
+		switch (config->bits_per_sample_)
+		{
+		case 8:
+			{
+				int8_t* dst_data = N2_RCAST(int8_t*, dst->buffer_.data_);
+				switch (src->sample_type_)
+				{
+				case N2_AUDIO_SAMPLE_TYPE_FLOAT:
+					switch (src->bits_per_sample_)
+					{
+						// @todo half float
+					case 32:
+						{
+							const float* src_data = N2_RCAST(const float*, src->buffer_.data_);
+							n2i_audio_buffer_convert_float32_to_int8(dst_data, src_data, total_sample_count);
+							succeeded = N2_TRUE;
+						}
+						break;
+					case 64:
+						{
+							const double* src_data = N2_RCAST(const double*, src->buffer_.data_);
+							n2i_audio_buffer_convert_float64_to_int8(dst_data, src_data, total_sample_count);
+							succeeded = N2_TRUE;
+						}
+						break;
+					default:
+						break;
+					}
+					break;
+				case N2_AUDIO_SAMPLE_TYPE_SIGNED_INT:
+					{
+						switch (src->bits_per_sample_)
+						{
+						case 16:
+							{
+								const int16_t* src_data = N2_RCAST(const int16_t*, src->buffer_.data_);
+								n2i_audio_buffer_convert_int16_to_int8(dst_data, src_data, total_sample_count);
+								succeeded = N2_TRUE;
+							}
+							break;
+						case 32:
+							{
+								const int32_t* src_data = N2_RCAST(const int32_t*, src->buffer_.data_);
+								n2i_audio_buffer_convert_int32_to_int8(dst_data, src_data, total_sample_count);
+								succeeded = N2_TRUE;
+							}
+							break;
+						default:
+							break;
+						}
+					}
+					break;
+				default:
+					break;
+				}
+			}
+			break;
+		case 16:
+			{
+				int16_t* dst_data = N2_RCAST(int16_t*, dst->buffer_.data_);
+				switch (src->sample_type_)
+				{
+				case N2_AUDIO_SAMPLE_TYPE_FLOAT:
+					switch (src->bits_per_sample_)
+					{
+						// @todo half float
+					case 32:
+						{
+							const float* src_data = N2_RCAST(const float*, src->buffer_.data_);
+							n2i_audio_buffer_convert_float32_to_int16(dst_data, src_data, total_sample_count);
+							succeeded = N2_TRUE;
+						}
+						break;
+					case 64:
+						{
+							const double* src_data = N2_RCAST(const double*, src->buffer_.data_);
+							n2i_audio_buffer_convert_float64_to_int16(dst_data, src_data, total_sample_count);
+							succeeded = N2_TRUE;
+						}
+						break;
+					default:
+						break;
+					}
+					break;
+				case N2_AUDIO_SAMPLE_TYPE_SIGNED_INT:
+					{
+						switch (src->bits_per_sample_)
+						{
+						case 8:
+							{
+								const int8_t* src_data = N2_RCAST(const int8_t*, src->buffer_.data_);
+								n2i_audio_buffer_convert_int8_to_int16(dst_data, src_data, total_sample_count);
+								succeeded = N2_TRUE;
+							}
+							break;
+						case 32:
+							{
+								const int32_t* src_data = N2_RCAST(const int32_t*, src->buffer_.data_);
+								n2i_audio_buffer_convert_int32_to_int16(dst_data, src_data, total_sample_count);
+								succeeded = N2_TRUE;
+							}
+							break;
+						default:
+							break;
+						}
+					}
+					break;
+				default:
+					break;
+				}
+			}
+			break;
+		case 32:
+			{
+				int32_t* dst_data = N2_RCAST(int32_t*, dst->buffer_.data_);
+				switch (src->sample_type_)
+				{
+				case N2_AUDIO_SAMPLE_TYPE_FLOAT:
+					switch (src->bits_per_sample_)
+					{
+						// @todo half float
+					case 32:
+						{
+							const float* src_data = N2_RCAST(const float*, src->buffer_.data_);
+							n2i_audio_buffer_convert_float32_to_int32(dst_data, src_data, total_sample_count);
+							succeeded = N2_TRUE;
+						}
+						break;
+					case 64:
+						{
+							const double* src_data = N2_RCAST(const double*, src->buffer_.data_);
+							n2i_audio_buffer_convert_float64_to_int32(dst_data, src_data, total_sample_count);
+							succeeded = N2_TRUE;
+						}
+						break;
+					default:
+						break;
+					}
+					break;
+				case N2_AUDIO_SAMPLE_TYPE_SIGNED_INT:
+					{
+						switch (src->bits_per_sample_)
+						{
+						case 8:
+							{
+								const int8_t* src_data = N2_RCAST(const int8_t*, src->buffer_.data_);
+								n2i_audio_buffer_convert_int8_to_int32(dst_data, src_data, total_sample_count);
+								succeeded = N2_TRUE;
+							}
+							break;
+						case 16:
+							{
+								const int16_t* src_data = N2_RCAST(const int16_t*, src->buffer_.data_);
+								n2i_audio_buffer_convert_int16_to_int32(dst_data, src_data, total_sample_count);
+								succeeded = N2_TRUE;
+							}
+							break;
+						default:
+							break;
+						}
+					}
+					break;
+				default:
+					break;
+				}
+			}
+			break;
+		default:
+			break;
+		}
+		break;
+	default:
+		break;
+	}
+
+	if (succeeded) { n2_audio_buffer_update_buffersize(dst); }
+	else { n2_audio_buffer_teardown(state, dst); }
+	return succeeded;
+}
+
+N2_API n2_bool_t n2_audio_buffer_convert_inplace(n2_state_t* state, n2_audio_buffer_t* audio, const n2_audio_format_config_t* config)
+{
+	if (!audio || !config) { return N2_FALSE; }
+	if (audio->sample_type_ == config->sample_type_ && audio->bits_per_sample_ == config->bits_per_sample_) { return N2_TRUE; }
+
+	// 拡大変換時はバッファが壊れるので、一時バッファを利用
+	if (audio->bits_per_sample_ < config->bits_per_sample_)
+	{
+		n2_audio_buffer_t converted;
+		n2_audio_buffer_init(&converted);
+		const n2_bool_t succeeded = n2_audio_buffer_convert_to(state, &converted, audio, config);
+		n2_swap(&converted, audio, sizeof(converted));
+		n2_audio_buffer_teardown(state, &converted);
+		return succeeded;
+	}
+
+	// 縮小変換時はバッファのオーバーランがない筈なので、そのまま
+	// @todo 並列に変換を行う場合などでは、読み方がバラける可能性があるので、ダメ
+	const size_t total_sample_count = n2_audio_buffer_compute_total_sample_count(audio);
+
+	n2_bool_t succeeded = N2_FALSE;
+	switch (config->sample_type_)
+	{
+	case N2_AUDIO_SAMPLE_TYPE_FLOAT:
+		switch (config->bits_per_sample_)
+		{
+		case 32:
+			{
+				float* dst_data = N2_RCAST(float*, audio->buffer_.data_);
+				switch (audio->sample_type_)
+				{
+				case N2_AUDIO_SAMPLE_TYPE_FLOAT:
+					switch (audio->bits_per_sample_)
+					{
+						// @todo half float
+					case 64:
+						{
+							const double* src_data = N2_RCAST(const double*, audio->buffer_.data_);
+							n2i_audio_buffer_convert_float64_to_float32(dst_data, src_data, total_sample_count);
+							succeeded = N2_TRUE;
+						}
+						break;
+					default:
+						break;
+					}
+					break;
+				case N2_AUDIO_SAMPLE_TYPE_SIGNED_INT:
+					{
+						switch (audio->bits_per_sample_)
+						{
+						case 32:
+							{
+								const int32_t* src_data = N2_RCAST(const int32_t*, audio->buffer_.data_);
+								n2i_audio_buffer_convert_int32_to_float32(dst_data, src_data, total_sample_count);
+								succeeded = N2_TRUE;
+							}
+							break;
+						default:
+							break;
+						}
+					}
+					break;
+				default:
+					break;
+				}
+			}
+			break;
+		default:
+			break;
+		}
+		break;
+	case N2_AUDIO_SAMPLE_TYPE_SIGNED_INT:
+		switch (config->bits_per_sample_)
+		{
+		case 8:
+			{
+				int8_t* dst_data = N2_RCAST(int8_t*, audio->buffer_.data_);
+				switch (audio->sample_type_)
+				{
+				case N2_AUDIO_SAMPLE_TYPE_FLOAT:
+					switch (audio->bits_per_sample_)
+					{
+						// @todo half float
+					case 32:
+						{
+							const float* src_data = N2_RCAST(const float*, audio->buffer_.data_);
+							n2i_audio_buffer_convert_float32_to_int8(dst_data, src_data, total_sample_count);
+							succeeded = N2_TRUE;
+						}
+						break;
+					case 64:
+						{
+							const double* src_data = N2_RCAST(const double*, audio->buffer_.data_);
+							n2i_audio_buffer_convert_float64_to_int8(dst_data, src_data, total_sample_count);
+							succeeded = N2_TRUE;
+						}
+						break;
+					default:
+						break;
+					}
+					break;
+				case N2_AUDIO_SAMPLE_TYPE_SIGNED_INT:
+					{
+						switch (audio->bits_per_sample_)
+						{
+						case 16:
+							{
+								const int16_t* src_data = N2_RCAST(const int16_t*, audio->buffer_.data_);
+								n2i_audio_buffer_convert_int16_to_int8(dst_data, src_data, total_sample_count);
+								succeeded = N2_TRUE;
+							}
+							break;
+						case 32:
+							{
+								const int32_t* src_data = N2_RCAST(const int32_t*, audio->buffer_.data_);
+								n2i_audio_buffer_convert_int32_to_int8(dst_data, src_data, total_sample_count);
+								succeeded = N2_TRUE;
+							}
+							break;
+						default:
+							break;
+						}
+					}
+					break;
+				default:
+					break;
+				}
+			}
+			break;
+		case 16:
+			{
+				int16_t* dst_data = N2_RCAST(int16_t*, audio->buffer_.data_);
+				switch (audio->sample_type_)
+				{
+				case N2_AUDIO_SAMPLE_TYPE_FLOAT:
+					switch (audio->bits_per_sample_)
+					{
+						// @todo half float
+					case 32:
+						{
+							const float* src_data = N2_RCAST(const float*, audio->buffer_.data_);
+							n2i_audio_buffer_convert_float32_to_int16(dst_data, src_data, total_sample_count);
+							succeeded = N2_TRUE;
+						}
+						break;
+					case 64:
+						{
+							const double* src_data = N2_RCAST(const double*, audio->buffer_.data_);
+							n2i_audio_buffer_convert_float64_to_int16(dst_data, src_data, total_sample_count);
+							succeeded = N2_TRUE;
+						}
+						break;
+					default:
+						break;
+					}
+					break;
+				case N2_AUDIO_SAMPLE_TYPE_SIGNED_INT:
+					{
+						switch (audio->bits_per_sample_)
+						{
+						case 32:
+							{
+								const int32_t* src_data = N2_RCAST(const int32_t*, audio->buffer_.data_);
+								n2i_audio_buffer_convert_int32_to_int16(dst_data, src_data, total_sample_count);
+								succeeded = N2_TRUE;
+							}
+							break;
+						default:
+							break;
+						}
+					}
+					break;
+				default:
+					break;
+				}
+			}
+			break;
+		case 32:
+			{
+				int32_t* dst_data = N2_RCAST(int32_t*, audio->buffer_.data_);
+				switch (audio->sample_type_)
+				{
+				case N2_AUDIO_SAMPLE_TYPE_FLOAT:
+					switch (audio->bits_per_sample_)
+					{
+						// @todo half float
+					case 32:
+						{
+							const float* src_data = N2_RCAST(const float*, audio->buffer_.data_);
+							n2i_audio_buffer_convert_float32_to_int32(dst_data, src_data, total_sample_count);
+							succeeded = N2_TRUE;
+						}
+						break;
+					case 64:
+						{
+							const double* src_data = N2_RCAST(const double*, audio->buffer_.data_);
+							n2i_audio_buffer_convert_float64_to_int32(dst_data, src_data, total_sample_count);
+							succeeded = N2_TRUE;
+						}
+						break;
+					default:
+						break;
+					}
+					break;
+				default:
+					break;
+				}
+			}
+			break;
+		default:
+			break;
+		}
+		break;
+	default:
+		break;
+	}
+
+	if (succeeded) { n2_audio_buffer_update_buffersize(audio); }
+	else { n2_audio_buffer_teardown(state, audio); }
+	return succeeded;
+}
+
+N2_API n2_bool_t n2_audio_buffer_resample_linear_to(n2_state_t* state, n2_audio_buffer_t* dst, const n2_audio_buffer_t* src, size_t to_sample_rate)
+{
+	if (!dst || !src) { return N2_FALSE; }
+	if (src->sample_rate_ <= 0 || to_sample_rate <= 0) { return N2_FALSE; }
+
+	const size_t to_sample_frame_num = N2_SCAST(size_t, N2_SCAST(uint64_t, src->sample_frame_num_) * N2_SCAST(uint64_t, to_sample_rate) / N2_SCAST(uint64_t, src->sample_rate_));
+	if (src->sample_frame_num_ < 2 || to_sample_frame_num < 2) { return N2_FALSE; }
+
+	dst->channel_num_ = src->channel_num_;
+	dst->sample_rate_ = to_sample_rate;
+	dst->sample_type_ = src->sample_type_;
+	dst->bits_per_sample_ = src->bits_per_sample_;
+	dst->sample_frame_num_ = to_sample_frame_num;
+	if (!n2_audio_buffer_prepare_buffer(state, dst))
+	{
+		n2_audio_buffer_teardown(state, dst);
+		return N2_FALSE;
+	}
+
+	// 極めて素直な線形補間、インターリーブされたデータであること前提
+	int32_t cursor = 0;
+	const int32_t cursor_add = N2_SCAST(int32_t, src->sample_rate_);
+	const int32_t cursor_mod = N2_SCAST(int32_t, to_sample_rate);
+	size_t read_sample = 0;
+	const size_t read_sample_end = src->sample_frame_num_ - 1;
+	const size_t sample_frame_num = to_sample_frame_num;
+	const size_t channel_num = src->channel_num_;
+
+#define N2I_AUDIO_BUFFER_RESAMPLE_LOOP_EXPAND_IMPL(...) __VA_ARGS__
+#define N2I_AUDIO_BUFFER_RESAMPLE_LOOP_EXPAND(v) N2I_AUDIO_BUFFER_RESAMPLE_LOOP_EXPAND_IMPL v
+#define N2I_AUDIO_BUFFER_RESAMPLE_LOOP(type, pre, per_channel, post) \
+	do { \
+		type* dc = N2_RCAST(type*, dst->buffer_.data_); \
+		const type* sc = N2_RCAST(const type*, src->buffer_.data_); \
+		const type* scn = sc + channel_num; \
+		for (size_t write_sample = 0; write_sample < sample_frame_num; ++write_sample) \
+		{ \
+			N2I_AUDIO_BUFFER_RESAMPLE_LOOP_EXPAND(pre); \
+			for (size_t channel = 0; channel < channel_num; ++channel) \
+			{ \
+				N2I_AUDIO_BUFFER_RESAMPLE_LOOP_EXPAND(per_channel); \
+			} \
+			N2I_AUDIO_BUFFER_RESAMPLE_LOOP_EXPAND(post); \
+			 \
+			cursor += cursor_add; \
+			if (cursor >= cursor_mod) \
+			{ \
+				size_t leap = N2_SCAST(size_t, cursor / cursor_mod); \
+				read_sample += leap; \
+				if (read_sample >= read_sample_end) \
+				{ \
+					leap -= read_sample - read_sample_end + 1; \
+					read_sample = read_sample_end - 1; \
+					cursor = cursor_mod - 1; \
+				} \
+				else \
+				{ \
+					cursor %= cursor_mod; \
+				} \
+				sc += leap * channel_num; scn += leap * channel_num; \
+			} \
+			 \
+			dc += channel_num; \
+		} \
+		succeeded = N2_TRUE; \
+	} while (0)
+
+	n2_bool_t succeeded = N2_FALSE;
+	switch (src->sample_type_)
+	{
+	case N2_AUDIO_SAMPLE_TYPE_FLOAT:
+		switch (src->bits_per_sample_)
+		{
+		case 32:
+			N2I_AUDIO_BUFFER_RESAMPLE_LOOP(float, (const float alpha = N2_SCAST(float, cursor) / N2_SCAST(float, cursor_mod);), (dc[channel] = n2_flerp(sc[channel], scn[channel], alpha);), ());
+			break;
+		case 64:
+			N2I_AUDIO_BUFFER_RESAMPLE_LOOP(double, (const double alpha = N2_SCAST(double, cursor) / N2_SCAST(double, cursor_mod);), (dc[channel] = n2_dlerp(sc[channel], scn[channel], alpha);), ());
+			break;
+		default:
+			break;
+		}
+		break;
+	case N2_AUDIO_SAMPLE_TYPE_SIGNED_INT:
+		switch (src->bits_per_sample_)
+		{
+		case 8:
+			//N2I_AUDIO_BUFFER_RESAMPLE_LOOP(int8_t, (), (dc[channel] = N2_SCAST(int8_t, (N2_SCAST(int_fast64_t, sc[channel] + 128) * (cursor_mod - cursor) / cursor_mod + N2_SCAST(int_fast64_t, scn[channel] + 128) * cursor / cursor_mod) - 128)), ());
+			N2I_AUDIO_BUFFER_RESAMPLE_LOOP(int8_t, (), (dc[channel] = N2_SCAST(int8_t, N2_SCAST(int_fast64_t, sc[channel]) * (cursor_mod - cursor) / cursor_mod + N2_SCAST(int_fast64_t, scn[channel]) * cursor / cursor_mod)), ());
+			break;
+		case 16:
+			//N2I_AUDIO_BUFFER_RESAMPLE_LOOP(int16_t, (), (dc[channel] = N2_SCAST(int16_t, (N2_SCAST(int_fast64_t, sc[channel] + 32768) * (cursor_mod - cursor) / cursor_mod + N2_SCAST(int_fast64_t, scn[channel] + 32768) * cursor / cursor_mod) - 32768)), ());
+			N2I_AUDIO_BUFFER_RESAMPLE_LOOP(int16_t, (), (dc[channel] = N2_SCAST(int16_t, N2_SCAST(int_fast64_t, sc[channel]) * (cursor_mod - cursor) / cursor_mod + N2_SCAST(int_fast64_t, scn[channel]) * cursor / cursor_mod)), ());
+			break;
+		case 32:
+			//N2I_AUDIO_BUFFER_RESAMPLE_LOOP(int32_t, (), (dc[channel] = N2_SCAST(int32_t, (N2_SCAST(int_fast64_t, sc[channel] + 2147483648) * (cursor_mod - cursor) / cursor_mod + N2_SCAST(int_fast64_t, scn[channel] + 2147483648) * cursor / cursor_mod) - 2147483648)), ());
+			N2I_AUDIO_BUFFER_RESAMPLE_LOOP(int32_t, (), (dc[channel] = N2_SCAST(int32_t, N2_SCAST(int_fast64_t, sc[channel]) * (cursor_mod - cursor) / cursor_mod + N2_SCAST(int_fast64_t, scn[channel]) * cursor / cursor_mod)), ());
+			break;
+		default:
+			break;
+		}
+		break;
+	default:
+		break;
+	}
+
+#undef N2I_AUDIO_BUFFER_RESAMPLE_LOOP
+#undef N2I_AUDIO_BUFFER_RESAMPLE_LOOP_EXPAND
+#undef N2I_AUDIO_BUFFER_RESAMPLE_LOOP_EXPAND_IMPL
+
+	if (!succeeded)
+	{
+		n2_audio_buffer_teardown(state, dst);
+		return N2_FALSE;
+	}
+
+	n2_audio_buffer_update_buffersize(dst);
+	return N2_TRUE;
+}
+
+N2_API n2_bool_t n2_audio_buffer_attenuate_channels_range(n2_state_t* state, n2_audio_buffer_t* audio, const uint8_t* atten, size_t begin_sample_frame, size_t end_sample_frame)
+{
+	N2_UNUSE(state);
+
+	if (!audio || !atten) { return N2_FALSE; }
+	if (!audio->buffer_.data_ || audio->buffer_.size_ <= 0) { return N2_FALSE; }
+	if (audio->channel_num_ > N2_MAX_AUDIO_CHANNEL_NUM) { return N2_FALSE; }
+	if (end_sample_frame > audio->sample_frame_num_) { end_sample_frame = audio->sample_frame_num_; }
+	if (begin_sample_frame >= end_sample_frame) { return N2_FALSE; }
+
+	const size_t channel_num = audio->channel_num_;
+
+	n2_bool_t all_no_atten = N2_TRUE;
+	for (size_t channel = 0; channel_num; ++channel) { if (atten[channel] != 255) { all_no_atten = N2_FALSE; break; } }
+	if (all_no_atten) { return N2_TRUE; }
+
+#define N2I_AUDIO_BUFFER_ATTENUATE_LOOP_EXPAND_IMPL(...) __VA_ARGS__
+#define N2I_AUDIO_BUFFER_ATTENUATE_LOOP_EXPAND(v) N2I_AUDIO_BUFFER_ATTENUATE_LOOP_EXPAND_IMPL v
+#define N2I_AUDIO_BUFFER_ATTENUATE_LOOP(type, pre, per_channel, post) \
+	do { \
+		type* dc = N2_RCAST(type*, audio->buffer_.data_); \
+		dc += begin_sample_frame * channel_num; \
+		for (size_t si = begin_sample_frame; si < end_sample_frame; ++si) \
+		{ \
+			N2I_AUDIO_BUFFER_ATTENUATE_LOOP_EXPAND(pre); \
+			for (size_t channel = 0; channel < channel_num; ++channel) \
+			{ \
+				if (atten[channel] == 255) { continue; } \
+				N2I_AUDIO_BUFFER_ATTENUATE_LOOP_EXPAND(per_channel); \
+			} \
+			N2I_AUDIO_BUFFER_ATTENUATE_LOOP_EXPAND(post); \
+			dc += channel_num; \
+		} \
+		succeeded = N2_TRUE; \
+	} while (0)
+
+	n2_bool_t succeeded = N2_FALSE;
+	switch (audio->sample_type_)
+	{
+	case N2_AUDIO_SAMPLE_TYPE_FLOAT:
+		switch (audio->bits_per_sample_)
+		{
+		case 32:
+			{
+				float fatten[N2_MAX_AUDIO_CHANNEL_NUM];
+				for (size_t channel = 0; channel < channel_num; ++channel) { fatten[channel] = N2_SCAST(float, atten[channel]) / 255.f; }
+				N2I_AUDIO_BUFFER_ATTENUATE_LOOP(float, (), (dc[channel] = dc[channel] * fatten[channel];), ());
+			}
+			break;
+		case 64:
+			{
+				double fatten[N2_MAX_AUDIO_CHANNEL_NUM];
+				for (size_t channel = 0; channel < channel_num; ++channel) { fatten[channel] = N2_SCAST(double, atten[channel]) / 255.0; }
+				N2I_AUDIO_BUFFER_ATTENUATE_LOOP(double, (), (dc[channel] = dc[channel] * fatten[channel];), ());
+			}
+			break;
+		default:
+			break;
+		}
+		break;
+	case N2_AUDIO_SAMPLE_TYPE_SIGNED_INT:
+		switch (audio->bits_per_sample_)
+		{
+		case 8:
+			//N2I_AUDIO_BUFFER_ATTENUATE_LOOP(int8_t, (), (dc[channel] = N2_SCAST(int8_t, (N2_SCAST(int_fast32_t, dc[channel]) + 128) * atten[channel] / 255 - 128)), ());
+			N2I_AUDIO_BUFFER_ATTENUATE_LOOP(int8_t, (), (dc[channel] = N2_SCAST(int8_t, N2_SCAST(int_fast32_t, dc[channel]) * atten[channel] / 255)), ());
+			break;
+		case 16:
+			N2I_AUDIO_BUFFER_ATTENUATE_LOOP(int16_t, (), (dc[channel] = N2_SCAST(int16_t, N2_SCAST(int_fast32_t, dc[channel]) * atten[channel] / 255)), ());
+			break;
+		case 32:
+			N2I_AUDIO_BUFFER_ATTENUATE_LOOP(int32_t, (), (dc[channel] = N2_SCAST(int32_t, N2_SCAST(int_fast64_t, dc[channel]) * atten[channel] / 255)), ());
+			break;
+		default:
+			break;
+		}
+		break;
+	default:
+		break;
+	}
+
+#undef N2I_AUDIO_BUFFER_ATTENUATE_LOOP
+#undef N2I_AUDIO_BUFFER_ATTENUATE_LOOP_EXPAND
+#undef N2I_AUDIO_BUFFER_ATTENUATE_LOOP_EXPAND_IMPL
+
+	return succeeded;
+}
+
+N2_API size_t n2_audio_buffer_compute_total_sample_frame(const n2_audio_buffer_t* audio)
+{
+	return audio->sample_frame_num_;
+}
+
+N2_API size_t n2_audio_buffer_compute_total_sample_count(const n2_audio_buffer_t* audio)
+{
+	return audio->channel_num_ * audio->sample_frame_num_;
+}
+
+N2_API size_t n2_audio_buffer_compute_total_sample_frame_from_bytes(const n2_audio_buffer_t* audio, size_t bytes)
+{
+	const size_t divisor = audio->channel_num_ * audio->bits_per_sample_ / 8;
+	return divisor <= 0 ? SIZE_MAX : bytes / divisor;
+}
+
+N2_API size_t n2_audio_buffer_compute_total_sample_count_from_bytes(const n2_audio_buffer_t* audio, size_t bytes)
+{
+	const size_t divisor = audio->bits_per_sample_ / 8;
+	return divisor <= 0 ? SIZE_MAX : bytes / divisor;
+}
+
+N2_API size_t n2_audio_buffer_compute_memorysize(const n2_audio_buffer_t* audio)
+{
+	return n2_audio_buffer_compute_total_sample_count(audio) * audio->bits_per_sample_ / 8;
+}
+
+N2_API size_t n2_audio_buffer_compute_sample_frame_bytes(const n2_audio_buffer_t* audio, size_t sample_frame)
+{
+	return audio->channel_num_ * audio->bits_per_sample_ / 8 * sample_frame;
+}
+
+N2_API size_t n2_audio_buffer_compute_sample_count_bytes(const n2_audio_buffer_t* audio, size_t sample_count)
+{
+	return audio->bits_per_sample_ / 8 * sample_count;
+}
+
+N2_API double n2_audio_buffer_compute_position_in_second_from_sample_frame(const n2_audio_buffer_t* audio, size_t sample_frame)
+{
+	if (!audio) { return 0; }
+	const size_t divisor = audio->sample_rate_;
+	if (divisor <= 0) { return 0; }
+	return N2_SCAST(double, sample_frame) / N2_SCAST(double, divisor);
+}
+
+N2_API size_t n2_audio_buffer_compute_position_in_second_to_sample_frame(const n2_audio_buffer_t* audio, double pos_in_sec)
+{
+	if (!audio) { return 0; }
+	if (pos_in_sec <= 0) { return 0; }
+	const size_t multiplier = audio->sample_rate_;
+	return N2_SCAST(size_t, pos_in_sec * N2_SCAST(double, multiplier));
+}
+
+N2_API n2_bool_t n2_audio_buffer_prepare_buffer(n2_state_t* state, n2_audio_buffer_t* audio)
+{
+	return n2_buffer_reserve(state, &audio->buffer_, n2_audio_buffer_compute_memorysize(audio));
+}
+
+N2_API void n2_audio_buffer_update_buffersize(n2_audio_buffer_t* audio)
+{
+	audio->buffer_.size_ = n2_audio_buffer_compute_memorysize(audio);
+}
+
+N2_API void n2_audio_read_config_init(n2_audio_read_config_t* config)
+{
+	n2_audio_format_config_init(&config->format_config_);
+}
+
+#if N2_CONFIG_USE_AUDIO_WAV_LIB
+
+static void* n2hi_audio_wav_allocator_alloc(size_t size, void* user_data)
+{
+	return n2_xmalloc(N2_RCAST(n2_state_t*, user_data), size);
+}
+static void* n2hi_audio_wav_allocator_realloc(void* p, size_t size, void* user_data)
+{
+	return n2_xrealloc(N2_RCAST(n2_state_t*, user_data), size, p);
+}
+static void n2hi_audio_wav_allocator_free(void* p, void* user_data)
+{
+	n2_xfree(N2_RCAST(n2_state_t*, user_data), p);
+}
+static void n2hi_audio_wav_init_allocator(n2_state_t* state, drwav_allocation_callbacks* callbacks)
+{
+	callbacks->onMalloc = n2hi_audio_wav_allocator_alloc;
+	callbacks->onRealloc = n2hi_audio_wav_allocator_realloc;
+	callbacks->onFree = n2hi_audio_wav_allocator_free;
+	callbacks->pUserData = state;
+}
+
+N2_API n2_bool_t n2h_audio_wav_is_readable_format(const n2_audio_read_config_t* config, n2_bool_t strict)
+{
+	N2_ASSERT(config);
+	if (!config) { return N2_FALSE; }
+
+	N2_UNUSE(strict);
+	switch (config->format_config_.sample_type_)
+	{
+	case N2_AUDIO_SAMPLE_TYPE_FLOAT:
+		return config->format_config_.bits_per_sample_ == 32;// @todo half float
+	case N2_AUDIO_SAMPLE_TYPE_SIGNED_INT:
+		return config->format_config_.bits_per_sample_ == 16 || config->format_config_.bits_per_sample_ == 32;
+	default:
+		break;
+	}
+	return N2_FALSE;
+}
+
+N2_API n2_bool_t n2h_audio_wav_read(n2_state_t* state, n2_audio_buffer_t* dst, const void* src, size_t src_size, const n2_audio_read_config_t* config)
+{
+	n2_audio_read_config_t dconfig;
+	if (!config) { n2_audio_read_config_init(&dconfig); config = &dconfig; }
+	if (!n2h_audio_wav_is_readable_format(config, N2_FALSE)) { return N2_FALSE; }
+
+	drwav_allocation_callbacks callbacks;
+	n2hi_audio_wav_init_allocator(state, &callbacks);
+
+	drwav wavfile;
+	if (!drwav_init_memory(&wavfile, src, src_size, &callbacks)) { return N2_FALSE; }
+
+	n2_bool_t succeeded = N2_FALSE;
+
+	n2_audio_buffer_teardown(state, dst);
+	dst->channel_num_ = wavfile.channels;
+	dst->sample_rate_ = wavfile.sampleRate;
+	dst->sample_type_ = config->format_config_.sample_type_;
+	dst->bits_per_sample_ = config->format_config_.bits_per_sample_;
+	dst->sample_frame_num_ = wavfile.totalPCMFrameCount;
+
+	if (n2_audio_buffer_prepare_buffer(state, dst))
+	{
+		void* dst_data = dst->buffer_.data_;
+		switch (config->format_config_.sample_type_)
+		{
+		case N2_AUDIO_SAMPLE_TYPE_FLOAT:
+			if (config->format_config_.bits_per_sample_ == 32) { dst->sample_frame_num_ = N2_SCAST(size_t, drwav_read_pcm_frames_f32(&wavfile, wavfile.totalPCMFrameCount, N2_RCAST(float*, dst_data))); }
+			break;
+		case N2_AUDIO_SAMPLE_TYPE_SIGNED_INT:
+			switch (config->format_config_.bits_per_sample_)
+			{
+			case 16: dst->sample_frame_num_ = N2_SCAST(size_t, drwav_read_pcm_frames_s16(&wavfile, wavfile.totalPCMFrameCount, N2_RCAST(int16_t*, dst_data))); break;
+			case 32: dst->sample_frame_num_ = N2_SCAST(size_t, drwav_read_pcm_frames_s32(&wavfile, wavfile.totalPCMFrameCount, N2_RCAST(int32_t*, dst_data))); break;
+			default: break;
+			}
+			break;
+		default:
+			dst->sample_frame_num_ = 0;
+			break;
+		}
+
+		if (dst->sample_frame_num_ > 0) { succeeded = N2_TRUE; }
+	}
+
+	drwav_uninit(&wavfile);
+
+	if (succeeded) { n2_audio_buffer_update_buffersize(dst); }
+	else { n2_audio_buffer_teardown(state, dst); }
+	return succeeded;
+}
+
+N2_API n2_bool_t n2h_audio_wav_write(n2_state_t* state, n2_buffer_t* dst, const n2_audio_buffer_t* src)
+{
+	N2_UNUSE(state);
+	N2_UNUSE(dst);
+	N2_UNUSE(src);
+	// @todo
+	return N2_FALSE;
+}
+
+#endif
+
+#if N2_CONFIG_USE_AUDIO_MP3_LIB
+
+static void* n2hi_audio_mp3_allocator_alloc(size_t size, void* user_data)
+{
+	return n2_xmalloc(N2_RCAST(n2_state_t*, user_data), size);
+}
+static void* n2hi_audio_mp3_allocator_realloc(void* p, size_t size, void* user_data)
+{
+	return n2_xrealloc(N2_RCAST(n2_state_t*, user_data), size, p);
+}
+static void n2hi_audio_mp3_allocator_free(void* p, void* user_data)
+{
+	n2_xfree(N2_RCAST(n2_state_t*, user_data), p);
+}
+static void n2hi_audio_mp3_init_allocator(n2_state_t* state, drmp3_allocation_callbacks* callbacks)
+{
+	callbacks->onMalloc = n2hi_audio_mp3_allocator_alloc;
+	callbacks->onRealloc = n2hi_audio_mp3_allocator_realloc;
+	callbacks->onFree = n2hi_audio_mp3_allocator_free;
+	callbacks->pUserData = state;
+}
+
+N2_API n2_bool_t n2h_audio_mp3_is_readable_format(const n2_audio_read_config_t* config, n2_bool_t strict)
+{
+	N2_ASSERT(config);
+	if (!config) { return N2_FALSE; }
+
+	switch (config->format_config_.sample_type_)
+	{
+	case N2_AUDIO_SAMPLE_TYPE_FLOAT:
+		return config->format_config_.bits_per_sample_ == 32;// @todo half float
+	case N2_AUDIO_SAMPLE_TYPE_SIGNED_INT:
+		return config->format_config_.bits_per_sample_ == 16 || (strict ? N2_FALSE : config->format_config_.bits_per_sample_ == 32);
+	default:
+		break;
+	}
+	return N2_FALSE;
+}
+
+N2_API n2_bool_t n2h_audio_mp3_read(n2_state_t* state, n2_audio_buffer_t* dst, const void* src, size_t src_size, const n2_audio_read_config_t* config)
+{
+	n2_audio_read_config_t dconfig;
+	if (!config) { n2_audio_read_config_init(&dconfig); config = &dconfig; }
+	if (!n2h_audio_mp3_is_readable_format(config, N2_FALSE)) { return N2_FALSE; }
+
+	drmp3_allocation_callbacks callbacks;
+	n2hi_audio_mp3_init_allocator(state, &callbacks);
+
+	drmp3 mp3file;
+	if (!drmp3_init_memory(&mp3file, src, src_size, &callbacks)) { return N2_FALSE; }
+
+	n2_bool_t succeeded = N2_FALSE;
+
+	n2_audio_buffer_teardown(state, dst);
+	dst->channel_num_ = mp3file.channels;
+	dst->sample_rate_ = mp3file.sampleRate;
+	dst->sample_type_ = config->format_config_.sample_type_;
+	dst->bits_per_sample_ = config->format_config_.bits_per_sample_;
+	dst->sample_frame_num_ = N2_SCAST(size_t, drmp3_get_pcm_frame_count(&mp3file));
+
+	if (dst->sample_frame_num_ > 0 && n2_audio_buffer_prepare_buffer(state, dst))
+	{
+		// コンバートよう
+		n2_audio_format_config_t format_config;
+		n2_audio_format_config_init(&format_config);
+		n2_audio_format_config_t* do_format_config = NULL;
+
+		void* dst_data = dst->buffer_.data_;
+
+		switch (config->format_config_.sample_type_)
+		{
+		case N2_AUDIO_SAMPLE_TYPE_FLOAT:
+			if (config->format_config_.bits_per_sample_ == 32) { dst->sample_frame_num_ = N2_SCAST(size_t, drmp3_read_pcm_frames_f32(&mp3file, dst->sample_frame_num_, N2_RCAST(float*, dst_data))); }
+			break;
+		case N2_AUDIO_SAMPLE_TYPE_SIGNED_INT:
+			switch (config->format_config_.bits_per_sample_)
+			{
+			case 16: dst->sample_frame_num_ = N2_SCAST(size_t, drmp3_read_pcm_frames_s16(&mp3file, dst->sample_frame_num_, N2_RCAST(int16_t*, dst_data))); break;
+			case 32:
+				{
+					dst->sample_type_ = N2_AUDIO_SAMPLE_TYPE_FLOAT;
+					dst->sample_frame_num_ = N2_SCAST(size_t, drmp3_read_pcm_frames_f32(&mp3file, dst->sample_frame_num_, N2_RCAST(float*, dst_data)));
+					format_config.sample_type_ = N2_AUDIO_SAMPLE_TYPE_SIGNED_INT;
+					format_config.bits_per_sample_ = 32;
+					do_format_config = &format_config;
+				}
+				break;
+			default: break;
+			}
+			break;
+		default:
+			dst->sample_frame_num_ = 0;
+			break;
+		}
+
+		if (dst->sample_frame_num_ > 0 && do_format_config)
+		{
+			if (!n2_audio_buffer_convert_inplace(state, dst, do_format_config)) { dst->sample_frame_num_ = 0; }
+		}
+		if (dst->sample_frame_num_ > 0) { succeeded = N2_TRUE; }
+	}
+
+	drmp3_uninit(&mp3file);
+
+	if (succeeded) { n2_audio_buffer_update_buffersize(dst); }
+	else { n2_audio_buffer_teardown(state, dst); }
+	return succeeded;
+}
+
+N2_API n2_bool_t n2h_audio_mp3_write(n2_state_t* state, n2_buffer_t* dst, const n2_audio_buffer_t* src)
+{
+	N2_UNUSE(state);
+	N2_UNUSE(dst);
+	N2_UNUSE(src);
+	// @todo
+	return N2_FALSE;
+}
+
+#endif
+
+#if N2_CONFIG_USE_AUDIO_OGG_LIB
+
+N2_API n2_bool_t n2h_audio_ogg_is_readable_format(const n2_audio_read_config_t* config, n2_bool_t strict)
+{
+	N2_ASSERT(config);
+	if (!config) { return N2_FALSE; }
+
+	switch (config->format_config_.sample_type_)
+	{
+	case N2_AUDIO_SAMPLE_TYPE_FLOAT:
+		return config->format_config_.bits_per_sample_ == 32;// @todo half float
+	case N2_AUDIO_SAMPLE_TYPE_SIGNED_INT:
+		return strict ? N2_FALSE : (config->format_config_.bits_per_sample_ == 16 || config->format_config_.bits_per_sample_ == 32);
+	default:
+		break;
+	}
+	return N2_FALSE;
+}
+
+N2_API n2_bool_t n2h_audio_ogg_read(n2_state_t* state, n2_audio_buffer_t* dst, const void* src, size_t src_size, const n2_audio_read_config_t* config)
+{
+	n2_audio_read_config_t dconfig;
+	if (!config) { n2_audio_read_config_init(&dconfig); config = &dconfig; }
+	if (!n2h_audio_ogg_is_readable_format(config, N2_FALSE)) { return N2_FALSE; }
+
+	int vorbis_error = 0;
+
+	stb_vorbis* vorbisfile = stb_vorbis_open_memory(src, N2_SCAST(int, src_size), &vorbis_error, NULL);
+	if (!vorbisfile) { return N2_FALSE; }
+
+	const stb_vorbis_info vorbisinfo = stb_vorbis_get_info(vorbisfile);
+	const unsigned int sample_num = stb_vorbis_stream_length_in_samples(vorbisfile);
+
+	n2_bool_t succeeded = N2_FALSE;
+
+	n2_audio_buffer_teardown(state, dst);
+	dst->channel_num_ = vorbisinfo.channels;
+	dst->sample_rate_ = vorbisinfo.sample_rate;
+	dst->sample_type_ = config->format_config_.sample_type_;
+	dst->bits_per_sample_ = config->format_config_.bits_per_sample_;
+	dst->sample_frame_num_ = N2_SCAST(size_t, sample_num);
+
+	if (dst->sample_frame_num_ > 0)
+	{
+		// コンバートよう
+		n2_audio_format_config_t format_config;
+		n2_audio_format_config_init(&format_config);
+		n2_audio_format_config_t* do_format_config = NULL;
+
+		enum
+		{
+			READ_FROM_NONE,
+			READ_FROM_FLOAT32,
+		};
+		int read_from = READ_FROM_NONE;
+
+		switch (config->format_config_.sample_type_)
+		{
+		case N2_AUDIO_SAMPLE_TYPE_FLOAT:
+			switch (config->format_config_.bits_per_sample_)
+			{
+			case 32: read_from = READ_FROM_FLOAT32; break;
+			default: break;
+			}
+			break;
+		case N2_AUDIO_SAMPLE_TYPE_SIGNED_INT:
+			switch (config->format_config_.bits_per_sample_)
+			{
+			case 16:
+			case 32:
+				{
+					// コンバート
+					read_from = READ_FROM_FLOAT32;
+					dst->sample_type_ = N2_AUDIO_SAMPLE_TYPE_FLOAT;
+					dst->bits_per_sample_ = 32;
+					format_config.sample_type_ = N2_AUDIO_SAMPLE_TYPE_SIGNED_INT;
+					format_config.bits_per_sample_ = config->format_config_.bits_per_sample_;
+				}
+				break;
+			default: break;
+			}
+			break;
+		default:
+			dst->sample_frame_num_ = 0;
+			break;
+		}
+
+		if (n2_audio_buffer_prepare_buffer(state, dst))
+		{
+			n2_buffer_t temp_buffer;
+			n2_buffer_init(&temp_buffer);
+			if (n2_buffer_reserve(state, &temp_buffer, 4096/*implied max samples for vorbis*/ * vorbisinfo.channels * sizeof(float)/*32 bit*/))
+			{
+				size_t total_read_samples = 0;
+				size_t write_cursor = 0;
+				switch (read_from)
+				{
+				case READ_FROM_FLOAT32:
+					for (;;)
+					{
+						const size_t read_samples = stb_vorbis_get_samples_float_interleaved(vorbisfile, N2_SCAST(int, dst->channel_num_), N2_RCAST(float*, temp_buffer.data_), N2_SCAST(int, temp_buffer.buffer_size_ / sizeof(float)));
+						if (read_samples <= 0) { break; }
+
+						const size_t read_memory_size = read_samples * dst->channel_num_ * sizeof(float);
+						if (!n2_buffer_reserve(state, &dst->buffer_, write_cursor + read_memory_size))
+						{
+							total_read_samples = 0;
+							break;
+						}
+						N2_MEMCPY(n2_ptr_offset(dst->buffer_.data_, write_cursor), temp_buffer.data_, read_memory_size);
+						write_cursor += read_memory_size;
+
+						total_read_samples += read_samples;
+					}
+					break;
+				default:
+					break;
+				}
+
+				dst->sample_frame_num_ = total_read_samples;
+			}
+			n2_buffer_teardown(state, &temp_buffer);
+		}
+
+		if (dst->sample_frame_num_ > 0 && do_format_config)
+		{
+			if (!n2_audio_buffer_convert_inplace(state, dst, do_format_config)) { dst->sample_frame_num_ = 0; }
+		}
+		if (dst->sample_frame_num_ > 0) { succeeded = N2_TRUE; }
+	}
+
+	stb_vorbis_close(vorbisfile);
+
+	if (succeeded) { n2_audio_buffer_update_buffersize(dst); }
+	else { n2_audio_buffer_teardown(state, dst); }
+	return succeeded;
+}
+
+N2_API n2_bool_t n2h_audio_ogg_write(n2_state_t* state, n2_buffer_t* dst, const n2_audio_buffer_t* src)
+{
+	N2_UNUSE(state);
+	N2_UNUSE(dst);
+	N2_UNUSE(src);
+	// @todo
+	return N2_FALSE;
+}
+
+#endif
+
+N2_API n2_bool_t n2h_audio_read(n2_state_t* state, n2_audio_buffer_t* dst, const void* src, size_t src_size, const n2_audio_read_config_t* config)
+{
+	N2_UNUSE(state);
+	N2_UNUSE(dst);
+	N2_UNUSE(src);
+	N2_UNUSE(src_size);
+	N2_UNUSE(config);
+
+	// wav
+#if N2_CONFIG_USE_AUDIO_WAV_LIB
+	if (n2h_audio_wav_read(state, dst, src, src_size, config)) { return N2_TRUE; }
+#endif
+
+	// mp3
+#if N2_CONFIG_USE_AUDIO_MP3_LIB
+	if (n2h_audio_mp3_read(state, dst, src, src_size, config)) { return N2_TRUE; }
+#endif
+
+	// ogg
+#if N2_CONFIG_USE_AUDIO_OGG_LIB
+	if (n2h_audio_ogg_read(state, dst, src, src_size, config)) { return N2_TRUE; }
+#endif
+
+	return N2_FALSE;
+}
 
 // 暗号化
 #if N2_CONFIG_USE_AES_LIB
@@ -20472,6 +21877,545 @@ static n2s_window_t* n2si_window_find_by_iid(n2s_windowarray_t* ws, size_t iid)
 #endif
 }
 
+N2_API int n2s_audio_slot_volume_from_float(double volume)
+{
+	volume = N2_CLAMP(volume, 0, 1);
+	return N2_SCAST(int, n2_dlerp(N2_SCAST(double, N2S_AUDIO_SLOT_VOLUME_MIN), N2_SCAST(double, N2S_AUDIO_SLOT_VOLUME_MAX), volume));
+}
+
+N2_API double n2s_audio_slot_volume_to_float(int volume)
+{
+	const double dvolume = N2_SCAST(double, volume - N2S_AUDIO_SLOT_VOLUME_MIN) / N2_SCAST(double, N2S_AUDIO_SLOT_VOLUME_MAX - N2S_AUDIO_SLOT_VOLUME_MIN);
+	return N2_CLAMP(dvolume, 0, 1);
+}
+
+N2_API int n2s_audio_slot_pan_from_float(double pan)
+{
+	pan = N2_CLAMP(pan, -1, 1);
+	return N2_SCAST(int, n2_dlerp(N2_SCAST(double, N2S_AUDIO_SLOT_PAN_MIN), N2_SCAST(double, N2S_AUDIO_SLOT_PAN_MAX), (pan + 1) / 2));
+}
+
+N2_API double n2s_audio_slot_pan_to_float(int pan)
+{
+	const double dpan = N2_SCAST(double, pan - N2S_AUDIO_SLOT_PAN_MIN) / N2_SCAST(double, N2S_AUDIO_SLOT_PAN_MAX - N2S_AUDIO_SLOT_PAN_MIN);
+	return N2_CLAMP(dpan, -1, 1);
+}
+
+static void n2si_audio_source_init(n2s_audio_source_t* as)
+{
+	as->reference_count_ = 0;
+	n2_audio_buffer_init(&as->buffer_);
+}
+static void n2si_audio_source_teardown(n2_state_t* state, n2s_audio_source_t* as)
+{
+	n2_audio_buffer_teardown(state, &as->buffer_);
+}
+
+static int n2si_audio_sourcearray_matchfunc_ptr(const n2_array_t* a, const void* ekey, const void* key)
+{
+	N2_UNUSE(a);
+	const n2s_audio_source_t* as = *N2_RCAST(const n2s_audio_source_t**, ekey);
+	const intptr_t eptr = N2_RCAST(intptr_t, as);
+	const intptr_t kptr = N2_RCAST(intptr_t, key);
+	return N2_THREE_WAY_CMP(eptr, kptr);
+}
+
+N2_DEFINE_TARRAY(n2s_audio_source_t*, n2s_audio_sourcearray, N2_API, n2i_setupfunc_nothing, n2i_freefunc_nothing);
+
+static void n2si_audio_slot_init(n2s_audio_slot_t* slot)
+{
+	slot->domain_ = N2S_AUDIO_SLOT_DOMAIN_SYS;
+	slot->id_ = -1;
+	slot->source_ = NULL;
+	slot->mm_mode_ = 0;
+	slot->playing_ = N2_FALSE;
+	slot->loop_ = N2_FALSE;
+	slot->loop_begin_sample_frame_cursor_ = 0;
+	slot->loop_end_sample_frame_cursor_ = 0;
+	slot->read_sample_frame_cursor_ = 0;
+	slot->volume_ = N2S_AUDIO_SLOT_VOLUME_MAX;
+	slot->pan_ = N2S_AUDIO_SLOT_PAN_NONE;
+}
+
+static void n2si_audio_slot_teardown(n2_state_t* state, n2s_audio_slot_t* slot)
+{
+	N2_UNUSE(state);
+	N2_UNUSE(slot);
+}
+
+static int n2si_audio_slotset_cmpfunc(const n2_sorted_array_t* a, const void* lkey, const void* rkey, const void* key)
+{
+	N2_UNUSE(a);
+	if (lkey) { return N2_THREE_WAY_CMP(N2_RCAST(const n2s_audio_slot_t*, lkey)->id_, N2_RCAST(const n2s_audio_slot_t*, rkey)->id_); }
+	return N2_THREE_WAY_CMP(*N2_RCAST(const int*, key), N2_RCAST(const n2s_audio_slot_t*, rkey)->id_);
+}
+static int n2si_audio_slotset_matchfunc(const n2_sorted_array_t* a, const void* ikey, const void* key)
+{
+	N2_UNUSE(a);
+	return N2_THREE_WAY_CMP(N2_RCAST(const n2s_audio_slot_t*, ikey)->id_, *N2_RCAST(const int*, key));
+}
+static void n2si_audio_slotset_setupfunc(n2_state_t* state, n2_plstrset_t* a)
+{
+	N2_UNUSE(state);
+	a->cmp_ = n2si_audio_slotset_cmpfunc;
+	a->match_ = n2si_audio_slotset_matchfunc;
+}
+N2_DEFINE_TSORTED_ARRAY(n2s_audio_slot_t, int, int, n2s_audio_slotset, N2_API, n2si_audio_slotset_setupfunc, n2i_freefunc_nothing);
+
+static int n2si_audio_slot_compute_domain_id(n2s_audio_slot_domain_e domain, int id)
+{
+	if (id < 0) { return -1; }
+
+	switch (domain)
+	{
+	case N2S_AUDIO_SLOT_DOMAIN_MM:
+		return (id & 0xffff);
+	case N2S_AUDIO_SLOT_DOMAIN_DMM:
+		return (id & 0xffff) + 0x10000;
+	default:
+		N2_ASSERT(0);
+		break;
+	}
+	return -1;
+}
+
+struct n2s_audio_environment_t
+{
+	n2_state_t* mixer_state_;
+	n2_audio_format_config_t device_format_config_;
+
+	n2s_audio_sourcearray_t sources_;
+	n2s_audio_slotset_t slotset_;
+
+	n2_audio_buffer_t mix_audio_buffers_[2];
+
+#if N2_CONFIG_USE_SDL_LIB
+	SDL_AudioDeviceID audio_device_id_;// 0 for invlid
+	SDL_AudioSpec audio_spec_;
+	SDL_AudioSpec audio_spec_desired_;
+#endif
+};
+
+static n2_bool_t n2si_audio_environment_lock(n2s_audio_environment_t* ae)
+{
+#if N2_CONFIG_USE_SDL_LIB
+	if (ae->audio_device_id_)
+	{
+		SDL_LockAudioDevice(ae->audio_device_id_);
+	}
+#else
+	N2_UNUSE(ae);
+#endif
+	return N2_TRUE;
+}
+static n2_bool_t n2si_audio_environment_unlock(n2s_audio_environment_t* ae)
+{
+#if N2_CONFIG_USE_SDL_LIB
+	if (ae->audio_device_id_)
+	{
+		SDL_UnlockAudioDevice(ae->audio_device_id_);
+	}
+#else
+	N2_UNUSE(ae);
+#endif
+	return N2_TRUE;
+}
+
+#if N2_CONFIG_USE_SDL_LIB
+static n2_bool_t n2si_audio_compute_sdl_format(SDL_AudioFormat* dst, n2_audio_sample_type_e sample_type, size_t bits_per_sample)
+{
+	n2_bool_t convertible = N2_FALSE;
+	switch (sample_type)
+	{
+	case N2_AUDIO_SAMPLE_TYPE_FLOAT:
+		switch (bits_per_sample)
+		{
+		case 32:
+			if (dst) { *dst = AUDIO_F32; }
+			convertible = N2_TRUE;
+			break;
+		default:
+			break;
+		}
+		break;
+	case N2_AUDIO_SAMPLE_TYPE_SIGNED_INT:
+		switch (bits_per_sample)
+		{
+		case 16:
+			if (dst) { *dst = AUDIO_S16SYS; }
+			convertible = N2_TRUE;
+			break;
+		case 32:
+			if (dst) { *dst = AUDIO_S32SYS; }
+			convertible = N2_TRUE;
+			break;
+		default:
+			break;
+		}
+		break;
+	default:
+		break;
+	}
+
+	return convertible;
+}
+
+static void n2si_audio_environment_device_mixer_callback(void* userdata, Uint8* stream, int len)
+{
+	n2s_audio_environment_t* ae = N2_RCAST(n2s_audio_environment_t*, userdata);
+	n2_state_t* state = ae->mixer_state_;
+
+	SDL_memset(stream, 0, len);
+
+	n2_audio_buffer_t* tabarray = ae->mix_audio_buffers_;
+	int itab = 0;
+	n2_audio_buffer_t* tab = &tabarray[itab];
+#define N2SI_AUDIO_ENVIRONMENT_DEVICE_MIX_NEXT_TAB() \
+	do { \
+		itab = (itab + 1) % N2_ARRAYDIM(ae->mix_audio_buffers_); \
+		tab = &tabarray[itab]; \
+	} while(0)
+
+	for (size_t si = 0, slen = n2s_audio_slotset_size(&ae->slotset_); si < slen; ++si)
+	{
+		n2s_audio_slot_t* slot = n2s_audio_slotset_peek(&ae->slotset_, N2_SCAST(int, si));
+		if (!slot->playing_) { continue; }
+		if (!slot->source_) { continue; }
+
+		const n2s_audio_source_t* as = slot->source_;
+		const n2_audio_buffer_t* ab = &as->buffer_;
+
+		SDL_AudioFormat sdl_format;
+		if (!n2si_audio_compute_sdl_format(&sdl_format, as->buffer_.sample_type_, ab->bits_per_sample_)) { continue; }
+		N2_UNUSE(sdl_format);
+
+		const int volume = N2_SCAST(int, n2s_audio_slot_volume_to_float(slot->volume_) * SDL_MIX_MAXVOLUME);
+		if (volume <= 0) { continue; }
+
+		const size_t ab_total_sample_frame = n2_audio_buffer_compute_total_sample_frame(ab);
+		if (ab_total_sample_frame <= 0) { continue; }
+
+		size_t end_sample_frame = slot->loop_end_sample_frame_cursor_;
+		if (end_sample_frame <= 0) { end_sample_frame = ab_total_sample_frame; }
+		size_t begin_sample_frame = slot->loop_begin_sample_frame_cursor_;
+		if (begin_sample_frame >= end_sample_frame) { begin_sample_frame = end_sample_frame - 1; }
+		N2_ASSERT(begin_sample_frame < end_sample_frame);
+		const size_t sample_frame_duration = end_sample_frame - begin_sample_frame;
+
+		int slot_input_len = len;// リサンプル等では入力サンプル数が異なるため
+
+#define N2SI_AUDIO_ENVIRONMENT_DEVICE_MIX_PREPARE_TAB() \
+	do { \
+		if (uab == ab) \
+		{ \
+			n2_audio_buffer_copy_format_to(state, tab, ab); \
+			tab->sample_frame_num_ = 0; \
+			size_t left_sample_frame = n2_audio_buffer_compute_total_sample_frame_from_bytes(tab, N2_SCAST(size_t, slot_input_len)); \
+			while (left_sample_frame > 0) \
+			{ \
+				if (slot->read_sample_frame_cursor_ >= end_sample_frame) \
+				{ \
+					if (!slot->loop_) \
+					{ \
+						slot->playing_ = N2_FALSE; \
+						break; \
+					} \
+					 \
+					/*loop*/ \
+					slot->read_sample_frame_cursor_ -= end_sample_frame; \
+					slot->read_sample_frame_cursor_ %= sample_frame_duration; \
+					slot->read_sample_frame_cursor_ += begin_sample_frame; \
+				} \
+				 \
+				const size_t avail_sample_frame = end_sample_frame - slot->read_sample_frame_cursor_; \
+				N2_ASSERT(avail_sample_frame > 0); \
+				 \
+				const size_t consume_sample_frame = N2_MIN(left_sample_frame, avail_sample_frame); \
+				n2_audio_buffer_append_sample_frames_to(state, tab, ab, slot->read_sample_frame_cursor_, slot->read_sample_frame_cursor_ + consume_sample_frame); \
+				 \
+				slot->read_sample_frame_cursor_ += consume_sample_frame; \
+				left_sample_frame -= consume_sample_frame; \
+				uab = tab; \
+			} \
+		} \
+	} while (0)
+
+		const n2_audio_buffer_t* uab = ab;
+		if (N2_SCAST(int, ab->sample_rate_) != ae->audio_spec_.freq)
+		{
+			// resample
+			slot_input_len = slot_input_len * N2_SCAST(int, ab->sample_rate_) / ae->audio_spec_.freq;// freqにした時に必要なバイト数がlenなので、元々はsample_rate / freq倍要る
+			N2SI_AUDIO_ENVIRONMENT_DEVICE_MIX_PREPARE_TAB();
+			const n2_audio_buffer_t* stab = tab;
+			N2SI_AUDIO_ENVIRONMENT_DEVICE_MIX_NEXT_TAB();
+			n2_audio_buffer_resample_linear_to(state, tab, stab, ae->audio_spec_.freq);
+			uab = tab;
+		}
+
+		if (slot->pan_ != N2S_AUDIO_SLOT_PAN_NONE)
+		{
+			uint8_t atten[N2_MAX_AUDIO_CHANNEL_NUM];
+			const double fpan = n2s_audio_slot_pan_to_float(slot->pan_) * 2 - 1;// [0, 1] -> [-1, 1]
+			if (ab->channel_num_ == 2)
+			{
+				// attenuate：雑なパンニング計算
+				N2SI_AUDIO_ENVIRONMENT_DEVICE_MIX_PREPARE_TAB();
+				atten[0] = fpan > 0 ? N2_SCAST(uint8_t, n2_dlerp(255, 0, fpan)) : 255;// left
+				atten[1] = fpan < 0 ? N2_SCAST(uint8_t, n2_dlerp(255, 0, -fpan)) : 255;// right
+				n2_audio_buffer_attenuate_channels_range(state, tab, atten, 0, SIZE_MAX);
+				uab = tab;
+			}
+		}
+
+		if (!uab->buffer_.data_ || uab->buffer_.size_ <= 0) { continue; }
+
+		if (uab == ab)
+		{
+			// mix from sources
+			size_t left_sample_frame = n2_audio_buffer_compute_total_sample_frame_from_bytes(uab, N2_SCAST(size_t, len));
+			while (left_sample_frame > 0)
+			{
+				if (slot->read_sample_frame_cursor_ >= end_sample_frame)
+				{
+					if (!slot->loop_)
+					{
+						slot->playing_ = N2_FALSE;
+						break;
+					}
+
+					// loop
+					slot->read_sample_frame_cursor_ -= end_sample_frame;
+					slot->read_sample_frame_cursor_ %= sample_frame_duration;
+					slot->read_sample_frame_cursor_ += begin_sample_frame;
+				}
+
+				const size_t avail_sample_frame = end_sample_frame - slot->read_sample_frame_cursor_;
+				N2_ASSERT(avail_sample_frame > 0);
+
+				const size_t consume_sample_frame = N2_MIN(left_sample_frame, avail_sample_frame);
+				const size_t consume_sample_bytes = n2_audio_buffer_compute_sample_frame_bytes(uab, consume_sample_frame);
+				const size_t sample_offset_bytes = n2_audio_buffer_compute_sample_frame_bytes(uab, slot->read_sample_frame_cursor_);
+				SDL_MixAudioFormat(stream, n2_cptr_offset(uab->buffer_.data_, sample_offset_bytes), ae->audio_spec_.format, N2_SCAST(int, consume_sample_bytes), volume);
+
+				slot->read_sample_frame_cursor_ += consume_sample_frame;
+				left_sample_frame -= consume_sample_frame;
+			}
+		}
+		else
+		{
+			// mix from temporary buffer
+			const size_t avail_bytes = n2_audio_buffer_compute_memorysize(uab);
+			const int consume_bytes = N2_MIN(len, N2_SCAST(int, avail_bytes));
+			SDL_MixAudioFormat(stream, uab->buffer_.data_, ae->audio_spec_.format, consume_bytes, volume);
+		}
+	}
+
+#undef N2SI_AUDIO_ENVIRONMENT_DEVICE_MIX_PREPARE_TAB
+#undef N2SI_AUDIO_ENVIRONMENT_DEVICE_MIX_NEXT_TAB
+}
+#endif
+
+static void n2si_audio_environment_free(n2_state_t* state, n2s_audio_environment_t* ae);
+
+static n2s_audio_environment_t* n2si_audio_environment_alloc(n2_state_t* state)
+{
+	n2s_audio_environment_t* ae = N2_TMALLOC(n2s_audio_environment_t, state);
+	if (!ae) { return NULL; }
+
+	ae->mixer_state_ = state;
+
+	n2_audio_format_config_init(&ae->device_format_config_);
+
+	n2s_audio_slotset_setup(state, &ae->slotset_, 0, 4);
+	n2s_audio_sourcearray_setup(state, &ae->sources_, 0, 4);
+
+	for (size_t i = 0; i < N2_ARRAYDIM(ae->mix_audio_buffers_); ++i) { n2_audio_buffer_init(&ae->mix_audio_buffers_[i]); }
+
+#if N2_CONFIG_USE_SDL_LIB
+	ae->audio_device_id_ = 0;
+	N2_MEMSET(&ae->audio_spec_, 0, sizeof(ae->audio_spec_));
+	N2_MEMSET(&ae->audio_spec_desired_, 0, sizeof(ae->audio_spec_desired_));
+
+	ae->audio_spec_desired_.freq = N2_SCAST(int, state->config_.standard_audio_device_sample_rate_);
+	ae->audio_spec_desired_.format = AUDIO_S16;// fallback default
+	n2si_audio_compute_sdl_format(&ae->audio_spec_desired_.format, state->config_.standard_audio_device_sample_type_, state->config_.standard_audio_device_bits_per_sample_);
+	ae->audio_spec_desired_.channels = 2;
+	ae->audio_spec_desired_.samples = N2_SCAST(Uint16, state->config_.standard_audio_device_buffer_samples_);
+	ae->audio_spec_desired_.callback = n2si_audio_environment_device_mixer_callback;
+	ae->audio_spec_desired_.userdata = ae;
+
+	ae->audio_device_id_ = SDL_OpenAudioDevice(NULL, 0, &ae->audio_spec_desired_, &ae->audio_spec_, SDL_AUDIO_ALLOW_ANY_CHANGE);
+	if (!ae->audio_device_id_)
+	{
+		n2si_audio_environment_free(state, ae);
+		return NULL;
+	}
+
+	// get device format
+	{
+		ae->device_format_config_.sample_type_ = SDL_AUDIO_ISFLOAT(ae->audio_spec_.format) ? N2_AUDIO_SAMPLE_TYPE_FLOAT : N2_AUDIO_SAMPLE_TYPE_SIGNED_INT;
+		ae->device_format_config_.bits_per_sample_ = SDL_AUDIO_BITSIZE(ae->audio_spec_.format);
+
+		if (!n2_audio_is_valid_format(ae->device_format_config_.sample_type_, ae->device_format_config_.bits_per_sample_))
+		{
+			n2si_audio_environment_free(state, ae);
+			return NULL;
+		}
+	}
+
+	// unpause and activate it
+	SDL_PauseAudioDevice(ae->audio_device_id_, 0);
+#endif
+
+	return ae;
+}
+
+static void n2si_audio_environment_free(n2_state_t* state, n2s_audio_environment_t* ae)
+{
+#if N2_CONFIG_USE_SDL_LIB
+	if (ae->audio_device_id_)
+	{
+		// pause
+		SDL_PauseAudioDevice(ae->audio_device_id_, 1);
+
+		for (size_t si = 0, slen = n2s_audio_sourcearray_size(&ae->sources_); si < slen; ++si)
+		{
+			n2s_audio_source_t* as = n2s_audio_sourcearray_peekv(&ae->sources_, N2_SCAST(int, si), NULL);
+			N2_ASSERT(as);
+			n2si_audio_source_teardown(state, as);
+		}
+	}
+#endif
+
+	n2s_audio_slotset_teardown(state, &ae->slotset_);
+	n2s_audio_sourcearray_teardown(state, &ae->sources_);
+
+	for (size_t i = 0; i < N2_ARRAYDIM(ae->mix_audio_buffers_); ++i) { n2_audio_buffer_teardown(state, &ae->mix_audio_buffers_[i]); }
+
+#if N2_CONFIG_USE_SDL_LIB
+	if (ae->audio_device_id_)
+	{
+		// do not unpause, will be closed soon
+		//SDL_PauseAudioDevice(ae->audio_device_id_, 0);
+
+		SDL_CloseAudioDevice(ae->audio_device_id_);
+		ae->audio_device_id_ = 0;
+	}
+#endif
+
+	n2_free(state, ae);
+}
+
+static n2_bool_t n2si_audio_environment_check_alive(n2_state_t* state, n2s_environment_t* se)
+{
+	if (se->audio_environment_) { return N2_TRUE; }
+	se->audio_environment_ = n2si_audio_environment_alloc(state);
+	return N2_TOBOOL(se->audio_environment_);
+}
+
+static n2s_audio_source_t* n2si_audio_environment_source_register(n2_state_t* state, n2s_audio_environment_t* ae, n2_audio_buffer_t* buffer)
+{
+	n2s_audio_source_t* as = N2_TMALLOC(n2s_audio_source_t, state);
+	if (!as)
+	{
+		n2_audio_buffer_teardown(state, buffer);
+		return NULL;
+	}
+
+	n2si_audio_source_init(as);
+	n2_swap(&as->buffer_, buffer, sizeof(*buffer));
+	++as->reference_count_;
+
+	n2s_audio_source_t** ase = n2s_audio_sourcearray_push(state, &ae->sources_, &as);
+	if (!ase)
+	{
+		n2si_audio_source_teardown(state, as);
+		n2_free(state, as);
+		return NULL;
+	}
+
+	return as;
+}
+
+static n2_bool_t n2si_audio_environment_source_release(n2_state_t* state, n2s_audio_environment_t* ae, n2s_audio_source_t* as)
+{
+	if (!as) { return N2_FALSE; }
+	if (--as->reference_count_ > 0) { return N2_FALSE; }
+
+	const int index = n2s_audio_sourcearray_find(&ae->sources_, n2si_audio_sourcearray_matchfunc_ptr, as);
+	if (index >= 0)
+	{
+		n2s_audio_sourcearray_erase(state, &ae->sources_, index);
+	}
+
+	n2si_audio_source_teardown(state, as);
+	n2_free(state, as);
+
+	return N2_TRUE;
+}
+
+static n2_bool_t n2si_audio_environment_slot_erase(n2_state_t* state, n2s_audio_environment_t* ae, int slot_id)
+{
+	if (slot_id < 0) { return N2_FALSE; }
+
+	n2_bool_t erased = N2_FALSE;
+	n2si_audio_environment_lock(ae);
+	{
+		int index = -1;
+		n2s_audio_slot_t* slot = n2s_audio_slotset_find_with_index(&ae->slotset_, &slot_id, &index);
+		if (slot)
+		{
+			if (slot->source_)
+			{
+				n2si_audio_environment_source_release(state, ae, slot->source_);
+				slot->source_ = NULL;
+			}
+
+			n2s_audio_slotset_erase_at(state, &ae->slotset_, index);
+			erased = N2_TRUE;
+		}
+	}
+	n2si_audio_environment_unlock(ae);
+	return erased;
+}
+
+static n2s_audio_slot_t* n2si_audio_environment_slot_register(n2_state_t* state, n2s_audio_environment_t* ae, n2s_audio_source_t* as, int slot_id)
+{
+	if (!as) { return NULL; }
+	if (slot_id < 0) { return NULL; }
+
+	n2si_audio_environment_slot_erase(state, ae, slot_id);
+
+	n2s_audio_slot_t* slot = NULL;
+	n2si_audio_environment_lock(ae);
+	{
+		slot = n2s_audio_slotset_insert(state, &ae->slotset_, NULL, &slot_id);
+		if (slot)
+		{
+			n2si_audio_slot_init(slot);
+			slot->id_ = slot_id;
+			slot->source_ = as;
+			if (slot->source_) { ++slot->source_->reference_count_; }
+		}
+	}
+	n2si_audio_environment_unlock(ae);
+
+	return slot;
+}
+
+static n2s_audio_slot_t* n2si_audio_environment_slot_find(n2s_audio_environment_t* ae, int slot_id)
+{
+	if (slot_id < 0) { return NULL; }
+
+	n2s_audio_slot_t* slot = NULL;
+	n2si_audio_environment_lock(ae);
+	{
+		slot = n2s_audio_slotset_find(&ae->slotset_, &slot_id);
+	}
+	n2si_audio_environment_unlock(ae);
+	return slot;
+}
+
 static n2s_environment_t* n2si_environment_alloc(n2_state_t* state, const char** pe)
 {
 #if N2_CONFIG_USE_SDL_LIB
@@ -20563,6 +22507,7 @@ static n2s_environment_t* n2si_environment_alloc(n2_state_t* state, const char**
 
 #if N2_CONFIG_USE_SDL_LIB
 	se->gl_context_ = NULL;
+	se->audio_environment_ = NULL;
 	se->last_async_time_ = SDL_GetPerformanceCounter();
 #endif
 
@@ -20865,6 +22810,12 @@ static n2s_environment_t* n2si_environment_alloc(n2_state_t* state, const char**
 
 static void n2si_environment_free(n2_state_t* state, n2s_environment_t* se)
 {
+	if (se->audio_environment_)
+	{
+		n2si_audio_environment_free(state, se->audio_environment_);
+		se->audio_environment_ = NULL;
+	}
+
 	n2s_commandbuffer_free(state, se->commandbuffer_);
 	n2s_commandbuffer_free(state, se->syscommandbuffer_);
 
@@ -22420,6 +24371,9 @@ N2_API n2_bool_t n2_environment_load_str(n2_state_t* state, n2_pp_context_t* ppc
 
 	staging_ast = n2_parser_parse(state, p);
 	if (!staging_ast) { goto fail_exit; }
+
+	// デバッグ用
+	//n2_ast_node_dump(state, staging_ast, N2_FALSE);
 
 	// ここまできてて正しいならもう保存しておく
 	{
@@ -24827,6 +26781,11 @@ N2_API void n2_state_config_init_ex(n2_state_config_t* dst_config, size_t flags)
 	dst_config->standard_font_default_draw_height_ = N2S_DEFAULT_FONT_DRAW_HEIGHT;
 	dst_config->standard_font_draw_pixel_perfect_ = N2_TRUE;
 
+	dst_config->standard_audio_device_sample_rate_ = N2S_DEFAULT_AUDIO_DEVICE_SAMPLE_RATE;
+	dst_config->standard_audio_device_sample_type_ = N2S_DEFAULT_AUDIO_DEVICE_SAMPLE_TYPE;
+	dst_config->standard_audio_device_bits_per_sample_ = N2S_DEFAULT_AUDIO_DEVICE_BITS_PER_SAMPLE;
+	dst_config->standard_audio_device_buffer_samples_ = N2S_DEFAULT_AUDIO_DEVICE_BUFFER_SAMPLES;
+
 	dst_config->standard_widget_input_default_max_buffer_size_ = N2S_DEFAULT_WIDGET_INPUT_MAX_BUFFER_SIZE;
 
 	dst_config->standard_use_inspector_ = N2_FALSE;
@@ -27152,6 +29111,9 @@ static n2_bool_t n2si_environment_update_widget_dirty(n2_state_t* state, n2_fibe
 							n2i_execute_post_setup_callframe(state, lcf, f);
 
 							f->pc_ = label->pc_;
+
+							// IDをstatに
+							f->stat_ = N2_SCAST(n2_valint_t, widget->id_);
 
 							// direct call
 							if (!n2i_state_execute_protected(state, f)) { return N2_FALSE; }
@@ -32185,6 +34147,373 @@ static int n2si_bifunc_mesbox(const n2_funcarg_t* arg)
 }
 #endif// N2_CONFIG_USE_GUI_LIB
 
+static n2_bool_t n2si_bifunc_internal_audio_load(const n2_funcarg_t* arg, n2s_audio_environment_t* ae, n2_audio_buffer_t* to, const n2_buffer_t* data)
+{
+	n2_audio_read_config_t read_config;
+	n2_audio_read_config_init(&read_config);
+	read_config.format_config_ = ae->device_format_config_;
+	// フォーマット読み込み
+	if (!n2h_audio_read(arg->state_, to, data->data_, data->size_, &read_config))
+	{
+		n2_audio_buffer_teardown(arg->state_, to);
+		return N2_FALSE;
+	}
+	// 周波数が違うなら再サンプルする
+	const size_t device_freq = N2_SCAST(size_t, ae->audio_spec_.freq);
+	if (to->sample_rate_ != device_freq)
+	{
+		n2_audio_buffer_t resampled;
+		n2_audio_buffer_init(&resampled);
+		const n2_bool_t converted = n2_audio_buffer_resample_linear_to(arg->state_, &resampled, to, device_freq);
+		n2_swap(to, &resampled, sizeof(resampled));
+		n2_audio_buffer_teardown(arg->state_, &resampled);
+		if (!converted)
+		{
+			n2_audio_buffer_teardown(arg->state_, to);
+			return N2_FALSE;
+		}
+	}
+	return N2_TRUE;
+}
+
+static int n2si_bifunc_mmload(const n2_funcarg_t* arg)
+{
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
+	if (arg_num < 1 || arg_num > 3) { n2e_funcarg_raise(arg, "mmload：引数の数（%d）が期待（%d - %d）と違います", arg_num, 1, 3); return -1; }
+
+	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
+	if (!n2si_audio_environment_check_alive(arg->state_, se)) { n2e_funcarg_raise(arg, "mmload：オーディオ環境の初期化に失敗しました"); return -1; }
+	n2s_audio_environment_t* ae = se->audio_environment_;
+	N2_ASSERT(ae);
+
+	const n2_value_t* strval = n2e_funcarg_getoarg(arg, 0);
+	n2_valstr_t* filepath = n2e_funcarg_eval_str_and_push(arg, strval);
+
+	const n2_value_t* idval = n2e_funcarg_getoarg(arg, 1);
+	const n2_valint_t id = idval && idval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, idval) : 0;
+	const int audio_id = n2si_audio_slot_compute_domain_id(N2S_AUDIO_SLOT_DOMAIN_MM, N2_SCAST(int, id));
+	if (audio_id < 0)
+	{
+		n2e_funcarg_raise(arg, "mmload：無効なスロットID（%" N2_VALINT_PRI "）です。", id);
+		return -1;
+	}
+
+	const n2_value_t* modeval = n2e_funcarg_getoarg(arg, 2);
+	const n2_valint_t mode = modeval && modeval->type_ != N2_VALUE_NIL ? N2_MAX(n2e_funcarg_eval_int(arg, modeval), 0) : 0;
+
+	// モードがおかしいか
+	if ((mode & 3) == 3)
+	{
+		n2e_funcarg_raise(arg, "mmload：モード値（%" N2_VALINT_PRI "）にループと再生待機が同時に指定されました。", mode);
+		return -1;
+	}
+
+	// 先にスロット削除
+	n2si_audio_environment_slot_erase(arg->state_, ae, audio_id);
+
+	// ファイル読み込み
+	n2_buffer_t filebuf;
+	n2_buffer_init(&filebuf);
+	if (!n2i_bifunc_internal_fsload(arg, &filebuf, filepath->str_, N2_TRUE, SIZE_MAX, 0))
+	{
+		n2e_funcarg_raise(arg, "mmload：ファイル（%s）の読み込みに失敗しました。", filepath->str_);
+		return -1;
+	}
+
+	// オーディオとして読み込み
+	n2_audio_buffer_t audio_buffer;
+	n2_audio_buffer_init(&audio_buffer);
+	if (!n2si_bifunc_internal_audio_load(arg, ae, &audio_buffer, &filebuf))
+	{
+		n2_buffer_teardown(arg->state_, &filebuf);
+		n2e_funcarg_raise(arg, "mmload：ファイル（%s）をオーディオファイルとして読み込めませんでした。", filepath->str_);
+		return -1;
+	}
+
+	// ファイルはもう要らない
+	n2_buffer_teardown(arg->state_, &filebuf);
+
+	// ソースとして登録
+	n2s_audio_source_t* as = n2si_audio_environment_source_register(arg->state_, ae, &audio_buffer);
+	if (!as)
+	{
+		n2e_funcarg_raise(arg, "mmload：ファイル（%s）をオーディオファイルとして読み込めませんでした。", filepath->str_);
+		return -1;
+	}
+
+	// スロットとして生成
+	n2s_audio_slot_t* slot = n2si_audio_environment_slot_register(arg->state_, ae, as, audio_id);
+
+	n2si_audio_environment_source_release(arg->state_, ae, as);// 登録できていれば内部でリファレンスカウントが上がっているので、ここの参照を削除
+	as = NULL;
+
+	if (!slot)
+	{
+		n2e_funcarg_raise(arg, "mmload：ファイル（%s）をオーディオとして読み込みましたが、スロット（%" N2_VALINT_PRI "）を確保できませんでした。", filepath->str_, id);
+		return -1;
+	}
+
+	slot->domain_ = N2S_AUDIO_SLOT_DOMAIN_MM;
+	slot->mm_mode_ = N2_SCAST(int, mode);
+
+	n2e_funcarg_pushi(arg, id);
+	return 1;
+}
+
+static int n2si_bifunc_mmunload(const n2_funcarg_t* arg)
+{
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
+	if (arg_num < 1 || arg_num > 1) { n2e_funcarg_raise(arg, "mmunload：引数の数（%d）が期待（%d - %d）と違います", arg_num, 1, 1); return -1; }
+
+	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
+	if (!n2si_audio_environment_check_alive(arg->state_, se)) { n2e_funcarg_raise(arg, "mmunload：オーディオ環境の初期化に失敗しました"); return -1; }
+	n2s_audio_environment_t* ae = se->audio_environment_;
+	N2_ASSERT(ae);
+
+	const n2_value_t* idval = n2e_funcarg_getoarg(arg, 0);
+	const n2_valint_t id = idval && idval->type_ != N2_VALUE_NIL ? N2_MAX(n2e_funcarg_eval_int(arg, idval), 0) : 0;
+	const int audio_id = n2si_audio_slot_compute_domain_id(N2S_AUDIO_SLOT_DOMAIN_MM, N2_SCAST(int, id));
+
+	const n2_bool_t erased = n2si_audio_environment_slot_erase(arg->state_, ae, audio_id);
+	n2e_funcarg_pushi(arg, erased ? 1 : 0);
+	return 1;
+}
+
+static int n2si_bifunc_mmplay(const n2_funcarg_t* arg)
+{
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
+	if (arg_num < 0 || arg_num > 1) { n2e_funcarg_raise(arg, "mmplay：引数の数（%d）が期待（%d - %d）と違います", arg_num, 0, 1); return -1; }
+
+	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
+	if (!n2si_audio_environment_check_alive(arg->state_, se)) { n2e_funcarg_raise(arg, "mmplay：オーディオ環境の初期化に失敗しました"); return -1; }
+	n2s_audio_environment_t* ae = se->audio_environment_;
+	N2_ASSERT(ae);
+
+	const n2_value_t* idval = n2e_funcarg_getoarg(arg, 0);
+	const n2_valint_t id = idval && idval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, idval) : 0;
+	const int audio_id = n2si_audio_slot_compute_domain_id(N2S_AUDIO_SLOT_DOMAIN_MM, N2_SCAST(int, id));
+	if (audio_id < 0)
+	{
+		n2e_funcarg_raise(arg, "mmplay：無効なスロットID（%" N2_VALINT_PRI "）です。", id);
+		return -1;
+	}
+
+	n2s_audio_slot_t* slot = n2si_audio_environment_slot_find(ae, audio_id);
+	if (!slot)
+	{
+		n2e_funcarg_raise(arg, "mmplay：スロット（%" N2_VALINT_PRI "）にまだオーディオがロードされていません。", id);
+		return -1;
+	}
+
+	n2si_audio_environment_lock(ae);
+	{
+		slot->playing_ = N2_TRUE;
+	}
+	n2si_audio_environment_unlock(ae);
+
+	return 0;
+}
+
+static int n2si_bifunc_mmstop(const n2_funcarg_t* arg)
+{
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
+	if (arg_num < 1 || arg_num > 4) { n2e_funcarg_raise(arg, "mmstop：引数の数（%d）が期待（%d - %d）と違います", arg_num, 1, 4); return -1; }
+
+	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
+	if (!n2si_audio_environment_check_alive(arg->state_, se)) { n2e_funcarg_raise(arg, "mmstop：オーディオ環境の初期化に失敗しました"); return -1; }
+	n2s_audio_environment_t* ae = se->audio_environment_;
+	N2_ASSERT(ae);
+
+	const n2_value_t* idval = n2e_funcarg_getoarg(arg, 0);
+	const n2_valint_t id = idval && idval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, idval) : -1;
+
+	if (id < 0)
+	{
+		// 全て
+		n2si_audio_environment_lock(ae);
+		for (size_t si = 0, slen = n2s_audio_slotset_size(&ae->slotset_); si < slen; ++si)
+		{
+			n2s_audio_slot_t* slot = n2s_audio_slotset_peek(&ae->slotset_, N2_SCAST(int, si));
+			if (slot->domain_ == N2S_AUDIO_SLOT_DOMAIN_MM)
+			{
+				slot->playing_ = N2_FALSE;
+				slot->read_sample_frame_cursor_ = 0;
+			}
+		}
+		n2si_audio_environment_unlock(ae);
+	}
+	else
+	{
+		// 特定の
+		const int audio_id = n2si_audio_slot_compute_domain_id(N2S_AUDIO_SLOT_DOMAIN_MM, N2_SCAST(int, id));
+		if (audio_id < 0)
+		{
+			n2e_funcarg_raise(arg, "mmstop：無効なスロットID（%" N2_VALINT_PRI "）です。", id);
+			return -1;
+		}
+
+		n2s_audio_slot_t* slot = n2si_audio_environment_slot_find(ae, audio_id);
+		if (!slot)
+		{
+			n2e_funcarg_raise(arg, "mmstop：スロット（%" N2_VALINT_PRI "）にまだオーディオがロードされていません。", id);
+			return -1;
+		}
+
+		n2si_audio_environment_lock(ae);
+		{
+			slot->playing_ = N2_FALSE;
+			slot->read_sample_frame_cursor_ = 0;
+		}
+		n2si_audio_environment_unlock(ae);
+	}
+
+	return 0;
+}
+
+static int n2si_bifunc_mmstat(const n2_funcarg_t* arg)
+{
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
+	if (arg_num < 1 || arg_num > 3) { n2e_funcarg_raise(arg, "mmstat：引数の数（%d）が期待（%d - %d）と違います", arg_num, 1, 3); return -1; }
+
+	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
+	if (!n2si_audio_environment_check_alive(arg->state_, se)) { n2e_funcarg_raise(arg, "mmstat：オーディオ環境の初期化に失敗しました"); return -1; }
+	n2s_audio_environment_t* ae = se->audio_environment_;
+	N2_ASSERT(ae);
+
+	const n2_value_t* varval = n2e_funcarg_getoarg(arg, 0);
+	if (!varval || varval->type_ != N2_VALUE_VARIABLE) { n2e_funcarg_raise(arg, "mmstat：対象として有効な変数を指定されていません"); return -1; }
+
+	const n2_value_t* idval = n2e_funcarg_getoarg(arg, 1);
+	const n2_valint_t id = idval && idval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, idval) : 0;
+	const int audio_id = n2si_audio_slot_compute_domain_id(N2S_AUDIO_SLOT_DOMAIN_MM, N2_SCAST(int, id));
+	if (audio_id < 0)
+	{
+		n2e_funcarg_raise(arg, "mmstat：無効なスロットID（%" N2_VALINT_PRI "）です。", id);
+		return -1;
+	}
+
+	const n2_value_t* modeval = n2e_funcarg_getoarg(arg, 2);
+	const n2_valint_t mode = modeval && modeval->type_ != N2_VALUE_NIL ? N2_MAX(n2e_funcarg_eval_int(arg, modeval), 0) : 0;
+
+	n2s_audio_slot_t* slot = n2si_audio_environment_slot_find(ae, audio_id);
+	if (!slot)
+	{
+		n2e_funcarg_raise(arg, "mmstat：スロット（%" N2_VALINT_PRI "）にまだオーディオがロードされていません。", id);
+		return -1;
+	}
+
+	n2_bool_t mode_valid = N2_TRUE;
+
+	n2_value_t set_value;
+	n2i_value_init(&set_value);
+
+	n2si_audio_environment_lock(ae);
+	{
+		switch (mode)
+		{
+		case N2SC_MMSTAT_MODEFLAG:
+			n2_value_seti(arg->state_, &set_value, slot->mm_mode_);
+			break;
+		case N2SC_MMSTAT_VOLUME:
+			n2_value_seti(arg->state_, &set_value, N2_SCAST(n2_valint_t, n2_dlerp(-1000, 0, n2s_audio_slot_volume_to_float(slot->volume_))));
+			break;
+		case N2SC_MMSTAT_PAN:
+			n2_value_seti(arg->state_, &set_value, N2_SCAST(n2_valint_t, n2_dlerp(-1000, 1000, n2s_audio_slot_pan_to_float(slot->pan_))));
+			break;
+		case N2SC_MMSTAT_PLAY_STATE:
+			n2_value_seti(arg->state_, &set_value, slot->playing_ ? 1 : 0);
+			break;
+		case N2SC_MMSTAT_PLAY_POSITION_SEC:
+			n2_value_setf(arg->state_, &set_value, slot->source_ ? n2_audio_buffer_compute_position_in_second_from_sample_frame(&slot->source_->buffer_, slot->read_sample_frame_cursor_) : 0);
+			break;
+		case N2SC_MMSTAT_AUDIO_LENGTH_SEC:
+			n2_value_setf(arg->state_, &set_value, slot->source_ ? n2_audio_buffer_compute_position_in_second_from_sample_frame(&slot->source_->buffer_, slot->source_->buffer_.sample_frame_num_) : 0);
+			break;
+		default:
+			mode_valid = N2_FALSE;
+			break;
+		}
+	}
+	n2si_audio_environment_unlock(ae);
+
+	if (!mode_valid)
+	{
+		n2e_funcarg_raise(arg, "mmstat：取得モード（%" N2_VALINT_PRI "）が無効です。", mode);
+		return -1;
+	}
+
+	n2_variable_set(arg->state_, arg->fiber_, varval->field_.varvalue_.var_, varval->field_.varvalue_.aptr_, &set_value);
+	return 0;
+}
+
+static int n2si_bifunc_mmvol(const n2_funcarg_t* arg)
+{
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
+	if (arg_num < 0 || arg_num > 2) { n2e_funcarg_raise(arg, "mmvol：引数の数（%d）が期待（%d - %d）と違います", arg_num, 0, 2); return -1; }
+
+	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
+	if (!n2si_audio_environment_check_alive(arg->state_, se)) { n2e_funcarg_raise(arg, "mmvol：オーディオ環境の初期化に失敗しました"); return -1; }
+	n2s_audio_environment_t* ae = se->audio_environment_;
+	N2_ASSERT(ae);
+
+	const n2_value_t* idval = n2e_funcarg_getoarg(arg, 0);
+	const n2_valint_t id = idval && idval->type_ != N2_VALUE_NIL ? N2_MAX(n2e_funcarg_eval_int(arg, idval), 0) : 0;
+	const int audio_id = n2si_audio_slot_compute_domain_id(N2S_AUDIO_SLOT_DOMAIN_MM, N2_SCAST(int, id));
+
+	const n2_value_t* volval = n2e_funcarg_getoarg(arg, 1);
+	const n2_valint_t vol = volval && volval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, volval) : 0;
+
+	n2s_audio_slot_t* slot = n2si_audio_environment_slot_find(ae, audio_id);
+	if (!slot)
+	{
+		n2e_funcarg_raise(arg, "mmvol：スロット（%" N2_VALINT_PRI "）にまだオーディオがロードされていません。", id);
+		return -1;
+	}
+
+	n2si_audio_environment_lock(ae);
+	{
+		const double dvolume = N2_SCAST(double, vol - -1000) / N2_SCAST(double, 0 - -1000);
+		slot->volume_ = n2s_audio_slot_volume_from_float(dvolume);
+	}
+	n2si_audio_environment_unlock(ae);
+
+	return 0;
+}
+
+static int n2si_bifunc_mmpan(const n2_funcarg_t* arg)
+{
+	const int arg_num = N2_SCAST(int, n2e_funcarg_oargnum(arg));
+	if (arg_num < 0 || arg_num > 2) { n2e_funcarg_raise(arg, "mmpan：引数の数（%d）が期待（%d - %d）と違います", arg_num, 0, 2); return -1; }
+
+	n2s_environment_t* se = arg->fiber_->environment_->standard_environment_;
+	if (!n2si_audio_environment_check_alive(arg->state_, se)) { n2e_funcarg_raise(arg, "mmpan：オーディオ環境の初期化に失敗しました"); return -1; }
+	n2s_audio_environment_t* ae = se->audio_environment_;
+	N2_ASSERT(ae);
+
+	const n2_value_t* idval = n2e_funcarg_getoarg(arg, 0);
+	const n2_valint_t id = idval && idval->type_ != N2_VALUE_NIL ? N2_MAX(n2e_funcarg_eval_int(arg, idval), 0) : 0;
+	const int audio_id = n2si_audio_slot_compute_domain_id(N2S_AUDIO_SLOT_DOMAIN_MM, N2_SCAST(int, id));
+
+	const n2_value_t* panval = n2e_funcarg_getoarg(arg, 1);
+	const n2_valint_t pan = panval && panval->type_ != N2_VALUE_NIL ? n2e_funcarg_eval_int(arg, panval) : 0;
+
+	n2s_audio_slot_t* slot = n2si_audio_environment_slot_find(ae, audio_id);
+	if (!slot)
+	{
+		n2e_funcarg_raise(arg, "mmpan：スロット（%" N2_VALINT_PRI "）にまだオーディオがロードされていません。", id);
+		return -1;
+	}
+
+	n2si_audio_environment_lock(ae);
+	{
+		const double dpan = N2_SCAST(double, pan) / N2_SCAST(double, 1000);
+		slot->pan_ = n2s_audio_slot_pan_from_float(dpan);
+	}
+	n2si_audio_environment_unlock(ae);
+
+	return 0;
+}
+
 #endif// N2_CONFIG_USE_SDL_LIB
 
 static void n2i_environment_bind_standards_builtins(n2_state_t* state, n2_pp_context_t* ppc, n2_environment_t* e)
@@ -32372,6 +34701,13 @@ static void n2i_environment_bind_standards_builtins(n2_state_t* state, n2_pp_con
 			{"input",				n2si_bifunc_input},
 			{"mesbox",				n2si_bifunc_mesbox},
 #endif// N2_CONFIG_USE_GUI_LIB
+			{"mmload",				n2si_bifunc_mmload},
+			{"mmunload",			n2si_bifunc_mmunload},// n2
+			{"mmplay",				n2si_bifunc_mmplay},
+			{"mmstop",				n2si_bifunc_mmstop},
+			{"mmstat",				n2si_bifunc_mmstat},
+			{"mmvol",				n2si_bifunc_mmvol},
+			{"mmpan",				n2si_bifunc_mmpan},
 #endif// N2_CONFIG_USE_SDL_LIB
 			{NULL,					NULL}
 		};
