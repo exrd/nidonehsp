@@ -148,7 +148,7 @@ titleFramePush; タイトルへ
 #if ISDEBUG && 1
 //miniJumpFramePush; ミニジャンプシーンへ
 ;guiTestFramePush; GUIテストシーンへ
-soundTestFramePush; サウンドテストシーンへ
+;soundTestFramePush; サウンドテストシーンへ
 #endif
 frame_push_requested = 0; 強制フェードOFF
 
