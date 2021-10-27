@@ -26064,6 +26064,7 @@ static n2_bool_t n2i_environment_generate_walk(n2_state_t* state, n2_environment
 			const size_t pos_root = n2_opcodearray_size(opcodes);
 			n2_opcodearray_pushv(state, opcodes, N2_OPCODE_IF);
 			n2_opcodearray_pushv(state, opcodes, 0);// dummy FALSE
+			--c->stack_;
 
 			N2_ASSERT(dispatcher->left_);
 			if (!n2i_environment_generate_walk(state, e, dispatcher->left_, c)) { return N2_FALSE; }
@@ -26244,6 +26245,9 @@ static n2_bool_t n2i_environment_generate(n2_state_t* state, n2_environment_t* e
 			}
 			res = N2_FALSE;
 		}
+
+		// スタックチェック
+		N2_ASSERT(c.stack_ <= 0);
 	}
 
 	// 何もないなら 0 だと都合悪いのでとりあえず書いておく
