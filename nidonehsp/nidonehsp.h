@@ -3401,11 +3401,12 @@ N2_DECLARE_TSORTED_ARRAY(int, void, char, n2_varindexmap, N2_API);
 typedef struct n2_vartable_t n2_vartable_t;
 struct n2_vartable_t
 {
+	n2_bool_t case_sensitive_;
 	n2_vararray_t vararray_;
 	n2_varindexmap_t* varindexmap_;
 };
 
-N2_API n2_vartable_t* n2_vartable_alloc(n2_state_t* state, size_t initial_buffer_size, size_t expand_step);
+N2_API n2_vartable_t* n2_vartable_alloc(n2_state_t* state, size_t initial_buffer_size, size_t expand_step, n2_bool_t case_sensitive);
 N2_API void n2_vartable_free(n2_state_t* state, n2_vartable_t* vartable);
 N2_API n2_variable_t* n2_vartable_peek(n2_vartable_t* vartable, int index);
 N2_API const n2_variable_t* n2_vartable_peekc(const n2_vartable_t* vartable, int index);
@@ -5734,6 +5735,9 @@ struct n2_state_config_t
 
 	// 値のキャッシュ数
 	size_t value_cache_size_;// = N2_DEFAULT_VALUE_CACHE_NUM @todo これなくす
+
+	// 変数のケースセンシティブ
+	n2_bool_t variable_case_sensitive_;// = N2_TRUE
 
 	// 変数の最小確保数
 	size_t variable_element_min_num_;// = N2_DEFAULT_VARIABLE_ELEMENT_MIN_NUM

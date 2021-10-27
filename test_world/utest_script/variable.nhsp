@@ -6,6 +6,7 @@ c += "neko" : b -= 6.2 : a *= 3
 a |= 3 : a &= 23 : a ^= 49
 
 if (a != 38) { raise }
+//if (a != A) { raise }// variable name case insensitive
 if (absf(b - 6.3) > 0.01) { raise }
 if (c != "strcneko") { raise }
 if (strlen(c) != 8) { raise }

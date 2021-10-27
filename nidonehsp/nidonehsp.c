@@ -14267,24 +14267,22 @@ static int n2i_varindexmap_name_cmpfunc(const n2_sorted_array_t* a, const void* 
 {
 	N2_UNUSE(key);
 	n2_vartable_t* vartable = N2_RCAST(n2_vartable_t*, a->a_.user_);
-	N2_ASSERT(vartable);
 	const int* lindex = N2_RCAST(const int*, lvarkey);
 	const int* rindex = N2_RCAST(const int*, rvarkey);
 	n2_variable_t* lvar = n2_vararray_peekv(&vartable->vararray_, *lindex, NULL);
 	n2_variable_t* rvar = n2_vararray_peekv(&vartable->vararray_, *rindex, NULL);
 	if (!lvar->name_ || !rvar->name_) { return (lvar->name_ == rvar->name_ ? 0 : lvar->name_ ? 1 : -1); }
-	return N2_STRCMP(lvar->name_, rvar->name_);
+	return vartable->case_sensitive_ ? N2_STRCMP(lvar->name_, rvar->name_) : n2_plstr_cmp_case(lvar->name_, rvar->name_);
 }
 
 static int n2i_varindexmap_name_matchfunc(const n2_sorted_array_t* a, const void* varkey, const void* key)
 {
 	n2_vartable_t* vartable = N2_RCAST(n2_vartable_t*, a->a_.user_);
-	N2_ASSERT(vartable);
 	const int* varindex = N2_RCAST(const int*, varkey);
 	n2_variable_t* var = n2_vararray_peekv(&vartable->vararray_, *varindex, NULL);
 	const char* name = N2_RCAST(const char*, key);
 	if (!var->name_ || !name) { return -1; }
-	return N2_STRCMP(var->name_, name);
+	return vartable->case_sensitive_ ? N2_STRCMP(var->name_, name) : n2_plstr_cmp_case(var->name_, name);
 }
 
 static void n2i_varindexmap_setupfunc(n2_state_t* state, n2_varindexmap_t* varindexmap)
@@ -14311,10 +14309,11 @@ static n2_variable_t** n2i_vartable_findp(n2_vartable_t* vartable, const char* n
 	return n2_vararray_peek(&vartable->vararray_, *index);
 }
 
-N2_API n2_vartable_t* n2_vartable_alloc(n2_state_t* state, size_t initial_buffer_size, size_t expand_step)
+N2_API n2_vartable_t* n2_vartable_alloc(n2_state_t* state, size_t initial_buffer_size, size_t expand_step, n2_bool_t case_sensitive)
 {
 	n2_vartable_t* vartable = N2_TMALLOC(n2_vartable_t, state);
 	if (!vartable) { return vartable; }
+	vartable->case_sensitive_ = case_sensitive;
 	n2_vararray_setup(state, &vartable->vararray_, initial_buffer_size, expand_step);
 	vartable->varindexmap_ = n2_varindexmap_alloc(state, initial_buffer_size, expand_step);
 	n2i_varindexmap_postalloc(state, vartable);
@@ -16570,7 +16569,7 @@ N2_API void n2_modinstance_init(n2_state_t* state, n2_fiber_t* f, n2_module_t* e
 {
 	instance->module_id_ = emodule->module_id_;
 	instance->fiber_ = f;
-	instance->localvars_ = n2_vartable_alloc(state, n2_modlocalvararray_size(emodule->modlocalvars_), 1);
+	instance->localvars_ = n2_vartable_alloc(state, n2_modlocalvararray_size(emodule->modlocalvars_), 1, state->config_.variable_case_sensitive_);
 	for (size_t i = 0; i < n2_modlocalvararray_size(emodule->modlocalvars_); ++i)
 	{
 		const n2_modlocalvar_t* modvar = n2_modlocalvararray_peek(emodule->modlocalvars_, N2_SCAST(int, i));
@@ -24368,7 +24367,7 @@ N2_API n2_environment_t* n2_environment_alloc(n2_state_t* state)
 	e->parsers_ = n2_parserarray_alloc(state, 0, 128);
 	e->asts_ = n2_astarray_alloc(state, 0, 128);
 	e->codeimage_ = n2_codeimage_alloc(state);
-	e->vartable_ = n2_vartable_alloc(state, 128, 128);
+	e->vartable_ = n2_vartable_alloc(state, 128, 128, state->config_.variable_case_sensitive_);
 	e->functable_ = n2_functable_alloc(state, 128, 128);
 	n2_functable_set_symbol_table(e->functable_, state->symtable_);
 	e->labels_ = n2_labelarray_alloc(state, 0, 64);
@@ -26879,6 +26878,8 @@ N2_API void n2_state_config_init_ex(n2_state_config_t* dst_config, size_t flags)
 	dst_config->abort_on_unprotected_error_ = N2_TRUE;
 
 	dst_config->value_cache_size_ = N2_DEFAULT_VALUE_CACHE_NUM;
+
+	dst_config->variable_case_sensitive_ = N2_TRUE;
 
 	dst_config->variable_element_min_num_ = N2_DEFAULT_VARIABLE_ELEMENT_MIN_NUM;
 	dst_config->variable_str_element_min_num_ = N2_DEFAULT_VARIABLE_STR_ELEMENT_MIN_NUM;
