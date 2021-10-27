@@ -328,7 +328,9 @@
 #endif
 
 // その他
-#define N2SI_SDL_INIT_SYSTEM_FLAGS \
+#define N2SI_SDL_INIT_SYSTEM_CORE_FLAGS \
+	(SDL_INIT_TIMER | SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS)
+#define N2SI_SDL_INIT_SYSTEM_ALL_FLAGS \
 	(SDL_INIT_TIMER | SDL_INIT_AUDIO | SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS)
 
 // 隠しコンフィグ
@@ -22128,6 +22130,7 @@ struct n2s_audio_environment_t
 	n2_audio_buffer_t mix_audio_buffers_[2];
 
 #if N2_CONFIG_USE_SDL_LIB
+	n2_bool_t audio_subsystem_init_;
 	SDL_AudioDeviceID audio_device_id_;// 0 for invlid
 	SDL_AudioSpec audio_spec_;
 	SDL_AudioSpec audio_spec_desired_;
@@ -22370,9 +22373,17 @@ static n2s_audio_environment_t* n2si_audio_environment_alloc(n2_state_t* state)
 	for (size_t i = 0; i < N2_ARRAYDIM(ae->mix_audio_buffers_); ++i) { n2_audio_buffer_init(&ae->mix_audio_buffers_[i]); }
 
 #if N2_CONFIG_USE_SDL_LIB
+	ae->audio_subsystem_init_ = N2_FALSE;
 	ae->audio_device_id_ = 0;
 	N2_MEMSET(&ae->audio_spec_, 0, sizeof(ae->audio_spec_));
 	N2_MEMSET(&ae->audio_spec_desired_, 0, sizeof(ae->audio_spec_desired_));
+
+	if (SDL_InitSubSystem(SDL_INIT_AUDIO))
+	{
+		n2si_audio_environment_free(state, ae);
+		ae->audio_subsystem_init_ = N2_TRUE;
+		return NULL;
+	}
 
 	ae->audio_spec_desired_.freq = N2_SCAST(int, state->config_.standard_audio_device_sample_rate_);
 	ae->audio_spec_desired_.format = AUDIO_S16;// fallback default
@@ -22422,6 +22433,12 @@ static void n2si_audio_environment_free(n2_state_t* state, n2s_audio_environment
 			N2_ASSERT(as);
 			n2si_audio_source_teardown(state, as);
 		}
+	}
+
+	if (ae->audio_subsystem_init_)
+	{
+		SDL_QuitSubSystem(SDL_INIT_AUDIO);
+		ae->audio_subsystem_init_ = N2_FALSE;
 	}
 #endif
 
@@ -22565,14 +22582,14 @@ static n2s_environment_t* n2si_environment_alloc(n2_state_t* state, const char**
 	n2_bool_t init_success = N2_FALSE;
 	if (state->config_.standard_init_sdl_with_subsystem_)
 	{
-		if (SDL_InitSubSystem(N2SI_SDL_INIT_SYSTEM_FLAGS) == 0)
+		if (SDL_InitSubSystem(N2SI_SDL_INIT_SYSTEM_CORE_FLAGS) == 0)
 		{
 			init_success = N2_TRUE;
 		}
 	}
 	else
 	{
-		if (SDL_Init(N2SI_SDL_INIT_SYSTEM_FLAGS) == 0)
+		if (SDL_Init(N2SI_SDL_INIT_SYSTEM_CORE_FLAGS) == 0)
 		{
 			init_success = N2_TRUE;
 		}
@@ -23002,7 +23019,7 @@ static void n2si_environment_free(n2_state_t* state, n2s_environment_t* se)
 #if N2_CONFIG_USE_SDL_LIB
 	if (state->config_.standard_init_sdl_with_subsystem_)
 	{
-		SDL_QuitSubSystem(N2SI_SDL_INIT_SYSTEM_FLAGS);
+		SDL_QuitSubSystem(N2SI_SDL_INIT_SYSTEM_CORE_FLAGS);
 	}
 	else
 	{

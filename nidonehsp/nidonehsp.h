@@ -5262,6 +5262,9 @@ struct n2s_audio_slot_t
 	size_t read_sample_frame_cursor_;
 	int volume_;
 	int pan_;
+
+	// @todo pseudo 3d audio
+	//n2_fvec3_t position_;
 };
 
 N2_DECLARE_TSORTED_ARRAY(n2s_audio_slot_t, int, int, n2s_audio_slotset, N2_API);
