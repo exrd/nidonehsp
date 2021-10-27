@@ -1855,6 +1855,7 @@ N2_API const uint8_t* n2h_binseq_magic(size_t* dst_size);
 
 N2_API n2_bool_t n2h_binseq_verify(const void* src, size_t src_size);
 N2_API n2_bool_t n2h_binseq_get_header(n2h_binseq_header_t* dst, const void* src, size_t src_size);
+N2_API n2_bool_t n2h_binseq_decode(const n2h_binseq_header_t* header, void* payload, size_t payload_size);
 
 N2_API size_t n2h_binseq_write_signature(void* dst, const n2h_binseq_header_t* header);
 

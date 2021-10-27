@@ -129,17 +129,8 @@ static n2_buffer_t extract_embed_binary(n2_state_t* state, void** embed_base, si
 				void* payload = n2_ptr_offset(binseq_head, binsigsize);
 				const size_t payload_size = binheader.size_;
 
-				// unscratch
-				if (binheader.flags_ & N2H_BINSEQ_FLAG_SCRATCHED)
-				{
-					N2RI_DPRINT("unscratch=%lld\n", binheader.scratch_key_);
-					n2h_random_scratch(payload, payload_size, binheader.scratch_key_);
-				}
-
-				// crc check
-				const uint32_t check = n2h_crc32(payload, payload_size);
-				if (check != binheader.check_) { continue; }
-				N2RI_DPRINT("passed crc check=%u\n", binheader.check_);
+				// decode
+				if (!n2h_binseq_decode(&binheader, payload, payload_size)) { continue; }
 
 				// OK
 				*embed_base = payload;

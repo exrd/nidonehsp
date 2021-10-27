@@ -11,6 +11,7 @@
 #pack "Stick-Regular.ttf"
 #pack "Advertime.mp3"
 #pack "And Just Like That.mp3"
+#pack "Advertime.ogg"
 
 // 定数とマクロ
 #if defined(__debug__) || 0

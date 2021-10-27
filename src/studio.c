@@ -1022,6 +1022,7 @@ int main(int argc, char* argv[])
 				n2_str_teardown(state, &relpath);
 
 				opts.export_runtime_root_ = "../runtime";
+				//opts.startup_binary_ = "./n2bin";
 			}
 #endif
 
@@ -1039,7 +1040,34 @@ int main(int argc, char* argv[])
 				n2_buffer_t ebin = n2ri_load_raw_file(state, &startup_binary_str);
 				n2_str_teardown(state, &startup_binary_str);
 
-				n2h_msgpack_element_t* ebinsys = n2h_msgpack_parse(state, ebin.data_, ebin.size_);
+				// 先頭チェック
+				const void* uebin = ebin.data_;
+				size_t uebin_size = ebin.size_;
+
+				if (uebin && uebin_size > sizeof(n2ri_embed_binary_head) && memcmp(uebin, n2ri_embed_binary_head, sizeof(n2ri_embed_binary_head)) == 0)
+				{
+					uebin = n2_cptr_offset(uebin, sizeof(n2ri_embed_binary_head));
+					uebin_size -= sizeof(n2ri_embed_binary_head);
+				}
+
+				if (uebin && uebin_size > 0)
+				{
+					n2h_binseq_header_t binheader;
+					if (n2h_binseq_get_header(&binheader, uebin, uebin_size))
+					{
+						void* payload = n2_ptr_offset(uebin, n2h_binseq_signature_size());
+						const size_t payload_size = uebin_size - n2h_binseq_signature_size();
+
+						// decode
+						if (n2h_binseq_decode(&binheader, payload, payload_size))
+						{
+							uebin = payload;
+							uebin_size = binheader.size_;
+						}
+					}
+				}
+
+				n2h_msgpack_element_t* ebinsys = n2h_msgpack_parse(state, uebin, uebin_size);
 				if (!ebinsys || ebinsys->type_ != N2H_MSGPACK_TYPE_MAP)
 				{
 					n2ai_show_error(&opts, "スタートアップバイナリ（%s）が読み込めません。", opts.startup_binary_);
@@ -1051,6 +1079,8 @@ int main(int argc, char* argv[])
 					n2ai_show_error(&opts, "不正なスタートアップバイナリ（%s）です。", opts.startup_binary_);
 					exit(n2ri_error_exit_code);
 				}
+
+				state->config_.enable_error_include_push_ = N2_FALSE;// プリプロセス済みのファイルを扱うのでエラーなし
 			}
 			else
 			{
@@ -1077,7 +1107,7 @@ int main(int argc, char* argv[])
 			n2_str_init(&n2ai_state_print_error_merged);
 			n2ai_state_print_errors = n2_plstrarray_alloc(state, 16, 16);
 
-			const n2_bool_t load_succeeded = n2_state_load_str(state, NULL, script.str_, n2_str_compute_size(&script), opts.startup_binary_ ? NULL : opts.startup_script_);
+			const n2_bool_t load_succeeded = n2_state_load_str(state, "main", script.str_, n2_str_compute_size(&script), opts.startup_binary_ ? NULL : opts.startup_script_);
 
 			if (!load_succeeded)
 			{
@@ -1098,7 +1128,8 @@ int main(int argc, char* argv[])
 			case MODE_PREVIEW:
 				{
 					// プレビュー実行
-#if N2RI_DEBUG
+#if N2RI_DEBUG && 0
+					//n2_ast_node_dump(state, n2_astarray_peekv(state->environment_->asts_, 0, NULL), N2_FALSE);
 					//n2_codeimage_dump(state, state->environment_->codeimage_, state->environment_, N2_CODEIMAGE_DUMP_DEFAULT);
 #endif
 

@@ -1679,6 +1679,7 @@ N2_API char* n2_plstr_clone_size(n2_state_t* state, const char* s, size_t l)
 
 N2_API char* n2_plstr_clone(n2_state_t* state, const char* s)
 {
+	if (!s) { return n2_plstr_clone_size(state, "", 0); }
 	return n2_plstr_clone_size(state, s, N2_STRLEN(s));
 }
 
@@ -3981,7 +3982,7 @@ N2_API int n2h_rpmalloc_initialized_count()
 
 N2_API void* n2h_rpmalloc_alloc(size_t size)
 {
-	rpmalloc_thread_initialize();
+	rpmalloc_thread_initialize();// @todo より軽い方法があるなら、それを模索するべき、毎回は重い
 	return rpmalloc(size);
 }
 
@@ -4675,6 +4676,24 @@ N2_API n2_bool_t n2h_binseq_get_header(n2h_binseq_header_t* dst, const void* src
 		dst->scratch_key_ = n2_ptr_read64(n2_cptr_offset(header_base, offsetof(n2h_binseq_header_t, scratch_key_)));
 		dst->check_ = n2_ptr_read32(n2_cptr_offset(header_base, offsetof(n2h_binseq_header_t, check_)));
 	}
+	return N2_TRUE;
+}
+
+N2_API n2_bool_t n2h_binseq_decode(const n2h_binseq_header_t* header, void* payload, size_t payload_size)
+{
+	if (!header || !payload) { return N2_FALSE; }
+	if (payload_size < header->size_) { return N2_FALSE; }
+
+	// unscratch
+	if (header->flags_ & N2H_BINSEQ_FLAG_SCRATCHED)
+	{
+		n2h_random_scratch(payload, payload_size, header->scratch_key_);
+	}
+
+	// crc check
+	const uint32_t check = n2h_crc32(payload, payload_size);
+	if (check != header->check_) { return N2_FALSE;; }
+
 	return N2_TRUE;
 }
 
