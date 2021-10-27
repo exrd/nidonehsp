@@ -2000,6 +2000,12 @@ N2_API n2_bool_t n2h_audio_ogg_read(n2_state_t* state, n2_audio_buffer_t* dst, c
 N2_API n2_bool_t n2h_audio_ogg_write(n2_state_t* state, n2_buffer_t* dst, const n2_audio_buffer_t* src);
 #endif
 
+#if N2_CONFIG_USE_AUDIO_FLAC_LIB
+N2_API n2_bool_t n2h_audio_flac_is_readable_format(const n2_audio_read_config_t* config, n2_bool_t strict);
+N2_API n2_bool_t n2h_audio_flac_read(n2_state_t* state, n2_audio_buffer_t* dst, const void* src, size_t src_size, const n2_audio_read_config_t* config);
+N2_API n2_bool_t n2h_audio_flac_write(n2_state_t* state, n2_buffer_t* dst, const n2_audio_buffer_t* src);
+#endif
+
 N2_API n2_bool_t n2h_audio_read(n2_state_t* state, n2_audio_buffer_t* dst, const void* src, size_t src_size, const n2_audio_read_config_t* config);
 
 // 暗号化
@@ -6006,7 +6012,6 @@ N2_API int n2e_funcarg_callfunc(const n2_funcarg_t* arg, const n2_func_t* func, 
 		glTF対応
 	・Swizzleを使ったテクスチャメモリ削減
 		煩雑性が高いのでしばらく後か？
-	・モジュール変数のメンバ呼び出し
 	・インスペクタ
 	・AMD64 ABI
 		System V
@@ -6022,7 +6027,6 @@ N2_API int n2e_funcarg_callfunc(const n2_funcarg_t* arg, const n2_func_t* func, 
 	近々々
 	・VS開発環境
 	・GUIのユニットテスト
-	・サウンド
 =============================================================================*/
 
 #endif/*N2_HEADER_INCLUDE_GUARD*/

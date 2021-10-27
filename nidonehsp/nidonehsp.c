@@ -6315,6 +6315,120 @@ N2_API n2_bool_t n2h_audio_ogg_write(n2_state_t* state, n2_buffer_t* dst, const 
 
 #endif
 
+#if N2_CONFIG_USE_AUDIO_FLAC_LIB
+
+static void* n2hi_audio_flac_allocator_alloc(size_t size, void* user_data)
+{
+	return n2_xmalloc(N2_RCAST(n2_state_t*, user_data), size);
+}
+static void* n2hi_audio_flac_allocator_realloc(void* p, size_t size, void* user_data)
+{
+	return n2_xrealloc(N2_RCAST(n2_state_t*, user_data), size, p);
+}
+static void n2hi_audio_flac_allocator_free(void* p, void* user_data)
+{
+	n2_xfree(N2_RCAST(n2_state_t*, user_data), p);
+}
+static void n2hi_audio_flac_init_allocator(n2_state_t* state, drflac_allocation_callbacks* callbacks)
+{
+	callbacks->onMalloc = n2hi_audio_flac_allocator_alloc;
+	callbacks->onRealloc = n2hi_audio_flac_allocator_realloc;
+	callbacks->onFree = n2hi_audio_flac_allocator_free;
+	callbacks->pUserData = state;
+}
+
+N2_API n2_bool_t n2h_audio_flac_is_readable_format(const n2_audio_read_config_t* config, n2_bool_t strict)
+{
+	N2_ASSERT(config);
+	if (!config) { return N2_FALSE; }
+
+	N2_UNUSE(strict);
+	switch (config->format_config_.sample_type_)
+	{
+	case N2_AUDIO_SAMPLE_TYPE_FLOAT:
+		return config->format_config_.bits_per_sample_ == 32;// @todo half float
+	case N2_AUDIO_SAMPLE_TYPE_SIGNED_INT:
+		return config->format_config_.bits_per_sample_ == 16 || config->format_config_.bits_per_sample_ == 32;
+	default:
+		break;
+	}
+	return N2_FALSE;
+}
+
+N2_API n2_bool_t n2h_audio_flac_read(n2_state_t* state, n2_audio_buffer_t* dst, const void* src, size_t src_size, const n2_audio_read_config_t* config)
+{
+	n2_audio_read_config_t dconfig;
+	if (!config) { n2_audio_read_config_init(&dconfig); config = &dconfig; }
+	if (!n2h_audio_flac_is_readable_format(config, N2_FALSE)) { return N2_FALSE; }
+
+	drflac_allocation_callbacks callbacks;
+	n2hi_audio_flac_init_allocator(state, &callbacks);
+
+	drflac* flacfile = drflac_open_memory(src, src_size, &callbacks);	
+	if (!flacfile) { return N2_FALSE; }
+
+	n2_bool_t succeeded = N2_FALSE;
+
+	n2_audio_buffer_teardown(state, dst);
+	dst->channel_num_ = flacfile->channels;
+	dst->sample_rate_ = flacfile->sampleRate;
+	dst->sample_type_ = config->format_config_.sample_type_;
+	dst->bits_per_sample_ = config->format_config_.bits_per_sample_;
+	dst->sample_frame_num_ = N2_SCAST(size_t, flacfile->totalPCMFrameCount);
+
+	if (dst->sample_frame_num_ > 0 && n2_audio_buffer_prepare_buffer(state, dst))
+	{
+		// コンバートよう
+		n2_audio_format_config_t format_config;
+		n2_audio_format_config_init(&format_config);
+		n2_audio_format_config_t* do_format_config = NULL;
+
+		void* dst_data = dst->buffer_.data_;
+
+		switch (config->format_config_.sample_type_)
+		{
+		case N2_AUDIO_SAMPLE_TYPE_FLOAT:
+			if (config->format_config_.bits_per_sample_ == 32) { dst->sample_frame_num_ = N2_SCAST(size_t, drflac_read_pcm_frames_f32(flacfile, dst->sample_frame_num_, N2_RCAST(float*, dst_data))); }
+			break;
+		case N2_AUDIO_SAMPLE_TYPE_SIGNED_INT:
+			switch (config->format_config_.bits_per_sample_)
+			{
+			case 16: dst->sample_frame_num_ = N2_SCAST(size_t, drflac_read_pcm_frames_s16(flacfile, dst->sample_frame_num_, N2_RCAST(int16_t*, dst_data))); break;
+			case 32: dst->sample_frame_num_ = N2_SCAST(size_t, drflac_read_pcm_frames_s32(flacfile, dst->sample_frame_num_, N2_RCAST(int32_t*, dst_data))); break;
+			default: break;
+			}
+			break;
+		default:
+			dst->sample_frame_num_ = 0;
+			break;
+		}
+
+		if (dst->sample_frame_num_ > 0 && do_format_config)
+		{
+			if (!n2_audio_buffer_convert_inplace(state, dst, do_format_config)) { dst->sample_frame_num_ = 0; }
+		}
+		if (dst->sample_frame_num_ > 0) { succeeded = N2_TRUE; }
+	}
+
+	drflac_close(flacfile);
+	flacfile = NULL;
+
+	if (succeeded) { n2_audio_buffer_update_buffersize(dst); }
+	else { n2_audio_buffer_teardown(state, dst); }
+	return succeeded;
+}
+
+N2_API n2_bool_t n2h_audio_flac_write(n2_state_t* state, n2_buffer_t* dst, const n2_audio_buffer_t* src)
+{
+	N2_UNUSE(state);
+	N2_UNUSE(dst);
+	N2_UNUSE(src);
+	// @todo
+	return N2_FALSE;
+}
+
+#endif
+
 N2_API n2_bool_t n2h_audio_read(n2_state_t* state, n2_audio_buffer_t* dst, const void* src, size_t src_size, const n2_audio_read_config_t* config)
 {
 	N2_UNUSE(state);
@@ -6336,6 +6450,11 @@ N2_API n2_bool_t n2h_audio_read(n2_state_t* state, n2_audio_buffer_t* dst, const
 	// ogg
 #if N2_CONFIG_USE_AUDIO_OGG_LIB
 	if (n2h_audio_ogg_read(state, dst, src, src_size, config)) { return N2_TRUE; }
+#endif
+
+	// flac
+#if N2_CONFIG_USE_AUDIO_FLAC_LIB
+	if (n2h_audio_flac_read(state, dst, src, src_size, config)) { return N2_TRUE; }
 #endif
 
 	return N2_FALSE;
