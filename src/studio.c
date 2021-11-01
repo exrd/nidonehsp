@@ -535,7 +535,7 @@ int main(int argc, char* argv[])
 	opts.define_macros_ = n2ai_define_macros;
 
 	// テスト用
-#if N2RI_DEBUG
+#if N2RI_DEBUG && 0
 	{
 		//opts.startup_script_ = "../demo/main.nhsp";
 

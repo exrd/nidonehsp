@@ -171,6 +171,11 @@
 #define N2_CONFIG_USE_NET_SOCKET_LIB			(0)
 #endif
 
+// inetを有効化
+#ifndef N2_CONFIG_USE_NET_INET_LIB
+#define N2_CONFIG_USE_NET_INET_LIB				(0)
+#endif
+
 // sdlを使う
 #ifndef N2_CONFIG_USE_SDL_LIB
 #define N2_CONFIG_USE_SDL_LIB					(0)
@@ -2657,6 +2662,41 @@ struct n2h_socket_t
 
 N2_API n2h_socket_t* n2h_socket_server_alloc(n2_state_t* state, int port);
 N2_API void n2h_socket_free(n2_state_t* state, n2h_socket_t* socket);
+#endif
+
+#if N2_CONFIG_USE_NET_INET_LIB && 0// @todo
+// @todo handling uri
+
+typedef struct n2h_inet_environment_config_t n2h_inet_environment_config_t;
+struct n2h_inet_environment_config_t
+{
+	n2_str_t agent_name_;
+};
+N2_API void n2h_inet_environment_config_init(n2h_inet_environment_config_t* config);
+N2_API void n2h_inet_environment_config_teardown(n2_state_t* state, n2h_inet_environment_config_t* config);
+N2_API void n2h_inet_environment_config_copy_to(n2_state_t* state, n2h_inet_environment_config_t* dst, const n2h_inet_environment_config_t* src);
+
+typedef struct n2h_inet_environment_t n2h_inet_environment_t;
+struct n2h_inet_environment_t
+{
+	int dummy_;
+};
+
+N2_API n2h_inet_environment_t* n2h_inet_environment_alloc(n2_state_t* state);
+N2_API void n2h_inet_environment_free(n2_state_t* state, n2h_inet_environment_t* ie);
+
+typedef struct n2h_inet_request_t n2h_inet_request_t;
+struct n2h_inet_request_t
+{
+	int dummy_;
+};
+
+typedef struct n2h_inet_context_t n2h_inet_context_t;
+struct n2h_inet_context_t
+{
+	int dummy_;
+};
+
 #endif
 
 //=============================================================================

@@ -33641,7 +33641,7 @@ static int n2si_bifunc_stick(const n2_funcarg_t* arg)
 
 	n2_value_t setval;
 	n2i_value_init(&setval);
-	n2_value_seti(arg->state_, &setval, N2_SCAST(n2_valint_t, (sticks ^ se->stick_last_)/*keytrigs*/ | (sticks & N2_SCAST(uint32_t, ntrigkey))/*pressing*/));
+	n2_value_seti(arg->state_, &setval, N2_SCAST(n2_valint_t, (sticks ^ se->stick_last_ & sticks)/*keytrigs*/ | (sticks & N2_SCAST(uint32_t, ntrigkey))/*pressing*/));
 	n2_variable_set(arg->state_, arg->fiber_, var, aptr, &setval);
 	n2i_value_teardown(arg->state_, &setval);
 

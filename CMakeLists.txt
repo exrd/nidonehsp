@@ -39,7 +39,8 @@ option(N2_SUPPORT_FONT "Enable Font(stb_rect_pack.h/stb_truetype.h)" ON)
 option(N2_SUPPORT_Z "Enable Z Compression & Zip(miniz.h)" ON)
 option(N2_SUPPORT_ULZ "Enable ULZ Compression(ulz.h)" ON)
 option(N2_SUPPORT_JSON "Enable Json(json.h)" ON)
-option(N2_SUPPORT_CP932 "Enable cp932" ON)
+option(N2_SUPPORT_CP932 "Enable cp932 Encoding" ON)
+option(N2_SUPPORT_INET "Enable inet" ON)
 option(N2_ENABLE_STANDARD "Enable nidonehsp Standard Features" ON)
 
 option(N2_BUILD_TYPE_RELEASE "Release Build Type" N2_BUILD_TYPE_RELEASE_DEFAULT)
@@ -206,6 +207,7 @@ function(n2_set_app_common target)
 	target_compile_definitions(${target} PUBLIC N2_CONFIG_USE_MD5_LIB=$<BOOL:${N2_SUPPORT_MD5}>)
 	target_compile_definitions(${target} PUBLIC N2_CONFIG_USE_AES_LIB=$<BOOL:${N2_SUPPORT_AES}>)
 	target_compile_definitions(${target} PUBLIC N2_CONFIG_USE_ENCODING_CP932=$<BOOL:${N2_SUPPORT_CP932}>)
+	target_compile_definitions(${target} PUBLIC N2_CONFIG_USE_NET_INET_LIB=$<BOOL:${N2_SUPPORT_INET}>)
 	target_compile_definitions(${target} PUBLIC N2_CONFIG_USE_N2_STANDARD=$<BOOL:${N2_ENABLE_STANDARD}>)
 
 	target_compile_definitions(${target} PUBLIC N2_CONFIG_HINT_RELEASE_BUILD=$<BOOL:${N2_BUILD_TYPE_RELEASE}>)
@@ -278,9 +280,18 @@ endif()
 # as lib
 #================================
 if(N2_BUILD_AS_LIB)
+	add_library(n2lib STATIC ${NIDONEHSP_COMMON_SRC})
+
 	n2_set_app_common(n2lib)
 
-	add_library(n2lib STATIC ${NIDONEHSP_COMMON_SRC})
+	target_compile_definitions(n2lib PUBLIC N2R_CONFIG_RUNTIME_STANDARD=1)
+	target_compile_definitions(n2lib PUBLIC N2_CONFIG_USE_DEBUGGING=0)
+	target_compile_definitions(n2lib PUBLIC N2_CONFIG_USE_PROFILING=0)
+
+	if(N2_BUILD_TYPE_RELEASE)
+		# manually disable assertion
+		target_compile_definitions(n2lib PUBLIC N2_CONFIG_USE_ASSERT=0)
+	endif()
 
 	if(N2_BUILD_SDL)
 		target_include_directories(

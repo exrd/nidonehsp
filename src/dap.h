@@ -1014,24 +1014,32 @@ static void n2ri_dap_push_variable_content(n2_state_t* s, n2_str_t* t, n2r_dap_t
 				n2_fiber_t* f = debugvar->v_.funcarg_.fiber_;
 				const n2_func_t* func = NULL;
 				int argbase = -1;
+				int ordered_arg_num = 0;
+				int keyworded_arg_num = 0;
 				if (debugvar->v_.funcarg_.callframe_index_ < 0)
 				{
 					func = f->callstate_.func_;
 					argbase = f->callstate_.base_;
+					ordered_arg_num = f->callstate_.ordered_arg_num_;
+					keyworded_arg_num = f->callstate_.keyworded_arg_num_;
 				}
 				else
 				{
 					n2_callframe_t* cf = n2_callframearray_peek(f->callframes_, debugvar->v_.funcarg_.callframe_index_);
 					func = cf ? cf->caller_function_ : NULL;
 					argbase = cf ? cf->base_ : -1;
+					ordered_arg_num = cf ? cf->ordered_arg_num_ : 0;
+					keyworded_arg_num = cf ? cf->keyworded_arg_num_ : 0;
 				}
 				const n2_funcparamarray_t* funcparamarray = NULL;
 				if (func) { funcparamarray = is_keyworded_arg ? func->keyworded_params_ : func->ordered_params_; }
 				const int arg_index = debugvar->v_.funcarg_.arg_index_;
 				const n2_func_param_t* funcparam = funcparamarray ? n2_funcparamarray_peekc(funcparamarray, arg_index) : NULL;
-				if (func && argbase >= 0)
+				const n2_bool_t is_valid_arg = arg_index < (is_keyworded_arg ? keyworded_arg_num : ordered_arg_num);
+				if (func && argbase >= 0 && is_valid_arg)
 				{
-					const n2_value_t* argvalue = n2_valuearray_peekv(f->values_, argbase + funcparam->stack_index_, NULL);
+					const int stack_index = funcparam ? funcparam->stack_index_ : (is_keyworded_arg ? ordered_arg_num + arg_index * 2 + 1/*variadic keyworded args*/ : arg_index);
+					const n2_value_t* argvalue = n2_valuearray_peekv(f->values_, argbase + stack_index, NULL);
 					if (argvalue)
 					{
 						n2_str_append_fmt(s, t, "\"name\": ");
