@@ -22082,6 +22082,14 @@ static void n2si_audio_slot_teardown(n2_state_t* state, n2s_audio_slot_t* slot)
 	N2_UNUSE(slot);
 }
 
+N2_API void n2s_audio_slot_update_setting_from_mmmode(n2s_audio_slot_t* slot)
+{
+	if (slot->domain_ == N2S_AUDIO_SLOT_DOMAIN_MM)
+	{
+		slot->loop_ = N2_TOBOOL(slot->mm_mode_ & 1);
+	}
+}
+
 static int n2si_audio_slotset_cmpfunc(const n2_sorted_array_t* a, const void* lkey, const void* rkey, const void* key)
 {
 	N2_UNUSE(a);
@@ -34415,6 +34423,8 @@ static int n2si_bifunc_mmload(const n2_funcarg_t* arg)
 
 	slot->domain_ = N2S_AUDIO_SLOT_DOMAIN_MM;
 	slot->mm_mode_ = N2_SCAST(int, mode);
+	//slot->read_sample_frame_cursor_ = slot->source_->buffer_.sample_frame_num_ * 9 / 10;// テスト用
+	n2s_audio_slot_update_setting_from_mmmode(slot);
 
 	n2e_funcarg_pushi(arg, id);
 	return 1;
@@ -34434,7 +34444,7 @@ static int n2si_bifunc_mmunload(const n2_funcarg_t* arg)
 	const n2_valint_t id = idval && idval->type_ != N2_VALUE_NIL ? N2_MAX(n2e_funcarg_eval_int(arg, idval), 0) : 0;
 	const int audio_id = n2si_audio_slot_compute_domain_id(N2S_AUDIO_SLOT_DOMAIN_MM, N2_SCAST(int, id));
 
-	const n2_bool_t erased = n2si_audio_environment_slot_erase(arg->state_, ae, audio_id);
+	const n2_bool_t erased = audio_id >= 0 ? n2si_audio_environment_slot_erase(arg->state_, ae, audio_id) : N2_FALSE;
 	n2e_funcarg_pushi(arg, erased ? 1 : 0);
 	return 1;
 }
@@ -34468,6 +34478,7 @@ static int n2si_bifunc_mmplay(const n2_funcarg_t* arg)
 	n2si_audio_environment_lock(ae);
 	{
 		slot->playing_ = N2_TRUE;
+		slot->read_sample_frame_cursor_ = 0;
 	}
 	n2si_audio_environment_unlock(ae);
 

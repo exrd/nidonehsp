@@ -5308,6 +5308,8 @@ struct n2s_audio_slot_t
 	//n2_fvec3_t position_;
 };
 
+N2_API void n2s_audio_slot_update_setting_from_mmmode(n2s_audio_slot_t* slot);
+
 N2_DECLARE_TSORTED_ARRAY(n2s_audio_slot_t, int, int, n2s_audio_slotset, N2_API);
 
 typedef struct n2s_audio_environment_t n2s_audio_environment_t;

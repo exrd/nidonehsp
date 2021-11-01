@@ -1041,12 +1041,12 @@ int main(int argc, char* argv[])
 				n2_str_teardown(state, &startup_binary_str);
 
 				// 先頭チェック
-				const void* uebin = ebin.data_;
+				void* uebin = ebin.data_;
 				size_t uebin_size = ebin.size_;
 
 				if (uebin && uebin_size > sizeof(n2ri_embed_binary_head) && memcmp(uebin, n2ri_embed_binary_head, sizeof(n2ri_embed_binary_head)) == 0)
 				{
-					uebin = n2_cptr_offset(uebin, sizeof(n2ri_embed_binary_head));
+					uebin = n2_ptr_offset(uebin, sizeof(n2ri_embed_binary_head));
 					uebin_size -= sizeof(n2ri_embed_binary_head);
 				}
 
