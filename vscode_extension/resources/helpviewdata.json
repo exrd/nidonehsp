@@ -7092,6 +7092,213 @@
 			]
 		},
 
+		"mmload": {
+			"type": "function",
+			"summary": "オーディオファイルの読み込み",
+			"group": ["standard"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "filename",
+					"description": "読み込むオーディオファイルパス"
+				},
+				{
+					"name": "slotIndex",
+					"description": "読み込むスロット",
+					"omitted": "0",
+					"limit": "0 ～"
+				},
+				{
+					"name": "mode",
+					"description": "モード",
+					"omitted": "0"
+				}
+			],
+			"description": [
+				"オーディオファイルを指定したスロットに読み込みます。",
+				"",
+				"オーディオファイルとして読み込みがサポートされている形式は`.wav`、`.mp3`、`.ogg`です。",
+				"※拡張によってこれ以外の形式がサポートされることもあります。",
+				"",
+				"スロットにオーディオを読み込んだ後は、$ref(mmplay)や$ref(mmstop)によって再生や停止を行うことができます。",
+				"",
+				"モードに指定できる値は次の表の通りです。$",
+				"$",
+				"|mode|内容|$",
+				"|:--|:--|$",
+				"|1|ループ再生を行います|$",
+				"$",
+				"この命令は戻り値として、"
+			],
+			"relationGroup": [
+				"stdAudioCommon"
+			]
+		},
+		"mmunload": {
+			"type": "function",
+			"summary": "オーディオスロットの破棄",
+			"group": ["standard"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "slotIndex",
+					"description": "破棄するスロット",
+					"omitted": "0",
+					"limit": "0 ～"
+				}
+			],
+			"description": [
+				"指定したオーディオスロットを破棄します。",
+				"正常にオーディオスロットを破棄できた場合`1`を、そうでない場合`0`を返します。",
+				"オーディオスロットにオーディオが読み込まれてない場合にもエラーにはなりません（`0`が返ります）"
+			],
+			"relationGroup": [
+				"stdAudioCommon"
+			]
+		},
+		"mmplay": {
+			"type": "function",
+			"summary": "オーディオスロットの再生",
+			"group": ["standard"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "slotIndex",
+					"description": "再生するスロット",
+					"omitted": "0",
+					"limit": "0 ～"
+				}
+			],
+			"description": [
+				"指定したオーディオスロットを再生します。",
+				"再生時のモードは$ref(mmload)で指定されたモードが使用されます。",
+				"オーディオスロットにオーディオが読み込まれてない場合エラーになります。"
+			],
+			"relationGroup": [
+				"stdAudioCommon"
+			]
+		},
+		"mmstop": {
+			"type": "function",
+			"summary": "オーディオスロットの停止",
+			"group": ["standard"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "slotIndex",
+					"description": "停止するスロット",
+					"omitted": "-1"
+				}
+			],
+			"description": [
+				"指定したオーディオスロットを停止（再生を停止し、再生位置を先頭に巻き戻す）します。",
+				"オーディオスロットにオーディオが読み込まれてない場合エラーになります。",
+				"また特殊な動作として、`slotIndex`に負の値を指定した場合、読み込まれている全てのオーディオスロットの再生を停止します。"
+			],
+			"relationGroup": [
+				"stdAudioCommon"
+			]
+		},
+		"mmstat": {
+			"type": "function",
+			"summary": "オーディオスロットの状態取得",
+			"group": ["standard"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "var",
+					"description": "状態を格納する変数"
+				},
+				{
+					"name": "slotIndex",
+					"description": "状態取得するスロット",
+					"omitted": "0"
+				},
+				{
+					"name": "mode",
+					"description": "状態取得するモード",
+					"omitted": "0"
+				}
+			],
+			"description": [
+				"指定したオーディオスロットの状態を取得し、`var`に格納します。",
+				"オーディオスロットにオーディオが読み込まれてない場合エラーになります。",
+				"",
+				"状態取得するモードと値は次の表のとおりです。$",
+				"$",
+				"|mode|内容|$",
+				"|:--|:--|$",
+				"|0|$ref(mmload)で指定したモード値|$",
+				"|1|$ref(mmvol)で指定したボリューム|$",
+				"|2|$ref(mmpan)で指定したパン|$",
+				"|16|再生状態（再生中なら`1`、停止中なら`0`）|$",
+				"|`0x100`|再生位置（実数値）[sec]|$",
+				"|`0x101`|オーディオの長さ（自数値）[sec]|$",
+				"$",
+				""
+			],
+			"relationGroup": [
+				"stdAudioCommon"
+			]
+		},
+		"mmvol": {
+			"type": "function",
+			"summary": "オーディオスロットのボリューム設定",
+			"group": ["standard"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "slotIndex",
+					"description": "ボリューム設定するスロット",
+					"omitted": "0"
+				},
+				{
+					"name": "volume",
+					"description": "設定するボリューム",
+					"omitted": "0",
+					"limit": "[-1000, 0]"
+				}
+			],
+			"description": [
+				"指定したオーディオスロットのボリュームを設定します。",
+				"オーディオスロットにオーディオが読み込まれてない場合エラーになります。",
+				"",
+				"ボリュームの値は`-1000`（無音）から`0`（減衰なし）を指定します。"
+			],
+			"relationGroup": [
+				"stdAudioCommon"
+			]
+		},
+		"mmpan": {
+			"type": "function",
+			"summary": "オーディオスロットのパン設定",
+			"group": ["standard"],
+			"tag": [],
+			"parameters": [
+				{
+					"name": "slotIndex",
+					"description": "パン設定するスロット",
+					"omitted": "0"
+				},
+				{
+					"name": "pan",
+					"description": "設定するパン",
+					"omitted": "0",
+					"limit": "[-1000, 1000]"
+				}
+			],
+			"description": [
+				"指定したオーディオスロットのパンを設定します。",
+				"オーディオスロットにオーディオが読み込まれてない場合エラーになります。",
+				"",
+				"パンの値は`-1000`（全て左）から`1000`（全て右）を指定します。",
+				"`0`の場合に左右の偏りがない状態になります。"
+			],
+			"relationGroup": [
+				"stdAudioCommon"
+			]
+		},
+
 		"ginfo_accx": {
 			"type": "systemVariable",
 			"summary": "加速度センサーの値X",
