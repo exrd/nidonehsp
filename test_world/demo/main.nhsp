@@ -26,7 +26,7 @@
 #define dgmes(%1) 
 #endif
 
-#define DEMO_VERSION (0x000100)
+#define DEMO_VERSION __nhspver__
 #define DEMO_VERSION_MAJOR (DEMO_VERSION / 0x10000)
 #define DEMO_VERSION_MINOR ((DEMO_VERSION \ 0x10000) / 0x100)
 #define DEMO_VERSION_PATCH (DEMO_VERSION \ 0x100)
