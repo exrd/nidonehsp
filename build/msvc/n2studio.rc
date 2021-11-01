@@ -12,8 +12,8 @@ APPICON                 ICON                    "icon.ico"
 //
 
 1 VERSIONINFO
-  FILEVERSION 0,1,3,0
-  PRODUCTVERSION 0,1,3,0
+  FILEVERSION 0,1,4,0
+  PRODUCTVERSION 0,1,4,0
   FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
   FILEFLAGS 0x1L
@@ -29,10 +29,10 @@ BEGIN
         BLOCK "041104b0"
         BEGIN
             VALUE "FileDescription", "n2studio"
-            VALUE "FileVersion", "0.1.3.0"
+            VALUE "FileVersion", "0.1.4.0"
             VALUE "InternalName", "n2studio.exe"
             VALUE "OriginalFilename", "n2studio.exe"
-            VALUE "ProductVersion", "0.1.3.0"
+            VALUE "ProductVersion", "0.1.4.0"
         END
     END
     BLOCK "VarFileInfo"
