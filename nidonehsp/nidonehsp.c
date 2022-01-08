@@ -501,66 +501,6 @@ static void n2i_xfree(const n2_allocator_t* allocator, void* ptr)
 	allocator->free_(allocator->alloc_user_, n2_ptr_offset(ptr, -N2_SCAST(ptrdiff_t, N2_MAXALIGN_SIZE)));
 }
 
-#if N2_CONFIG_USE_STD_FILEIO
-static n2_bool_t n2i_default_file_read(void* file_user, const n2_fileread_param_t* param)
-{
-	N2_UNUSE(file_user);
-	FILE* file = fopen(param->filepath_, param->binary_ ? "rb" : "rt");
-	if (!file) { return N2_FALSE; }
-	n2_buffer_t tmpbuffer;
-	n2_buffer_init(&tmpbuffer);
-	N2_ASSERT(param->state_->config_.file_read_tmp_buffer_size_ > 0);
-	n2_buffer_reserve(param->state_, &tmpbuffer, N2_MAX(param->state_->config_.file_read_tmp_buffer_size_, 1));
-	size_t preread = param->readoffset_;
-	while (preread > 0)
-	{
-		const size_t read = fread(tmpbuffer.data_, 1, N2_MIN(preread, tmpbuffer.buffer_size_), file);
-		preread -= read;
-		if (feof(file)) { break; }
-	}
-	if (!feof(file))
-	{
-		size_t actualread = param->readsize_;
-		while (actualread > 0)
-		{
-			if (param->binary_)
-			{
-				const size_t read = fread(tmpbuffer.data_, 1, N2_MIN(actualread, tmpbuffer.buffer_size_), file);
-				n2_buffer_append(param->state_, param->dst_, tmpbuffer.data_, read);
-			}
-			else
-			{
-				if (!fgets(N2_RCAST(char*, tmpbuffer.data_), N2_SCAST(int, tmpbuffer.buffer_size_ / sizeof(char)), file)) { break; }
-				n2_buffer_append(param->state_, param->dst_, tmpbuffer.data_, N2_STRNLEN(N2_RCAST(const char*, tmpbuffer.data_), tmpbuffer.buffer_size_));
-			}
-			if (feof(file)) { break; }
-		}
-	}
-	fclose(file);
-	n2_buffer_teardown(param->state_, &tmpbuffer);
-	n2_buffer_append_values_transparent(param->state_, param->dst_, 0, 1);
-	return N2_TRUE;
-}
-
-static n2_bool_t n2i_default_file_write(void*file_user, const n2_filewrite_param_t* param)
-{
-	N2_UNUSE(file_user);
-	FILE* file = fopen(param->filepath_, param->writeoffset_ == SIZE_MAX ? (param->binary_ ? "wb" : "wt") : (param->binary_ ? "wb+" : "wt+"));
-	if (!file) { return N2_FALSE; }
-	if (param->writeoffset_ > 0 && param->writeoffset_ != SIZE_MAX) { fseek(file, N2_SCAST(long, param->writeoffset_), SEEK_SET); }
-	n2_bool_t res = N2_TRUE;
-	if (!ferror(file))
-	{
-		const size_t written = fwrite(param->writedata_, 1, param->writesize_, file);
-		if (written < param->writesize_) { res = N2_FALSE; }
-		if (param->dst_writtensize_) { *param->dst_writtensize_ = written; }
-	}
-	if (ferror(file)) { res = N2_FALSE; }
-	fclose(file);
-	return res;
-}
-#endif
-
 static void n2i_setupfunc_nothing(n2_state_t* state, void* container)
 {
 	N2_UNUSE(state);
@@ -948,6 +888,18 @@ N2_API n2_bool_t n2_buffer_reserve(n2_state_t* state, n2_buffer_t* buffer, size_
 		buffer->data_ = next_data;
 		buffer->buffer_size_ = next_size;
 	}
+	return N2_TRUE;
+}
+
+N2_API n2_bool_t n2_buffer_set_size(n2_buffer_t* buffer, size_t size)
+{
+	N2_ASSERT(buffer);
+	if (size > buffer->buffer_size_)
+	{
+		buffer->size_ = buffer->buffer_size_;
+		return N2_FALSE;
+	}
+	buffer->size_ = size;
 	return N2_TRUE;
 }
 
@@ -8954,6 +8906,130 @@ N2_API n2h_filesystem_t* n2h_filesystem_alloc_msgpack(n2_state_t* state, const n
 #endif
 
 #if N2_PLATFORM_IS_WINDOWS
+#if 0
+static n2_bool_t n2hi_systemfiledevice_file_read(void* file_user, const n2_fileread_param_t* param)
+{
+	// @todo support text reading mode ...?
+
+	N2_UNUSE(file_user);
+	n2_str_t syspath;
+	n2_str_init(&syspath);
+	n2_bool_t succeeded = N2_FALSE;
+	if (n2hi_to_system_string(param->state_, &syspath, param->filepath_, SIZE_MAX))
+	{
+		HANDLE hfile = CreateFileW(N2_RCAST(const wchar_t*, syspath.str_), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (hfile != INVALID_HANDLE_VALUE)
+		{
+			DWORD hipart = 0;
+			const DWORD lopart = GetFileSize(hfile, &hipart);
+			const uint64_t filesize = (N2_SCAST(uint64_t, hipart) << 32) + N2_SCAST(uint64_t, lopart);
+			const uint64_t readoffset = N2_SCAST(uint64_t, param->readoffset_);
+
+			if (readoffset <= filesize)
+			{
+				LONG hiread = N2_SCAST(LONG, (readoffset >> 32) & 0xffffffffu);
+				const DWORD sfpres = SetFilePointer(hfile, N2_SCAST(LONG, (readoffset & 0xffffffffu)), &hiread, FILE_BEGIN);
+				if (sfpres != INVALID_SET_FILE_POINTER)
+				{
+					const uint64_t fileremain = filesize - readoffset;
+					const uint64_t toreadsize = N2_MIN(fileremain, N2_SCAST(uint64_t, param->readsize_));
+					if (toreadsize <= 0)
+					{
+						succeeded = N2_TRUE;
+					}
+					else if (n2_buffer_reserve(param->state_, param->dst_, toreadsize + 1))
+					{
+						succeeded = N2_TRUE;
+						void* rp = param->dst_->data_;
+						uint64_t rs = toreadsize;
+						while (rs > 0)
+						{
+							const DWORD readsize = N2_SCAST(DWORD, N2_MIN(MAXDWORD, rs));
+							DWORD actualread = 0;
+							const BOOL rres = ReadFile(hfile, rp, readsize, &actualread, NULL);
+							if (!rres || actualread <= 0)
+							{
+								succeeded = N2_FALSE;
+								break;
+							}
+
+							rp = n2_ptr_offset(rp, actualread);
+							rs -= actualread;
+						}
+
+						if (succeeded)
+						{
+							n2_buffer_set_size(param->dst_, N2_SCAST(size_t, toreadsize));
+						}
+					}
+				}
+			}
+
+			CloseHandle(hfile);
+		}
+	}
+	n2_str_teardown(param->state_, &syspath);
+
+	if (succeeded) { n2_buffer_append_values_transparent(param->state_, param->dst_, 0, 1); }
+	return succeeded;
+}
+
+static n2_bool_t n2hi_systemfiledevice_file_write(void* file_user, const n2_filewrite_param_t* param)
+{
+	N2_UNUSE(file_user);
+	n2_str_t syspath;
+	n2_str_init(&syspath);
+	n2_bool_t succeeded = N2_FALSE;
+	if (n2hi_to_system_string(param->state_, &syspath, param->filepath_, SIZE_MAX))
+	{
+		HANDLE hfile = CreateFileW(N2_RCAST(const wchar_t*, syspath.str_), GENERIC_WRITE, 0, NULL, param->writeoffset_ == SIZE_MAX ? CREATE_ALWAYS : OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (hfile != INVALID_HANDLE_VALUE)
+		{
+			DWORD hipart = 0;
+			const DWORD lopart = GetFileSize(hfile, &hipart);
+			const uint64_t filesize = (N2_SCAST(uint64_t, hipart) << 32) + N2_SCAST(uint64_t, lopart);
+
+			succeeded = N2_TRUE;
+			if (succeeded && param->writeoffset_ != SIZE_MAX)
+			{
+				const uint64_t writeoffset = N2_MIN(filesize, N2_SCAST(uint64_t, param->writeoffset_));
+				LONG hiwrite = N2_SCAST(LONG, (writeoffset >> 32) & 0xffffffffu);
+				const DWORD sfpres = SetFilePointer(hfile, N2_SCAST(LONG, (writeoffset & 0xffffffffu)), &hiwrite, FILE_BEGIN);
+				if (sfpres == INVALID_SET_FILE_POINTER)
+				{
+					succeeded = N2_FALSE;
+				}
+			}
+
+			if (succeeded)
+			{
+				const void* wp = param->writedata_;
+				size_t ws = param->writesize_;
+				while (ws > 0)
+				{
+					const DWORD writesize = N2_SCAST(DWORD, N2_MIN(MAXDWORD, ws));
+					DWORD actualwrite = 0;
+					const BOOL wres = WriteFile(hfile, wp, writesize, &actualwrite, NULL);
+					if (!wres || actualwrite <= 0)
+					{
+						succeeded = N2_FALSE;
+						break;
+					}
+
+					wp = n2_cptr_offset(wp, actualwrite);
+					ws -= actualwrite;
+				}
+			}
+
+			CloseHandle(hfile);
+		}
+	}
+	n2_str_teardown(param->state_, &syspath);
+
+	return succeeded;
+}
+#endif
+
 static size_t n2hi_systemfiledevice_extract_fileattributes(DWORD dw_file_attributes)
 {
 	size_t attributes = 0;
@@ -9074,7 +9150,6 @@ N2_API n2_bool_t n2h_systemfiledevice_filestat(n2_state_t* state, n2h_filesystem
 					DWORD hipart = 0;
 					const DWORD lopart = GetFileSize(hfile, &hipart);
 					CloseHandle(hfile);
-					GetFileAttributesEx(
 
 					dst_filestat->is_directory_ = N2_FALSE;
 					dst_filestat->filesize_ = N2_SCAST(size_t, N2_SCAST(uint64_t, hipart) << 32 + N2_SCAST(uint64_t, lopart));
@@ -9388,6 +9463,91 @@ static n2_buffer_t n2hi_resource_load_str(n2_state_t* state, const char* src, si
 	n2_buffer_teardown(state, &cmpbuf);
 	return resbuf;
 }
+
+//=============================================================================
+// 一般よりだが、ヘルパを使うもの
+
+#if N2_CONFIG_USE_STD_FILEIO
+static n2_bool_t n2i_default_file_read(void* file_user, const n2_fileread_param_t* param)
+{
+	N2_UNUSE(file_user);
+	const char* const mode = param->binary_ ? "rb" : "rt";
+	FILE* file = NULL;
+#if N2_CONFIG_USE_PLATFORM_FILEIO && N2_PLATFORM_IS_WINDOWS
+	n2_str_t syspath;
+	n2_str_init(&syspath);
+	if (!n2hi_to_system_string(param->state_, &syspath, param->filepath_, SIZE_MAX)) { return N2_FALSE; }
+	file = _wfopen(N2_RCAST(const wchar_t*, syspath.str_), param->binary_ ? L"rb" : L"rt");
+	n2_str_teardown(param->state_, &syspath);
+	N2_UNUSE(mode);
+#else
+	file = fopen(param->filepath_, mode);
+#endif
+	if (!file) { return N2_FALSE; }
+	n2_buffer_t tmpbuffer;
+	n2_buffer_init(&tmpbuffer);
+	N2_ASSERT(param->state_->config_.file_read_tmp_buffer_size_ > 0);
+	n2_buffer_reserve(param->state_, &tmpbuffer, N2_MAX(param->state_->config_.file_read_tmp_buffer_size_, 1));
+	size_t preread = param->readoffset_;
+	while (preread > 0)
+	{
+		const size_t read = fread(tmpbuffer.data_, 1, N2_MIN(preread, tmpbuffer.buffer_size_), file);
+		preread -= read;
+		if (feof(file)) { break; }
+	}
+	if (!feof(file))
+	{
+		size_t actualread = param->readsize_;
+		while (actualread > 0)
+		{
+			if (param->binary_)
+			{
+				const size_t read = fread(tmpbuffer.data_, 1, N2_MIN(actualread, tmpbuffer.buffer_size_), file);
+				n2_buffer_append(param->state_, param->dst_, tmpbuffer.data_, read);
+			}
+			else
+			{
+				if (!fgets(N2_RCAST(char*, tmpbuffer.data_), N2_SCAST(int, tmpbuffer.buffer_size_ / sizeof(char)), file)) { break; }
+				n2_buffer_append(param->state_, param->dst_, tmpbuffer.data_, N2_STRNLEN(N2_RCAST(const char*, tmpbuffer.data_), tmpbuffer.buffer_size_));
+			}
+			if (feof(file)) { break; }
+		}
+	}
+	fclose(file);
+	n2_buffer_teardown(param->state_, &tmpbuffer);
+	n2_buffer_append_values_transparent(param->state_, param->dst_, 0, 1);
+	return N2_TRUE;
+}
+
+static n2_bool_t n2i_default_file_write(void* file_user, const n2_filewrite_param_t* param)
+{
+	N2_UNUSE(file_user);
+	const char* const mode = param->writeoffset_ == SIZE_MAX ? (param->binary_ ? "wb" : "wt") : (param->binary_ ? "wb+" : "wt+");
+	FILE* file = NULL;
+#if N2_CONFIG_USE_PLATFORM_FILEIO && N2_PLATFORM_IS_WINDOWS
+	n2_str_t syspath;
+	n2_str_init(&syspath);
+	if (!n2hi_to_system_string(param->state_, &syspath, param->filepath_, SIZE_MAX)) { return N2_FALSE; }
+	file = _wfopen(N2_RCAST(const wchar_t*, syspath.str_), param->writeoffset_ == SIZE_MAX ? (param->binary_ ? L"wb" : L"wt") : (param->binary_ ? L"wb+" : L"wt+"));
+	n2_str_teardown(param->state_, &syspath);
+	N2_UNUSE(mode);
+#else
+	file = fopen(param->filepath_, mode);
+#endif
+	if (!file) { return N2_FALSE; }
+	if (param->writeoffset_ > 0 && param->writeoffset_ != SIZE_MAX) { fseek(file, N2_SCAST(long, param->writeoffset_), SEEK_SET); }
+	n2_bool_t res = N2_TRUE;
+	if (!ferror(file))
+	{
+		const size_t written = fwrite(param->writedata_, 1, param->writesize_, file);
+		if (written < param->writesize_) { res = N2_FALSE; }
+		if (param->dst_writtensize_) { *param->dst_writtensize_ = written; }
+	}
+	if (ferror(file)) { res = N2_FALSE; }
+	fclose(file);
+	return res;
+}
+#endif
 
 //=============================================================================
 // 特殊
@@ -26866,12 +27026,15 @@ N2_API void n2_state_config_init_ex(n2_state_config_t* dst_config, size_t flags)
 #endif
 	dst_config->print_user_ = NULL;
 
-#if N2_CONFIG_USE_STD_FILEIO
-	dst_config->file_read_ = &n2i_default_file_read;
-	dst_config->file_write_ = &n2i_default_file_write;
-#else
 	dst_config->file_read_ = NULL;
 	dst_config->file_write_ = NULL;
+#if N2_CONFIG_USE_PLATFORM_FILEIO && 0
+	if (!dst_config->file_read_) { dst_config->file_read_ = &n2hi_systemfiledevice_file_read; }
+	if (!dst_config->file_write_) { dst_config->file_write_ = &n2hi_systemfiledevice_file_write; }
+#endif
+#if N2_CONFIG_USE_STD_FILEIO
+	if (!dst_config->file_read_) { dst_config->file_read_ = &n2i_default_file_read; }
+	if (!dst_config->file_write_) { dst_config->file_write_ = &n2i_default_file_write; }
 #endif
 	dst_config->file_user_ = NULL;
 	dst_config->file_read_tmp_buffer_size_ = N2_DEFAULT_FILE_READ_TMP_BUFFER_SIZE;

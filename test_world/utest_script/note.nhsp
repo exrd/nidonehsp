@@ -48,7 +48,7 @@ if (b != "def") { raise }
 notesel z
 noteload `${fileroot}/ref/noteout.txt`
 
-if (a != z) { mes `a=${a}, z=${z}` : raise }
+if (a != z) { mes `a=[${a}], z=[${z}]` : raise }
 
 //mes `+${a}+`
 //mes `+${b}+`

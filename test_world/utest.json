@@ -42,6 +42,10 @@
 			"path": "str.nhsp"
 		},
 		{
+			"name": "BinaryFile",
+			"path": "bfile.nhsp"
+		},
+		{
 			"name": "DirFile",
 			"path": "dirfile.nhsp"
 		},

@@ -82,6 +82,10 @@
 #endif
 
 // fileioをカスタム
+#ifndef N2_CONFIG_USE_PLATFORM_FILEIO
+#define N2_CONFIG_USE_PLATFORM_FILEIO			(1)
+#endif
+
 #ifndef N2_CONFIG_USE_STD_FILEIO
 #define N2_CONFIG_USE_STD_FILEIO				(1)
 #endif
@@ -773,6 +777,7 @@ N2_API n2_bool_t n2_buffer_copy_to(n2_state_t* state, n2_buffer_t* buffer, const
 N2_API void n2_buffer_swap(n2_buffer_t* buffer, n2_buffer_t* rbuffer);
 N2_API void n2_buffer_clear(n2_buffer_t* buffer);
 N2_API n2_bool_t n2_buffer_reserve(n2_state_t* state, n2_buffer_t* buffer, size_t size);
+N2_API n2_bool_t n2_buffer_set_size(n2_buffer_t* buffer, size_t size);
 N2_API void n2_buffer_set(n2_state_t* state, n2_buffer_t* buffer, const void* cbuffer, size_t length);
 N2_API void n2_buffer_append(n2_state_t* state, n2_buffer_t* buffer, const void* append_buffer, size_t append_length);
 N2_API void n2_buffer_append_values(n2_state_t* state, n2_buffer_t* buffer, uint8_t value, size_t append_length);

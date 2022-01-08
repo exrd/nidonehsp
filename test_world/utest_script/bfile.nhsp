@@ -5,22 +5,29 @@
 fileroot = "utest_script"
 refsize = 64 * 1024
 
-if (1) {
-	sdim filebuf, 256
-	bload `${fileroot}/ref/btest`, filebuf
-	filesize = strsize
-	if (filesize != refsize) { raise }
-	repeat filesize
-		if (peek(filebuf, cnt) != (cnt & 255)) { raise }
-	loop
-}
+repeat 2
+	filename = cnt then "日本語ファイル名" else "btest"
+	filepath = `${fileroot}/out/${filename}`
 
-if (1) {
-	wsize = refsize
-	sdim filebuf, wsize
-	repeat wsize
-		poke filebuf, cnt, cnt & 0xff
-	loop
-	bsave `${fileroot}/out/btest`, filebuf
-}
+	if (1) {
+		wsize = refsize
+		sdim filebuf, wsize
+		repeat wsize
+			poke filebuf, cnt, cnt & 0xff
+		loop
+		mes `write to ${filepath}`
+		bsave filepath, filebuf
+	}
+
+	if (1) {
+		sdim filebuf, 256
+		mes `read from ${filepath}`
+		bload filepath, filebuf
+		filesize = strsize
+		if (filesize != refsize) { raise }
+		repeat filesize
+			if (peek(filebuf, cnt) != (cnt & 255)) { raise }
+		loop
+	}
+loop
 
