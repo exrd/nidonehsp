@@ -1627,8 +1627,11 @@ LXLZ4_API lxlz4_error_e lxlz4_frame_decompress(void* dst, size_t dst_size, size_
 
         size_t block_index = 0;
         const lxlz4_block_t* block;
-        while ((block = lxlz4_frame_parse_next(&parse)))
+        for (;;)
         {
+            block = lxlz4_frame_parse_next(&parse);
+            if (!block) { break; }
+
             //LXLZ4_INTERNAL_DPRINTF("decompress block size(%zu) is_compressed(%d) checksum(%u)\n", block->block_size_, block->is_block_compressed_, block->block_checksum_);
 
             if (parse.frame_.has_block_checksum_)
