@@ -886,6 +886,8 @@ N2_API int n2_plstr_cmp_case(const char* lhs, const char* rhs);
 N2_API int n2_plstr_ncmp_case(const char* lhs, const char* rhs, size_t size);
 N2_API int n2_plstr_search_pattern(const char* str, const char* pattern, size_t pattern_len);
 N2_API int n2_plstr_nsearch_pattern(const char* str, size_t str_len, const char* pattern, size_t pattern_len);
+N2_API uint32_t n2_plstr_hash32(const char* str, size_t str_len);
+N2_API uint64_t n2_plstr_hash64(const char* str, size_t str_len);
 
 struct n2_str_t
 {
@@ -1773,6 +1775,14 @@ N2_API void* n2h_dynlib_find_function(n2_state_t* state, n2h_dynlib_t* dynlib, c
 typedef intptr_t n2h_dynlib_arg_t;
 typedef intptr_t n2h_dynlib_result_t;
 N2_API n2_bool_t n2h_dynlib_call_single(n2_state_t* state, n2h_dynlib_t* dynlib, void* proc, n2h_dynlib_result_t* dst, const n2h_dynlib_arg_t* args, size_t arg_num);
+
+// hash
+N2_API uint32_t n2h_hash_mix32(uint32_t v);
+N2_API uint64_t n2h_hash_mix64(uint64_t v);
+N2_API uint32_t n2h_hash_mix64to32(uint64_t v);
+
+N2_API uint32_t n2h_hash_fnv1a32(const void* data, size_t size);
+N2_API uint64_t n2h_hash_fnv1a64(const void* data, size_t size);
 
 // crc32
 N2_API uint32_t n2h_crc32(const void* src, size_t src_size);
@@ -6021,9 +6031,13 @@ N2_API n2_bool_t n2e_funcarg_haserror(const n2_funcarg_t* arg);
 N2_API size_t n2e_funcarg_csflags(const n2_funcarg_t* arg);
 N2_API size_t n2e_funcarg_oargnum(const n2_funcarg_t* arg);
 N2_API size_t n2e_funcarg_kwargnum(const n2_funcarg_t* arg);
+N2_API const n2_symbol_t* n2e_funcarg_kwargsym(const n2_funcarg_t* arg, int index);
+N2_API n2_value_t* n2e_funcarg_kwargval(const n2_funcarg_t* arg, int index);
 N2_API size_t n2e_funcarg_stacktop(const n2_funcarg_t* arg);
 N2_API n2_value_t* n2e_funcarg_get(const n2_funcarg_t* arg, int index);
 N2_API n2_value_t* n2e_funcarg_getoarg(const n2_funcarg_t* arg, int index);
+N2_API n2_value_t* n2e_funcarg_getkwarg(const n2_funcarg_t* arg, const char* kw);
+N2_API n2_value_t* n2e_funcarg_getkwargsym(const n2_funcarg_t* arg, n2_symbol_id_t kwsym);
 N2_API n2_valint_t n2e_funcarg_eval_int(const n2_funcarg_t* arg, const n2_value_t* val);
 N2_API n2_valfloat_t n2e_funcarg_eval_float(const n2_funcarg_t* arg, const n2_value_t* val);
 N2_API n2_valstr_t* n2e_funcarg_eval_str(const n2_funcarg_t* arg, const n2_value_t* val);

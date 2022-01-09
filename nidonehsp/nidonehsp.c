@@ -1702,6 +1702,18 @@ N2_API int n2_plstr_nsearch_pattern(const char* str, size_t str_len, const char*
 	return -1;
 }
 
+N2_API uint32_t n2_plstr_hash32(const char* str, size_t str_len)
+{
+	if (str_len == SIZE_MAX) { str_len = N2_STRLEN(str); }
+	return n2h_hash_fnv1a32(str, str_len);
+}
+
+N2_API uint64_t n2_plstr_hash64(const char* str, size_t str_len)
+{
+	if (str_len == SIZE_MAX) { str_len = N2_STRLEN(str); }
+	return n2h_hash_fnv1a64(str, str_len);
+}
+
 static void n2i_str_cutoff_append(n2_state_t* state, n2_str_t* str, const char* head, size_t max_char_num, char delimiter, const char* cutoff_tail)
 {
 	n2_bool_t append_tail; const char* tail;
@@ -4167,6 +4179,75 @@ N2_API n2_bool_t n2h_dynlib_call_single(n2_state_t* state, n2h_dynlib_t* dynlib,
 
 #undef N2HI_DP0
 #undef N2HI_DPN
+
+// hash
+
+// reference: https://gist.github.com/badboy/6267743
+N2_API uint32_t n2h_hash_mix32(uint32_t v)
+{
+	v = ~v + (v << 15); // key = (key << 15) - key - 1;
+	v =  v ^ (v >> 12);
+	v =  v + (v << 2);
+	v =  v ^ (v >> 4);
+	v =  v * 2057; // key = (key + (key << 3)) + (key << 11);
+	v =  v ^ (v >> 16);
+	return v;
+}
+
+N2_API uint64_t n2h_hash_mix64(uint64_t v)
+{
+	v = ~v + (v << 21); // key = (key << 21) - key - 1;
+	v =  v ^ (v >> 24);
+	v = (v + (v << 3)) + (v << 8); // key * 265
+	v =  v ^ (v >> 14);
+	v = (v + (v << 2)) + (v << 4); // key * 21
+	v =  v ^ (v >> 28);
+	v =  v + (v << 31);
+	return v;
+}
+
+N2_API uint32_t n2h_hash_mix64to32(uint64_t v)
+{
+	v = ~v + (v << 18); // key = (key << 18) - key - 1;
+	v =  v ^ (v >> 31);
+	v =  v * 21; // key = (key + (key << 2)) + (key << 4);
+	v =  v ^ (v >> 11);
+	v =  v + (v << 6);
+	v =  v ^ (v >> 22);
+	return N2_SCAST(uint32_t, v & 0xffffffff);
+}
+
+N2_API uint32_t n2h_hash_fnv1a32(const void* data, size_t size)
+{
+	static const uint32_t FNV_INIT = 2166136261u;
+	static const uint32_t FNV_PRIME = 16777619u;
+
+	const uint8_t* p = N2_RCAST(const uint8_t*, data);
+
+	uint32_t hash = FNV_INIT;
+	for (size_t i = 0; i < size; ++i)
+	{
+		hash = hash ^ *(p++);
+		hash = hash * FNV_PRIME;
+	}
+	return hash;
+}
+
+N2_API uint64_t n2h_hash_fnv1a64(const void* data, size_t size)
+{
+	static const uint64_t FNV_INIT = 14695981039346656037ull;
+	static const uint64_t FNV_PRIME = 1099511628211ull;
+
+	const uint8_t* p = N2_RCAST(const uint8_t*, data);
+
+	uint64_t hash = FNV_INIT;
+	for (size_t i = 0; i < size; ++i)
+	{
+		hash = hash ^ *(p++);
+		hash = hash * FNV_PRIME;
+	}
+	return hash;
+}
 
 /* CRC32 implemetation from <https://github.com/panzi/CRC-and-checksum-functions> */
 
@@ -29613,6 +29694,26 @@ N2_API size_t n2e_funcarg_kwargnum(const n2_funcarg_t* arg)
 	return N2_SCAST(size_t, arg->fiber_->callstate_.keyworded_arg_num_);
 }
 
+N2_API const n2_symbol_t* n2e_funcarg_kwargsym(const n2_funcarg_t* arg, int index)
+{
+	const int keyworded_arg_num = arg->fiber_->callstate_.keyworded_arg_num_;
+	if (index < 0 || index >= keyworded_arg_num) { return NULL; }
+	const int kwarg_base = arg->fiber_->callstate_.base_ - arg->fiber_->callstate_.ordered_arg_num_;
+	const n2_value_t* keyvalue = n2e_funcarg_getraw(arg, kwarg_base + index * 2 + 0);
+	if (!keyvalue) { return NULL; }
+	const n2_valint_t keyi = n2e_funcarg_eval_int(arg, keyvalue);
+	const n2_symbol_id_t keysymid = N2_SCAST(n2_symbol_id_t, keyi);
+	return n2_symboltable_peekc_id(arg->state_->symtable_, keysymid);
+}
+
+N2_API n2_value_t* n2e_funcarg_kwargval(const n2_funcarg_t* arg, int index)
+{
+	const int keyworded_arg_num = arg->fiber_->callstate_.keyworded_arg_num_;
+	if (index < 0 || index >= keyworded_arg_num) { return NULL; }
+	const int kwarg_base = arg->fiber_->callstate_.base_ - arg->fiber_->callstate_.ordered_arg_num_;
+	return n2e_funcarg_getraw(arg, kwarg_base + index * 2 + 1);
+}
+
 N2_API size_t n2e_funcarg_stacktop(const n2_funcarg_t* arg)
 {
 	const int top = N2_SCAST(int, n2_valuearray_size(arg->fiber_->values_)) - arg->fiber_->callstate_.base_;
@@ -29630,6 +29731,39 @@ N2_API n2_value_t* n2e_funcarg_getoarg(const n2_funcarg_t* arg, int index)
 	if (index >= ordered_arg_num || index < -ordered_arg_num) { return NULL; }
 	if (index < 0) { index += ordered_arg_num; }
 	return n2_valuearray_peekv(arg->fiber_->values_, arg->fiber_->callstate_.base_ + index, NULL);
+}
+
+N2_API n2_value_t* n2e_funcarg_getkwarg(const n2_funcarg_t* arg, const char* kw)
+{
+#if 1
+	if (n2e_funcarg_kwargnum(arg) <= 0) { return NULL; }
+	const n2_symbol_id_t symid = n2_symboltable_register(arg->state_, arg->state_->symtable_, kw);
+	if (symid == N2_SYMBOL_ID_INVALID) { return NULL; }
+	return n2e_funcarg_getkwargsym(arg, symid);
+#else
+	const int keyworded_arg_num = arg->fiber_->callstate_.keyworded_arg_num_;
+	if (keyworded_arg_num <= 0) { return NULL; }
+	for (int i = 0; i < keyworded_arg_num; ++i)
+	{
+		const n2_symbol_t* keysym = n2e_funcarg_kwargsym(arg, i);
+		if (!keysym) { continue; }
+		if (N2_STRCMP(keysym->name_.str_, kw) == 0) { return n2e_funcarg_kwargval(arg, i); }
+	}
+	return NULL;
+#endif
+}
+
+N2_API n2_value_t* n2e_funcarg_getkwargsym(const n2_funcarg_t* arg, n2_symbol_id_t kwsym)
+{
+	const int keyworded_arg_num = arg->fiber_->callstate_.keyworded_arg_num_;
+	if (keyworded_arg_num <= 0) { return NULL; }
+	for (int i = 0; i < keyworded_arg_num; ++i)
+	{
+		const n2_symbol_t* keysym = n2e_funcarg_kwargsym(arg, i);
+		if (!keysym) { continue; }
+		if (keysym->id_ == kwsym) { return n2e_funcarg_kwargval(arg, i); }
+	}
+	return NULL;
 }
 
 N2_API n2_valint_t n2e_funcarg_eval_int(const n2_funcarg_t* arg, const n2_value_t* val)
