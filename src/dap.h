@@ -377,16 +377,17 @@ static n2_bool_t n2ri_dap_push_thread_stacktrace(n2_state_t* s, n2_str_t* t, n2r
 			const n2_func_t* cffunc = NULL;
 			const n2_label_t* cflabel = NULL;
 			const char* cfname = NULL;
-			int cfop = -1;
+			n2_instruction_pos_t cfip;
+			n2_instruction_pos_init(&cfip);
 			if (cf)
 			{
-				cfop = cf->caller_pc_;
+				cfip = cf->caller_ip_;
 				cffunc = cf->caller_function_;
 				cflabel = cf->caller_label_;
 			}
 			else
 			{
-				cfop = f->op_pc_;
+				n2_fiber_get_opip(&cfip, f);
 				cffunc = f->callstate_.func_;
 				cflabel = f->callstate_.label_;
 			}
@@ -396,15 +397,15 @@ static n2_bool_t n2ri_dap_push_thread_stacktrace(n2_state_t* s, n2_str_t* t, n2r
 			if (cflabel) { cfname = cflabel->name_; }
 
 			int use_cfindex = cfindex;
-			while (cfop < 0 && dap->resolve_to_parent_callframe_on_external_)
+			while (n2_instruction_pos_is_valid(&cfip) && dap->resolve_to_parent_callframe_on_external_)
 			{
 				++use_cfindex;
 				const n2ri_dap_retrieve_callframe_t ucfr = n2ri_dap_retrieve_callframe(state, f, use_cfindex);
 				if (!ucfr.is_valid_) { break; }
-				cfop = ucfr.cf_ ? ucfr.cf_->caller_pc_ : f->op_pc_;
+				if (ucfr.cf_) { cfip = ucfr.cf_->caller_ip_; } else { n2_fiber_get_opip(&cfip, f); }
 			}
 
-			const n2_codeline_t* cfcodeline = n2_codeimage_find_codeline_from_pc(f->environment_->codeimage_, cfop);
+			const n2_codeline_t* cfcodeline = n2_codeimage_find_codeline_from_ip(&cfip);
 
 			if (i > 0) { n2_str_append_fmt(s, t, ", "); }
 			n2_str_append_fmt(s, t, "{\n");
@@ -545,15 +546,17 @@ static n2_bool_t n2ri_dap_push_event_output(n2r_dap_t* dap, const char* message,
 			if (group) { n2_str_append_fmt(s, t, ", \"group\": \"%s\"\n", group); }
 			if (f)
 			{
-				n2_pc_t oppc = f->op_pc_;
-				if (oppc < 0)
+				n2_instruction_pos_t opip;
+				n2_instruction_pos_init(&opip);
+				n2_fiber_get_opip(&opip, f);
+				if (!n2_instruction_pos_is_valid(&opip))
 				{
 					// outputイベント時は１個上まで見る、logmesのための特殊対応
 					const n2_callframe_t* cf = n2_callframearray_peek(f->callframes_, -1);
-					if (cf) { oppc = cf->caller_pc_; }
+					if (cf) { opip = cf->caller_ip_; }
 				}
 
-				const n2_codeline_t* cfcodeline = n2_codeimage_find_codeline_from_pc(f->environment_->codeimage_, oppc);
+				const n2_codeline_t* cfcodeline = n2_codeimage_find_codeline_from_ip(&opip);
 
 				if (cfcodeline && cfcodeline->sourcecode_)
 				{
@@ -604,7 +607,7 @@ static n2_bool_t n2r_dap_handle_source(n2r_dap_t* dap, int seq, const n2_str_t* 
 	if (dap->staging_state_)
 	{
 		n2_state_t* state = dap->staging_state_;
-		n2_codeimage_t* codeimage = state->environment_->codeimage_;
+		n2_environment_t* e = state->environment_;
 
 		const n2h_datatree_t* sourcenode = n2h_datatree_find_bystr(argsnode, "source");
 		const n2_str_t* sourcefilepath = n2h_datatree_peekstr(n2h_datatree_find_bystr(sourcenode, "path"));
@@ -612,7 +615,7 @@ static n2_bool_t n2r_dap_handle_source(n2r_dap_t* dap, int seq, const n2_str_t* 
 		if (sourcereference < 0) { sourcereference = N2_SCAST(int, n2h_datatree_asint(n2h_datatree_find_bystr(argsnode, "sourceReference"), -1)) - dap->srcref_base_; }// 直下のsourceReferenceにfallback
 
 		// 該当するsourcefileを検索
-		const n2_sourcefilearray_t* sourcefiles = codeimage->sourcefiles_;
+		const n2_sourcefilearray_t* sourcefiles = e->sourcefiles_;
 		const n2_sourcefile_t* sourcefile = NULL;
 		if (sourcefiles)
 		{
@@ -818,7 +821,10 @@ static n2_bool_t n2ri_dap_push_variables_reference(n2_state_t* s, n2_str_t* t, n
 	case N2_DEBUGVARIABLE_FIBER_RELATIVES:
 		{
 			n2_fiber_t* f = debugvar->v_.fiber_;
-			n2_debugvarrelatives_update(state, f->environment_, &f->debugvarrelatives_, &f->debugvarrelpc_, f->op_pc_, dap->relative_variabls_line_range_);
+			n2_instruction_pos_t opip;
+			n2_instruction_pos_init(&opip);
+			n2_fiber_get_opip(&opip, f);
+			n2_debugvarrelatives_update(state, f->environment_, &f->debugvarrelatives_, &f->debugvarrelip_, &opip, dap->relative_variabls_line_range_);
 			named_variables = n2_intset_size(&f->debugvarrelatives_);
 		}
 		break;
@@ -828,7 +834,7 @@ static n2_bool_t n2ri_dap_push_variables_reference(n2_state_t* s, n2_str_t* t, n
 			n2_callframe_t* cf = debugvar->v_.fiber_cf_.callframe_index_ >= 0 ? n2_callframearray_peek(f->callframes_, debugvar->v_.fiber_cf_.callframe_index_) : NULL;
 			if (cf)
 			{
-				n2_debugvarrelatives_update(state, f->environment_, &cf->debugvarrelatives_, &cf->debugvarrelpc_, cf->caller_pc_, dap->relative_variabls_line_range_);
+				n2_debugvarrelatives_update(state, f->environment_, &cf->debugvarrelatives_, &cf->debugvarrelip_, &cf->caller_ip_, dap->relative_variabls_line_range_);
 				named_variables = n2_intset_size(&cf->debugvarrelatives_);
 			}
 		}
@@ -1206,7 +1212,10 @@ static void n2ri_dap_push_variable_filtered(n2_state_t* s, n2_str_t* t, n2r_dap_
 
 				if (is_fiber)
 				{
-					n2_debugvarrelatives_update(state, f->environment_, &f->debugvarrelatives_, &f->debugvarrelpc_, f->op_pc_, dap->relative_variabls_line_range_);
+					n2_instruction_pos_t opip;
+					n2_instruction_pos_init(&opip);
+					n2_fiber_get_opip(&opip, f);
+					n2_debugvarrelatives_update(state, f->environment_, &f->debugvarrelatives_, &f->debugvarrelip_, &opip, dap->relative_variabls_line_range_);
 					relatives = &f->debugvarrelatives_;
 				}
 				else
@@ -1214,7 +1223,7 @@ static void n2ri_dap_push_variable_filtered(n2_state_t* s, n2_str_t* t, n2r_dap_
 					n2_callframe_t* cf = debugvar->v_.fiber_cf_.callframe_index_ >= 0 ? n2_callframearray_peek(f->callframes_, debugvar->v_.fiber_cf_.callframe_index_) : NULL;
 					if (cf)
 					{
-						n2_debugvarrelatives_update(state, f->environment_, &cf->debugvarrelatives_, &cf->debugvarrelpc_, cf->caller_pc_, dap->relative_variabls_line_range_);
+						n2_debugvarrelatives_update(state, f->environment_, &cf->debugvarrelatives_, &cf->debugvarrelip_, &cf->caller_ip_, dap->relative_variabls_line_range_);
 						relatives = &cf->debugvarrelatives_;
 					}
 				}
@@ -1302,16 +1311,18 @@ static void n2ri_dap_push_scopes(n2_state_t* s, n2_str_t* t, n2r_dap_t* dap, n2_
 		n2_str_append_fmt(s, t, "\"name\": \"Locals\"\n");
 		n2_str_append_fmt(s, t, ", \"presentationHint\": \"locals\"\n");
 		n2_str_append_fmt(s, t, ", \"expensive\": false\n");
-		n2_pc_t use_pc = cf ? cf->caller_pc_ : f->op_pc_;
+		n2_instruction_pos_t ip;
+		n2_instruction_pos_init(&ip);
+		if (cf) { ip = cf->caller_ip_; } else { n2_fiber_get_opip(&ip, f); }
 		int use_cfindex = cfindex;
-		while (use_pc < 0 && dap->resolve_to_parent_callframe_on_external_)
+		while (!n2_instruction_pos_is_valid(&ip) && dap->resolve_to_parent_callframe_on_external_)
 		{
 			++use_cfindex;
 			const n2ri_dap_retrieve_callframe_t cfr = n2ri_dap_retrieve_callframe(state, f, use_cfindex);
 			if (!cfr.is_valid_) { break; }
-			use_pc = cfr.cf_ ? cfr.cf_->caller_pc_ : f->op_pc_;
+			if (cfr.cf_) { ip = cfr.cf_->caller_ip_; } else { n2_fiber_get_opip(&ip, f); }
 		}
-		const n2_codeline_t* codeline = use_pc >= 0 ? n2_codeimage_find_codeline_from_pc(f->environment_->codeimage_, use_pc) : NULL;
+		const n2_codeline_t* codeline = n2_codeimage_find_codeline_from_ip(&ip);
 		if (codeline)
 		{
 			if (codeline->sourcecode_)
@@ -1560,7 +1571,7 @@ static n2_bool_t n2r_dap_handle_set_breakpoints(n2r_dap_t* dap, int seq, const n
 	if (dap->staging_state_)
 	{
 		n2_state_t* state = dap->staging_state_;
-		n2_codeimage_t* codeimage = state->environment_->codeimage_;
+		n2_environment_t* e = state->environment_;;
 
 		const n2h_datatree_t* sourcenode = n2h_datatree_find_bystr(argsnode, "source");
 		const n2h_datatree_t* breakpointsnode = n2h_datatree_find_bystr(argsnode, "breakpoints");
@@ -1569,7 +1580,7 @@ static n2_bool_t n2r_dap_handle_set_breakpoints(n2r_dap_t* dap, int seq, const n
 		const int sourcereference = N2_SCAST(int, n2h_datatree_asint(n2h_datatree_find_bystr(sourcenode, "sourceReference"), -1)) - dap->srcref_base_;
 
 		// 該当するsourcefileを検索
-		const n2_sourcefilearray_t* sourcefiles = codeimage->sourcefiles_;
+		const n2_sourcefilearray_t* sourcefiles = e->sourcefiles_;
 		const n2_sourcefile_t* sourcefile = NULL;
 		if (sourcefiles)
 		{
@@ -1611,30 +1622,34 @@ static n2_bool_t n2r_dap_handle_set_breakpoints(n2r_dap_t* dap, int seq, const n
 				}
 			}
 
-			n2_u8array_t* opcodeflags = codeimage->opcodeflags_;
-			if (opcodeflags && sourcefile)// sourcefileが見つからないものは無視（全てUnverified）
+			if (sourcefile)// sourcefileが見つからないものは無視（全てUnverified）
 			{
 				for (size_t si = 0, sl = n2_sourcecodeptrarray_size(&sourcefile->sourcecodeptrs_); si < sl; ++si)
 				{
 					const n2_sourcecode_t* sourcecode = *n2_sourcecodeptrarray_peekc(&sourcefile->sourcecodeptrs_, N2_SCAST(int, si));
-					for (size_t ci = 0, cl = n2_szarray_size(&sourcecode->codeline_indices_); ci < cl; ++ci)
+					if (sourcecode->ref_codeimage_)
 					{
-						const size_t codeline_index = *n2_szarray_peekc(&sourcecode->codeline_indices_, N2_SCAST(int, ci));
-						const n2_codeline_t* codeline = n2_codelinetable_peekc(codeimage->codelinetable_, N2_SCAST(int, codeline_index));
-						if (codeline)
+						n2_codeimage_t* codeimage = sourcecode->ref_codeimage_;
+						n2_u8array_t* opcodeflags = codeimage->opcodeflags_;
+						for (size_t ci = 0, cl = n2_szarray_size(&sourcecode->codeline_indices_); ci < cl; ++ci)
 						{
-							uint8_t* opcode = n2_u8array_peek(opcodeflags, codeline->pc_);
-							if (opcode)
+							const size_t codeline_index = *n2_szarray_peekc(&sourcecode->codeline_indices_, N2_SCAST(int, ci));
+							const n2_codeline_t* codeline = n2_codelinetable_peekc(codeimage->codelinetable_, N2_SCAST(int, codeline_index));
+							if (codeline)
 							{
-								const int line = N2_SCAST(int, codeline->line_);
-								if (n2_intset_find(sorted_breaklines, &line))
+								uint8_t* opcode = n2_u8array_peek(opcodeflags, codeline->pc_);
+								if (opcode)
 								{
-									n2_intset_insert(es, verified_breaklines, &line, NULL);
-									*opcode |= N2_OPCODEFLAG_BREAKPOINT;
-								}
-								else
-								{
-									*opcode &= ~N2_OPCODEFLAG_BREAKPOINT;
+									const int line = N2_SCAST(int, codeline->line_);
+									if (n2_intset_find(sorted_breaklines, &line))
+									{
+										n2_intset_insert(es, verified_breaklines, &line, NULL);
+										*opcode |= N2_OPCODEFLAG_BREAKPOINT;
+									}
+									else
+									{
+										*opcode &= ~N2_OPCODEFLAG_BREAKPOINT;
+									}
 								}
 							}
 						}

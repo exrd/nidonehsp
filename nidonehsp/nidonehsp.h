@@ -494,7 +494,7 @@
 #if N2_CONFIG_USE_STD_FILEIO
 #include <stdio.h>
 #else
-/*you have to supply file_read_ and file_write_ functions in n2_state_config_t for n2_state_init()*/
+/*you have to supply file_read_ and file_write_ functions in n2_state_config_t before n2_state_alloc()*/
 #endif
 
 #if N2_CONFIG_USE_STD_TIME
@@ -677,6 +677,10 @@ typedef struct n2_value_t n2_value_t;
 typedef struct n2_uselib_t n2_uselib_t;
 
 typedef int32_t n2_pc_t;
+typedef struct n2_instruction_pos_t n2_instruction_pos_t;
+typedef struct n2_codeimage_t n2_codeimage_t;
+
+typedef struct n2_label_t n2_label_t;
 typedef struct n2_func_t n2_func_t;
 
 typedef struct n2_module_t n2_module_t;
@@ -2751,6 +2755,7 @@ struct n2_sourcecode_t
 	n2_str_t src_ppscript_;
 	n2_cstrarray_t ppscript_lines_;
 
+	n2_codeimage_t* ref_codeimage_;
 	n2_szarray_t codeline_indices_;
 
 	n2_sourcecodearray_t* sourcecodes_;
@@ -3363,7 +3368,7 @@ N2_API void n2_debugvarpool_free(n2_state_t* state, n2_debugvarpool_t* debugvarp
 N2_API n2_debugvariable_t* n2_debugvarpool_pop_or_alloc(n2_state_t* state, n2_debugvarpool_t* debugvarpool);
 N2_API void n2_debugvarpool_push(n2_state_t* state, n2_debugvarpool_t* debugvarpool, n2_debugvariable_t* debugvar);
 
-N2_API n2_bool_t n2_debugvarrelatives_update(n2_state_t* state, n2_environment_t* e, n2_intset_t* relatives, n2_pc_t* cached_pc, n2_pc_t curr_pc, int range);
+N2_API n2_bool_t n2_debugvarrelatives_update(n2_state_t* state, n2_environment_t* e, n2_intset_t* relatives, n2_instruction_pos_t* cached_ip, const n2_instruction_pos_t* curr_ip, int range);
 
 //=============================================================================
 // プリミティブ値
@@ -3567,16 +3572,8 @@ N2_DECLARE_TARRAY(n2_value_t*, n2_valuearray, N2_API);
 N2_DECLARE_TARRAY(n2_value_t, n2_flatvaluearray, N2_API);
 
 //=============================================================================
+
 // 実行コード
-typedef struct n2_label_t n2_label_t;
-struct n2_label_t
-{
-	char* name_;
-	n2_pc_t pc_;
-};
-
-N2_DECLARE_TARRAY(n2_label_t, n2_labelarray, N2_API);
-
 typedef int32_t n2_opcode_t;
 
 N2_DECLARE_ENUM(n2_opcode_e);
@@ -3686,62 +3683,29 @@ enum n2_opcode_e
 
 N2_DECLARE_TARRAY(n2_opcode_t, n2_opcodearray, N2_API);
 
-typedef struct n2_codeline_t n2_codeline_t;
-struct n2_codeline_t
+// 実行位置
+struct n2_instruction_pos_t
 {
+	const n2_codeimage_t* codeimage_;
 	n2_pc_t pc_;
-	const n2_sourcecode_t* sourcecode_;
-	const char* package_;
-	int line_;
-	int column_;// @todo not supported yet
-	const char* line_head_;
-	n2_intset_t relative_var_indices_;
 };
 
-N2_DECLARE_TSORTED_ARRAY(n2_codeline_t, void, n2_pc_t, n2_codelinetable, N2_API);
-
-enum
-{
-	// 下位ニブルは属性
-	N2_OPCODEFLAG_STATEMENT_HEAD = 0x01,
-	N2_OPCODEFLAG_LINE_STATEMENTS_HEAD = 0x02,
-
-	// 上位ニブルは動的オプション
-	N2_OPCODEFLAG_BREAKPOINT = 0x10,
-};
-
-typedef struct n2_codeimage_t n2_codeimage_t;
-struct n2_codeimage_t
-{
-	n2_opcodearray_t* opcodes_;
-	n2_u8array_t* opcodeflags_;
-
-	n2_flatvaluearray_t* val_literals_;
-	n2_plstrarray_t* str_literals_;
-
-	n2_sourcefilearray_t* sourcefiles_;
-	n2_sourcecodearray_t* sourcecodes_;
-
-	n2_codelinetable_t* codelinetable_;
-};
-
-N2_API n2_codeimage_t* n2_codeimage_alloc(n2_state_t* state);
-N2_API void n2_codeimage_free(n2_state_t* state, n2_codeimage_t* codeimage);
-
-N2_API const n2_codeline_t* n2_codeimage_find_codeline_from_pc(const n2_codeimage_t* codeimage, n2_pc_t pc);
-
-enum n2_codeimage_dump_e
-{
-	N2_CODEIMAGE_DUMP_CODELINES = 0x01,
-	N2_CODEIMAGE_DUMP_RELATIVE_VARS = 0x02,
-
-	N2_CODEIMAGE_DUMP_DEFAULT = (N2_CODEIMAGE_DUMP_CODELINES),
-	N2_CODEIMAGE_DUMP_ALL = 0x0fffffff,
-};
-
-N2_API void n2_codeimage_dump(n2_state_t* state, const n2_codeimage_t* codeimage, const n2_environment_t* e, size_t flags);
+N2_API void n2_instruction_pos_init(n2_instruction_pos_t* ip);
+N2_API n2_bool_t n2_instruction_pos_is_valid(const n2_instruction_pos_t* ip);
+N2_API n2_bool_t n2_instruction_pos_equal(const n2_instruction_pos_t* lhs, const n2_instruction_pos_t* rhs);
 
 //=============================================================================
+// ラベル
+struct n2_label_t
+{
+	int label_index_;
+	char* name_;
+	n2_instruction_pos_t ip_;
+};
+
+N2_DECLARE_TARRAY(n2_label_t, n2_labelarray, N2_API);
+N2_DECLARE_TARRAY(n2_label_t*, n2_labelrefarray, N2_API);
+
 // 関数
 typedef struct n2_funcarg_t n2_funcarg_t;
 struct n2_funcarg_t
@@ -3835,7 +3799,7 @@ struct n2_func_t
 	size_t flags_;
 	n2_func_callback_t callback_;
 	void* call_user_;
-	n2_pc_t pc_;
+	n2_instruction_pos_t ip_;
 	int reserved_stack_num_;
 	n2_funcparamarray_t* ordered_params_;
 	n2_funcparamarray_t* keyworded_params_;
@@ -3860,6 +3824,7 @@ N2_API const n2_func_local_var_t* n2_func_find_local_var_named(const n2_func_t* 
 
 N2_DECLARE_TARRAY(n2_func_t, n2_funcarray, N2_API);
 N2_DECLARE_TSORTED_ARRAY(int, void, char, n2_funcindexmap, N2_API);
+N2_DECLARE_TARRAY(n2_func_t*, n2_funcrefarray, N2_API);
 
 typedef struct n2_functable_t n2_functable_t;
 struct n2_functable_t
@@ -3942,11 +3907,11 @@ N2_DECLARE_TSORTED_ARRAY(int, void, n2_symbol_id_t, n2_modfuncssymbolindexset, N
 
 struct n2_module_t
 {
+	int module_id_;// as index
 	char* name_;
 	n2_symbol_id_t name_id_;
-	int module_id_;
 	n2_environment_t* environment_;
-	n2_pc_t pc_begin_;
+	n2_instruction_pos_t ip_begin_;
 	n2_modlocalvararray_t* modlocalvars_;
 	n2_modfuncindexset_t* modfuncs_;
 	n2_modfuncsnameindexset_t* modfuncsnames_;
@@ -3964,6 +3929,7 @@ N2_API n2_func_t* n2_module_find_func_bysymbol(const n2_module_t* emodule, n2_sy
 
 N2_DECLARE_TARRAY(n2_module_t, n2_modulearray, N2_API);
 N2_DECLARE_TSORTED_ARRAY(int, void, char, n2_moduleindexmap, N2_API);
+N2_DECLARE_TARRAY(n2_module_t*, n2_modulerefarray, N2_API);
 
 typedef struct n2_moduletable_t n2_moduletable_t;
 struct n2_moduletable_t
@@ -4238,7 +4204,7 @@ struct n2_pp_context_t
 
 	n2_ppmoddeclareset_t* mod_decls_;
 
-	n2_sourcefilearray_t* current_sourcefiles_;
+	n2_codeimage_t* current_codeimage_;
 	n2_sourcecode_t* current_rootsourcecode_;
 	n2_sourcecode_t* current_sourcecode_;
 	n2_pp_module_declare_t* current_mod_decl_;
@@ -4274,6 +4240,79 @@ struct n2_uselib_t
 };
 
 N2_DECLARE_TARRAY(n2_uselib_t, n2_uselibarray, N2_API);
+
+//=============================================================================
+// コード
+typedef struct n2_codeline_t n2_codeline_t;
+struct n2_codeline_t
+{
+	n2_pc_t pc_;
+	const n2_sourcecode_t* sourcecode_;
+	const char* package_;
+	int line_;
+	int column_;// @todo not supported yet
+	const char* line_head_;
+	n2_intset_t relative_var_indices_;
+};
+
+N2_DECLARE_TSORTED_ARRAY(n2_codeline_t, void, n2_pc_t, n2_codelinetable, N2_API);
+
+N2_API const n2_codeline_t* n2_codelinetable_find_from_pc(const n2_codelinetable_t* codelinetable, n2_pc_t pc);
+
+enum
+{
+	// 下位ニブルは属性
+	N2_OPCODEFLAG_STATEMENT_HEAD = 0x01,
+	N2_OPCODEFLAG_LINE_STATEMENTS_HEAD = 0x02,
+
+	// 上位ニブルは動的オプション
+	N2_OPCODEFLAG_BREAKPOINT = 0x10,
+};
+
+struct n2_codeimage_t
+{
+	// data
+	n2_opcodearray_t* opcodes_;
+	n2_u8array_t* opcodeflags_;
+
+	n2_flatvaluearray_t* val_literals_;// @todo optimize: share all literals between codeimages
+	n2_plstrarray_t* str_literals_;// @todo optimize: share all literals between codeimages
+
+	// placeholders
+	n2_labelrefarray_t bind_labels_;
+	n2_funcrefarray_t bind_funcs_;
+	n2_modulerefarray_t bind_modules_;
+
+	const n2_codeimage_t* prev_codeimage_;
+	const n2_codeimage_t* next_codeimage_;
+
+	// debug info
+	n2_sourcefilearray_t* ref_sourcefiles_;
+	n2_sourcecodearray_t* ref_sourcecodes_;
+
+	n2_codelinetable_t* codelinetable_;
+};
+
+N2_API n2_codeimage_t* n2_codeimage_alloc(n2_state_t* state, n2_environment_t* e);
+N2_API void n2_codeimage_free(n2_state_t* state, n2_codeimage_t* codeimage);
+
+N2_API int n2_codeimage_register_strlieral(n2_state_t* state, n2_codeimage_t* codeimage, const char* str);
+
+N2_API const n2_codeline_t* n2_codeimage_find_codeline_from_pc(const n2_codeimage_t* codeimage, n2_pc_t pc);
+N2_API const n2_codeline_t* n2_codeimage_find_codeline_from_ip(const n2_instruction_pos_t* ip);
+
+enum n2_codeimage_dump_e
+{
+	N2_CODEIMAGE_DUMP_CODELINES = 0x01,
+	N2_CODEIMAGE_DUMP_RELATIVE_VARS = 0x02,
+
+	N2_CODEIMAGE_DUMP_DEFAULT = (N2_CODEIMAGE_DUMP_CODELINES),
+	N2_CODEIMAGE_DUMP_ALL = 0x0fffffff,
+};
+
+N2_API void n2_codeimage_dump(n2_state_t* state, const n2_codeimage_t* codeimage, const n2_environment_t* e, size_t flags);
+
+N2_DECLARE_TARRAY(n2_codeimage_t*, n2_codeimagearray, N2_API);
 
 //=============================================================================
 // 雑多
@@ -5435,7 +5474,8 @@ typedef struct n2_callframe_t n2_callframe_t;
 struct n2_callframe_t
 {
 	n2_caller_e caller_;
-	n2_pc_t caller_pc_;
+	const n2_codeimage_t* caller_codeimage_;
+	n2_instruction_pos_t caller_ip_;
 	const n2_func_t* caller_function_;
 	const n2_label_t* caller_label_;
 	n2_pc_t next_pc_;
@@ -5453,7 +5493,7 @@ struct n2_callframe_t
 	n2_debugvararray_t* debugvarargs_;
 	n2_debugvariable_t* debugvarrelroot_;
 	n2_intset_t debugvarrelatives_;
-	n2_pc_t debugvarrelpc_;
+	n2_instruction_pos_t debugvarrelip_;
 #endif
 #if N2_CONFIG_USE_PROFILING
 	uint64_t call_timestamp_;
@@ -5598,7 +5638,10 @@ struct n2_fiber_t
 	// 呼び出し状態
 	n2_callstate_t callstate_;
 
-	// プログラムカウンター（インストラクションポインタ）
+	// コードイメージ（実行中）
+	const n2_codeimage_t* codeimage_;
+
+	// プログラムカウンター
 	n2_pc_t pc_;
 	n2_pc_t op_pc_;
 
@@ -5643,7 +5686,7 @@ struct n2_fiber_t
 	n2_debugvariable_t* debugvarroot_;
 	n2_debugvariable_t* debugvarrelroot_;
 	n2_intset_t debugvarrelatives_;
-	n2_pc_t debugvarrelpc_;
+	n2_instruction_pos_t debugvarrelip_;
 	n2_debugvariable_t* debugvarsysvar_;
 	n2_debugvariable_t* debugvarsysvarelements_[N2_MAX_SYSVAR];
 #endif
@@ -5651,6 +5694,8 @@ struct n2_fiber_t
 
 N2_API n2_fiber_t* n2_fiber_alloc(n2_state_t* state, n2_environment_t* e, int id, const char* name, size_t name_length);
 N2_API void n2_fiber_free(n2_state_t* state, n2_fiber_t* fiber);
+N2_API n2_bool_t n2_fiber_get_ip(n2_instruction_pos_t* ip, const n2_fiber_t* fiber);
+N2_API n2_bool_t n2_fiber_get_opip(n2_instruction_pos_t* ip, const n2_fiber_t* fiber);
 
 // 終了したか？
 N2_API n2_bool_t n2_fiber_is_finished(const n2_fiber_t* fiber);
@@ -5664,8 +5709,12 @@ struct n2_environment_t
 	// AST
 	n2_astarray_t* asts_;
 
+	// ソースコード
+	n2_sourcefilearray_t* sourcefiles_;
+	n2_sourcecodearray_t* sourcecodes_;
+
 	// コードイメージ
-	n2_codeimage_t* codeimage_;
+	n2_codeimagearray_t* codeimages_;
 
 	// 変数テーブル
 	n2_vartable_t* vartable_;
@@ -5734,6 +5783,8 @@ struct n2_environment_t
 
 N2_API n2_environment_t* n2_environment_alloc(n2_state_t* state);
 N2_API void n2_environment_free(n2_state_t* state, n2_environment_t* e);
+
+N2_API void n2_environment_dump_codeimages(n2_state_t* state, const n2_environment_t* e, size_t flags);
 
 N2_API n2_bool_t n2_environment_load_str(n2_state_t* state, n2_pp_context_t* ppc, n2_environment_t* e, const char* package, const char* script, size_t script_size, const char* src_filepath_hint);
 
@@ -5836,6 +5887,9 @@ struct n2_state_config_t
 
 	// スクリプトcp932の自動デコード
 	n2_bool_t enable_script_auto_decode_cp932_;// = N2_TRUE
+
+	// 動的ライブラリの解決をスタートアップで行うか
+	n2_bool_t resolve_dynlib_procs_on_startup_;// = N2_FALSE
 
 	// セーブパス（外部指定）
 	const char* external_save_path_;// = NULL

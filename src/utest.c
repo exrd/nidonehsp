@@ -1380,7 +1380,7 @@ int main(int argc, char* argv[])
 				// デバッグ
 				if (thistest_predump_ppsrc)
 				{
-					const n2_sourcecode_t* sourcecode = n2_sourcecodearray_peekv(state->environment_->codeimage_->sourcecodes_, 0, NULL);
+					const n2_sourcecode_t* sourcecode = n2_sourcecodearray_peekv(state->environment_->sourcecodes_, 0, NULL);
 					printf("PREPROCESSED: %s\n", sourcecode->src_ppscript_.str_);
 				}
 				if (thistest_predump_ast)
@@ -1389,7 +1389,7 @@ int main(int argc, char* argv[])
 				}
 				if (thistest_predump_opcode)
 				{
-					n2_codeimage_dump(state, state->environment_->codeimage_, state->environment_, N2_CODEIMAGE_DUMP_ALL);
+					n2_environment_dump_codeimages(state, state->environment_, N2_CODEIMAGE_DUMP_ALL);
 				}
 
 				if (n2_state_execute(state))
@@ -1423,7 +1423,7 @@ int main(int argc, char* argv[])
 			{
 				if (!thistest_predump_ppsrc)
 				{
-					const n2_sourcecode_t* sourcecode = n2_sourcecodearray_peekv(state->environment_->codeimage_->sourcecodes_, 0, NULL);
+					const n2_sourcecode_t* sourcecode = n2_sourcecodearray_peekv(state->environment_->sourcecodes_, 0, NULL);
 					if (sourcecode)
 					{
 						printf("PREPROCESSED: %s\n", sourcecode->src_ppscript_.str_);
@@ -1431,7 +1431,7 @@ int main(int argc, char* argv[])
 				}
 				if (!thistest_predump_opcode)
 				{
-					n2_codeimage_dump(state, state->environment_->codeimage_, state->environment_, N2_CODEIMAGE_DUMP_DEFAULT);
+					n2_environment_dump_codeimages(state, state->environment_, N2_CODEIMAGE_DUMP_DEFAULT);
 				}
 			}
 
