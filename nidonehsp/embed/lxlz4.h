@@ -353,7 +353,7 @@ LXLZ4_API lxlz4_bool_t lxlz4_block_verify_checksum(const lxlz4_block_t* block);
 //
 //    implementation
 //
-#if defined(LXLZ4_IMPLEMENTATION) || 1
+#if defined(LXLZ4_IMPLEMENTATION)
 #ifndef LXLZ4_IMPLEMENTATION_INCLUDED
 #define LXLZ4_IMPLEMENTATION_INCLUDED
 
