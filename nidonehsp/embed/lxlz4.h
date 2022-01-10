@@ -79,9 +79,16 @@
 //
 //    common
 //
+#ifdef LXLZ4_NO_STDBOOL
 typedef int lxlz4_bool_t;
 #define LXLZ4_TRUE  (1)
 #define LXLZ4_FALSE (0)
+#else
+#include <stdbool.h>
+typedef bool lxlz4_bool_t;
+#define LXLZ4_TRUE  (true)
+#define LXLZ4_FALSE (false)
+#endif
 
 typedef enum
 {

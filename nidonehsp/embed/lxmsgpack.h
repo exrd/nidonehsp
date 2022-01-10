@@ -58,9 +58,16 @@
 //
 //    common
 //
+#ifdef LXMSGP_NO_STDBOOL
 typedef int lxmsgp_bool_t;
 #define LXMSGP_TRUE  (1)
 #define LXMSGP_FALSE (0)
+#else
+#include <stdbool.h>
+typedef bool lxmsgp_bool_t;
+#define LXMSGP_TRUE  (true)
+#define LXMSGP_FALSE (false)
+#endif
 
 typedef enum
 {
